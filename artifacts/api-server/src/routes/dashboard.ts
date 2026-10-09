@@ -1,6 +1,7 @@
 import {
   and,
   asc,
+  desc,
   eq,
   gte,
   lt,
@@ -9,6 +10,7 @@ import { Router, type IRouter } from "express";
 import {
   branchesTable,
   db,
+  integrationImportsTable,
   inventoryMovementsTable,
 } from "@workspace/db";
 import {
@@ -280,7 +282,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
       severity: "critical" as const,
       title: "Manfiy tovar qoldig‘i",
       description: `${negativeStocks.length} ta mahsulotda qoldiq manfiy.`,
-      target: "/trade",
+      target: "/stock",
     });
   }
   const expiring = inventory.filter((item) => {
@@ -295,7 +297,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
       severity: "warning" as const,
       title: "Yaroqlilik muddati yaqin",
       description: `${expiring.length} ta mahsulotning muddati 30 kun ichida tugaydi.`,
-      target: "/trade",
+      target: "/stock",
     });
   }
   if (!grossKnown) {
@@ -307,13 +309,33 @@ router.get("/dashboard", async (req, res): Promise<void> => {
       target: "/profit",
     });
   }
-  alerts.push({
-    id: "fom-not-connected",
-    severity: "info" as const,
-    title: "FOM integratsiyasi ulanmagan",
-    description: "Sinov yoki qo‘lda kiritilgan ma’lumotlar ko‘rsatilmoqda.",
-    target: "/settings",
-  });
+  const [lastFomImport] = await db
+    .select({
+      status: integrationImportsTable.status,
+      message: integrationImportsTable.message,
+      completedAt: integrationImportsTable.completedAt,
+    })
+    .from(integrationImportsTable)
+    .where(eq(integrationImportsTable.integration, "fom"))
+    .orderBy(desc(integrationImportsTable.startedAt))
+    .limit(1);
+  if (!lastFomImport) {
+    alerts.push({
+      id: "fom-not-connected",
+      severity: "info" as const,
+      title: "FOM integratsiyasi ulanmagan",
+      description: "Sinov yoki qo‘lda kiritilgan ma’lumotlar ko‘rsatilmoqda.",
+      target: "/settings",
+    });
+  } else if (lastFomImport.status === "error") {
+    alerts.push({
+      id: "fom-sync-error",
+      severity: "warning" as const,
+      title: "FOM sinxronlashda xatolik",
+      description: lastFomImport.message || "Oxirgi sinxronlash yakunlanmadi.",
+      target: "/settings",
+    });
+  }
 
   const branchComparison = await Promise.all(
     branches.map(async (branch) => {
@@ -339,7 +361,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
         (sum, expense) => sum + moneyCents(expense.amount),
         0n,
       );
-      const branchInventory = branchInventory.some((item) => item.value == null)
+      const branchInventoryValue = branchInventory.some((item) => item.value == null)
         ? null
         : branchInventory.reduce((sum, item) => sum + moneyCents(item.value), 0n);
       const branchCash = branchAccounts.reduce(
@@ -361,7 +383,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
             : centsMoney(branchGross - branchExpenseTotal),
         expenses: centsMoney(branchExpenseTotal),
         cashBalance: centsMoney(branchCash),
-        inventoryValue: branchInventory == null ? null : centsMoney(branchInventory),
+        inventoryValue: branchInventoryValue == null ? null : centsMoney(branchInventoryValue),
         debt: centsMoney(branchDebt),
         updatedAt: branch.updatedAt,
       };
@@ -396,8 +418,8 @@ router.get("/dashboard", async (req, res): Promise<void> => {
       overdueDebt: centsMoney(
         overdue.reduce((sum, debt) => sum + moneyCents(debt.balance), 0n),
       ),
-      goodsIn: null,
-      goodsOut: null,
+      goodsIn: null as string | null,
+      goodsOut: null as string | null,
     },
     salesTrend,
     branchComparison,
@@ -428,6 +450,8 @@ router.get("/dashboard", async (req, res): Promise<void> => {
     );
   let goodsIn: bigint | null = 0n;
   let goodsOut: bigint | null = 0n;
+  const outgoing = new Set(["sale", "write_off", "supplier_return", "inventory_shortage"]);
+  const reversingOut = new Set(["sale_void", "customer_return"]);
   for (const movement of movements) {
     if (movement.movementType === "purchase") {
       if (movement.unitCost == null) goodsIn = null;
@@ -435,12 +459,13 @@ router.get("/dashboard", async (req, res): Promise<void> => {
         goodsIn += extendedMoney(movement.unitCost, movement.quantity);
       }
     } else if (
-      movement.movementType === "sale" ||
-      movement.movementType === "write_off"
+      outgoing.has(movement.movementType) ||
+      reversingOut.has(movement.movementType)
     ) {
       if (movement.unitCost == null) goodsOut = null;
       else if (goodsOut != null) {
-        goodsOut += extendedMoney(movement.unitCost, movement.quantity);
+        const value = extendedMoney(movement.unitCost, movement.quantity);
+        goodsOut += reversingOut.has(movement.movementType) ? -value : value;
       }
     }
   }

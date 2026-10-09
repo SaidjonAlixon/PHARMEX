@@ -6,8 +6,10 @@ if (!process.env.DATABASE_URL) {
 }
 
 export default defineConfig({
-  schema: path.join(__dirname, "./src/schema/index.ts"),
+  schema: path.join(__dirname, "./src/schema/index.ts").replaceAll("\\", "/"),
   dialect: "postgresql",
+  // The database may be shared with other apps; never touch tables outside our prefix.
+  tablesFilter: ["pharmacy_*"],
   dbCredentials: {
     url: process.env.DATABASE_URL,
   },

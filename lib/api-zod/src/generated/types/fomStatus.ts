@@ -5,7 +5,10 @@
  * Dorixona moliyaviy boshqaruv platformasi API
  * OpenAPI spec version: 0.1.0
  */
+import type { FomReportState } from './fomReportState';
+import type { FomSiteState } from './fomSiteState';
 import type { FomStatusLastSyncStatus } from './fomStatusLastSyncStatus';
+import type { FomTotals } from './fomTotals';
 
 export interface FomStatus {
   connected: boolean;
@@ -19,4 +22,17 @@ export interface FomStatus {
   /** @nullable */
   lastMessage: string | null;
   importedRecords: number;
+  running: boolean;
+  filialIds: string[];
+  intervalMinutes: number;
+  refsIntervalMinutes: number;
+  /** @nullable */
+  refsAt: Date | null;
+  /** @nullable */
+  lastSyncFrom: Date | null;
+  /** @nullable */
+  lastSyncTo: Date | null;
+  reports: FomReportState[];
+  site: FomSiteState;
+  totals: FomTotals;
 }

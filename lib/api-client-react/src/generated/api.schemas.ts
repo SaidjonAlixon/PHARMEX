@@ -43,6 +43,14 @@ export interface Error {
   error: string;
 }
 
+export type BranchKind = typeof BranchKind[keyof typeof BranchKind];
+
+
+export const BranchKind = {
+  pharmacy: 'pharmacy',
+  warehouse: 'warehouse',
+} as const;
+
 export type BranchSource = typeof BranchSource[keyof typeof BranchSource];
 
 
@@ -57,6 +65,7 @@ export interface Branch {
   name: string;
   /** @nullable */
   fomId?: string | null;
+  kind: BranchKind;
   region: string;
   address: string;
   manager: string;
@@ -65,11 +74,20 @@ export interface Branch {
   updatedAt: string;
 }
 
+export type BranchInputKind = typeof BranchInputKind[keyof typeof BranchInputKind];
+
+
+export const BranchInputKind = {
+  pharmacy: 'pharmacy',
+  warehouse: 'warehouse',
+} as const;
+
 export interface BranchInput {
   /** @minLength 2 */
   name: string;
   /** @nullable */
   fomId?: string | null;
+  kind?: BranchInputKind;
   region: string;
   address: string;
   manager: string;
@@ -161,6 +179,8 @@ export interface InventoryItem {
   /** @nullable */
   barcode?: string | null;
   group: string;
+  manufacturer?: string;
+  ikpu?: string;
   branchId: number;
   branchName: string;
   quantity: number;
@@ -188,6 +208,8 @@ export interface ExpenseInput {
   description: string;
   /** @pattern ^[0-9]+(\.[0-9]{1,2})?$ */
   amount: string;
+  /** @minimum 1 */
+  accountId?: number;
 }
 
 export type CashAccountKind = typeof CashAccountKind[keyof typeof CashAccountKind];
@@ -221,6 +243,91 @@ export interface CashAccount {
   source: CashAccountSource;
 }
 
+export type CashAccountInputKind = typeof CashAccountInputKind[keyof typeof CashAccountInputKind];
+
+
+export const CashAccountInputKind = {
+  cash: 'cash',
+  bank: 'bank',
+} as const;
+
+/**
+ * @pattern ^[0-9]+(\.[0-9]{1,2})?$
+ */
+export type Money = string;
+
+export interface CashAccountInput {
+  /** @minLength 2 */
+  name: string;
+  kind: CashAccountInputKind;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  branchId?: number | null;
+  openingBalance: Money;
+}
+
+export type CashRegisterRowKind = typeof CashRegisterRowKind[keyof typeof CashRegisterRowKind];
+
+
+export const CashRegisterRowKind = {
+  cash: 'cash',
+  bank: 'bank',
+} as const;
+
+export interface CashRegisterRow {
+  accountId: number;
+  accountName: string;
+  kind: CashRegisterRowKind;
+  /** @nullable */
+  branchId: number | null;
+  branchName: string;
+  openingBalance: string;
+  inflow: string;
+  outflow: string;
+  closingBalance: string;
+  operations: number;
+  cashSales: string;
+  encashment: string;
+}
+
+export type MoneyOperationType = typeof MoneyOperationType[keyof typeof MoneyOperationType];
+
+
+export const MoneyOperationType = {
+  cash_in: 'cash_in',
+  cash_out: 'cash_out',
+  bank_receipt: 'bank_receipt',
+  supplier_payment: 'supplier_payment',
+  customer_payment: 'customer_payment',
+  expense: 'expense',
+  owner_in: 'owner_in',
+  owner_out: 'owner_out',
+} as const;
+
+export interface MoneyOperationInput {
+  type: MoneyOperationType;
+  /** @minimum 1 */
+  accountId: number;
+  amount: Money;
+  date: string;
+  category?: string;
+  counterpartyName?: string;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  debtId?: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  branchId?: number | null;
+  documentNo?: string;
+  note?: string;
+}
+
 export type MoneyTransactionDirection = typeof MoneyTransactionDirection[keyof typeof MoneyTransactionDirection];
 
 
@@ -243,16 +350,37 @@ export interface MoneyTransaction {
   id: number;
   date: string;
   type: string;
+  category: string;
   amount: string;
   direction: MoneyTransactionDirection;
+  accountId: number;
   accountName: string;
+  accountKind: string;
   /** @nullable */
   branchId?: number | null;
   branchName: string;
+  counterpartyName: string;
+  /** @nullable */
+  transferGroupId: string | null;
+  /** @nullable */
+  debtId: number | null;
+  /** @nullable */
+  saleId: number | null;
+  /** @nullable */
+  purchaseId: number | null;
   documentNo: string;
   note: string;
+  createdBy: string;
   source: MoneyTransactionSource;
 }
+
+export type MoneyTransferInputKind = typeof MoneyTransferInputKind[keyof typeof MoneyTransferInputKind];
+
+
+export const MoneyTransferInputKind = {
+  transfer: 'transfer',
+  encashment: 'encashment',
+} as const;
 
 export interface MoneyTransferInput {
   /** @minimum 1 */
@@ -263,6 +391,7 @@ export interface MoneyTransferInput {
   amount: string;
   date: string;
   note: string;
+  kind?: MoneyTransferInputKind;
 }
 
 export interface MoneyTransferResult {
@@ -276,6 +405,27 @@ export type DebtKind = typeof DebtKind[keyof typeof DebtKind];
 export const DebtKind = {
   payable: 'payable',
   receivable: 'receivable',
+} as const;
+
+export type DebtOriginType = typeof DebtOriginType[keyof typeof DebtOriginType];
+
+
+export const DebtOriginType = {
+  purchase: 'purchase',
+  sale: 'sale',
+  manual: 'manual',
+  opening: 'opening',
+} as const;
+
+export type DebtState = typeof DebtState[keyof typeof DebtState];
+
+
+export const DebtState = {
+  open: 'open',
+  partial: 'partial',
+  closed: 'closed',
+  overdue: 'overdue',
+  cancelled: 'cancelled',
 } as const;
 
 export type DebtSource = typeof DebtSource[keyof typeof DebtSource];
@@ -298,8 +448,630 @@ export interface Debt {
   dueDate: string;
   initialAmount: string;
   paidAmount: string;
+  returnedAmount: string;
   balance: string;
+  /** @nullable */
+  counterpartyId: number | null;
+  originType: DebtOriginType;
+  /** @nullable */
+  originId: number | null;
+  state: DebtState;
+  overdueDays: number;
+  note: string;
   source: DebtSource;
+}
+
+export type DebtInputKind = typeof DebtInputKind[keyof typeof DebtInputKind];
+
+
+export const DebtInputKind = {
+  payable: 'payable',
+  receivable: 'receivable',
+} as const;
+
+export type DebtInputOriginType = typeof DebtInputOriginType[keyof typeof DebtInputOriginType];
+
+
+export const DebtInputOriginType = {
+  manual: 'manual',
+  opening: 'opening',
+} as const;
+
+export interface DebtInput {
+  kind: DebtInputKind;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  counterpartyId?: number | null;
+  /** @minLength 2 */
+  counterparty: string;
+  documentNo?: string;
+  /** @minimum 1 */
+  branchId: number;
+  issuedDate: string;
+  dueDate: string;
+  amount: Money;
+  originType?: DebtInputOriginType;
+  note?: string;
+}
+
+export type DebtOperationKind = typeof DebtOperationKind[keyof typeof DebtOperationKind];
+
+
+export const DebtOperationKind = {
+  initial: 'initial',
+  payment: 'payment',
+  return: 'return',
+  writeoff: 'writeoff',
+} as const;
+
+export interface DebtOperation {
+  id: number;
+  kind: DebtOperationKind;
+  date: string;
+  amount: string;
+  balanceAfter: string;
+  accountName: string;
+  note: string;
+  createdBy: string;
+}
+
+export interface DebtDetail {
+  debt: Debt;
+  operations: DebtOperation[];
+}
+
+export type DebtOperationInputKind = typeof DebtOperationInputKind[keyof typeof DebtOperationInputKind];
+
+
+export const DebtOperationInputKind = {
+  payment: 'payment',
+  return: 'return',
+  writeoff: 'writeoff',
+} as const;
+
+export interface DebtOperationInput {
+  /** @minimum 1 */
+  debtId: number;
+  kind: DebtOperationInputKind;
+  amount: Money;
+  date: string;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  accountId?: number | null;
+  note?: string;
+}
+
+export type CounterpartyBalanceKind = typeof CounterpartyBalanceKind[keyof typeof CounterpartyBalanceKind];
+
+
+export const CounterpartyBalanceKind = {
+  payable: 'payable',
+  receivable: 'receivable',
+} as const;
+
+export interface CounterpartyBalance {
+  counterparty: string;
+  /** @nullable */
+  counterpartyId: number | null;
+  kind: CounterpartyBalanceKind;
+  debts: number;
+  initialAmount: string;
+  paidAmount: string;
+  returnedAmount: string;
+  balance: string;
+  overdueAmount: string;
+  firstIssuedDate: string;
+  /** @nullable */
+  nearestDueDate: string | null;
+}
+
+/**
+ * @maximum 100000000
+ * @exclusiveMinimum 0
+ */
+export type Quantity = number;
+
+export type ProductSource = typeof ProductSource[keyof typeof ProductSource];
+
+
+export const ProductSource = {
+  demo: 'demo',
+  manual: 'manual',
+  fom: 'fom',
+} as const;
+
+export interface Product {
+  id: number;
+  name: string;
+  /** @nullable */
+  code: string | null;
+  /** @nullable */
+  barcode: string | null;
+  group: string;
+  unit: string;
+  manufacturer: string;
+  ikpu: string;
+  /** @nullable */
+  fomId: string | null;
+  retailPrice: string;
+  /** @nullable */
+  costPrice: string | null;
+  vatRate: number;
+  /** @nullable */
+  expiryDate: string | null;
+  stock: number;
+  source: ProductSource;
+}
+
+export interface ProductInput {
+  /** @minLength 2 */
+  name: string;
+  /** @nullable */
+  code?: string | null;
+  /** @nullable */
+  barcode?: string | null;
+  group?: string;
+  unit?: string;
+  retailPrice: Money;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  vatRate?: number;
+  /** @nullable */
+  expiryDate?: string | null;
+}
+
+export type CounterpartyKind = typeof CounterpartyKind[keyof typeof CounterpartyKind];
+
+
+export const CounterpartyKind = {
+  supplier: 'supplier',
+  customer: 'customer',
+} as const;
+
+export interface Counterparty {
+  id: number;
+  name: string;
+  kind: CounterpartyKind;
+  taxId: string;
+  phone: string;
+  note: string;
+  payable: string;
+  receivable: string;
+}
+
+export type CounterpartyInputKind = typeof CounterpartyInputKind[keyof typeof CounterpartyInputKind];
+
+
+export const CounterpartyInputKind = {
+  supplier: 'supplier',
+  customer: 'customer',
+} as const;
+
+export interface CounterpartyInput {
+  /** @minLength 2 */
+  name: string;
+  kind: CounterpartyInputKind;
+  taxId?: string;
+  phone?: string;
+  note?: string;
+}
+
+export type PaymentMethod = typeof PaymentMethod[keyof typeof PaymentMethod];
+
+
+export const PaymentMethod = {
+  cash: 'cash',
+  card: 'card',
+  transfer: 'transfer',
+  credit: 'credit',
+  other: 'other',
+} as const;
+
+export type ReceiptKind = typeof ReceiptKind[keyof typeof ReceiptKind];
+
+
+export const ReceiptKind = {
+  sale: 'sale',
+  return: 'return',
+} as const;
+
+export type ReceiptStatus = typeof ReceiptStatus[keyof typeof ReceiptStatus];
+
+
+export const ReceiptStatus = {
+  completed: 'completed',
+  voided: 'voided',
+} as const;
+
+export type ReceiptSource = typeof ReceiptSource[keyof typeof ReceiptSource];
+
+
+export const ReceiptSource = {
+  demo: 'demo',
+  manual: 'manual',
+  fom: 'fom',
+} as const;
+
+export interface ReceiptPayment {
+  method: PaymentMethod;
+  amount: string;
+  accountName: string;
+}
+
+export interface Receipt {
+  id: number;
+  receiptNo: string;
+  soldAt: string;
+  kind: ReceiptKind;
+  status: ReceiptStatus;
+  branchId: number;
+  branchName: string;
+  cashier: string;
+  customerName: string;
+  itemsCount: number;
+  grossAmount: string;
+  discount: string;
+  total: string;
+  vatAmount: string;
+  /** @nullable */
+  cost: string | null;
+  /** @nullable */
+  grossProfit: string | null;
+  payments: ReceiptPayment[];
+  returnedAmount: string;
+  /** @nullable */
+  originalSaleId: number | null;
+  /** @nullable */
+  originalReceiptNo: string | null;
+  /** @nullable */
+  voidedAt: string | null;
+  voidReason: string;
+  note: string;
+  createdBy: string;
+  source: ReceiptSource;
+}
+
+export interface ReceiptLine {
+  id: number;
+  productId: number;
+  productName: string;
+  /** @nullable */
+  productCode: string | null;
+  unit: string;
+  quantity: number;
+  unitPrice: string;
+  discount: string;
+  total: string;
+  vatRate: number;
+  vatAmount: string;
+  /** @nullable */
+  costPrice: string | null;
+  /** @nullable */
+  cost: string | null;
+  /** @nullable */
+  grossProfit: string | null;
+  returnedQuantity: number;
+}
+
+export interface ReceiptDetail {
+  receipt: Receipt;
+  lines: ReceiptLine[];
+  returns: Receipt[];
+}
+
+export type ReceiptInputItemsItem = {
+  /** @minimum 1 */
+  productId: number;
+  quantity: Quantity;
+  unitPrice: Money;
+  discount: Money;
+};
+
+export type ReceiptInputPaymentsItem = {
+  method: PaymentMethod;
+  amount: Money;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  accountId?: number | null;
+};
+
+export interface ReceiptInput {
+  /** @minimum 1 */
+  branchId: number;
+  soldAt: string;
+  receiptNo?: string;
+  cashier: string;
+  customerName?: string;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  counterpartyId?: number | null;
+  /** @nullable */
+  dueDate?: string | null;
+  note?: string;
+  /** @minItems 1 */
+  items: ReceiptInputItemsItem[];
+  /** @minItems 1 */
+  payments: ReceiptInputPaymentsItem[];
+}
+
+export interface ReceiptVoidInput {
+  /** @minimum 1 */
+  receiptId: number;
+  /** @minLength 3 */
+  reason: string;
+}
+
+export type ReceiptReturnInputItemsItem = {
+  /** @minimum 1 */
+  lineId: number;
+  quantity: Quantity;
+};
+
+export interface ReceiptReturnInput {
+  /** @minimum 1 */
+  receiptId: number;
+  date: string;
+  /** @minLength 3 */
+  reason: string;
+  refundMethod: PaymentMethod;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  accountId?: number | null;
+  /** @minItems 1 */
+  items: ReceiptReturnInputItemsItem[];
+}
+
+export type PurchasePaymentStatus = typeof PurchasePaymentStatus[keyof typeof PurchasePaymentStatus];
+
+
+export const PurchasePaymentStatus = {
+  paid: 'paid',
+  partial: 'partial',
+  unpaid: 'unpaid',
+  overdue: 'overdue',
+} as const;
+
+export interface Purchase {
+  id: number;
+  branchId: number;
+  branchName: string;
+  /** @nullable */
+  counterpartyId: number | null;
+  supplierName: string;
+  documentNo: string;
+  invoiceNo: string;
+  eInvoiceId: string;
+  /** @nullable */
+  invoiceDate: string | null;
+  receivedAt: string;
+  itemsCount: number;
+  itemsTotal: string;
+  discount: string;
+  extraCosts: string;
+  extraCostsNote: string;
+  vatAmount: string;
+  totalAmount: string;
+  paidAmount: string;
+  returnedAmount: string;
+  balance: string;
+  /** @nullable */
+  dueDate: string | null;
+  paymentStatus: PurchasePaymentStatus;
+  /** @nullable */
+  debtId: number | null;
+  note: string;
+  createdBy: string;
+}
+
+export interface PurchaseLine {
+  id: number;
+  productId: number;
+  productName: string;
+  /** @nullable */
+  productCode: string | null;
+  unit: string;
+  quantity: number;
+  unitCost: string;
+  discount: string;
+  total: string;
+  vatRate: number;
+  landedUnitCost: string;
+  /** @nullable */
+  expiryDate: string | null;
+}
+
+export type StockDocType = typeof StockDocType[keyof typeof StockDocType];
+
+
+export const StockDocType = {
+  transfer: 'transfer',
+  write_off: 'write_off',
+  supplier_return: 'supplier_return',
+  customer_return: 'customer_return',
+  inventory_count: 'inventory_count',
+} as const;
+
+export interface StockDocument {
+  id: number;
+  docType: StockDocType;
+  documentNo: string;
+  branchId: number;
+  branchName: string;
+  branchKind: string;
+  /** @nullable */
+  toBranchId: number | null;
+  /** @nullable */
+  toBranchName: string | null;
+  /** @nullable */
+  toBranchKind: string | null;
+  counterpartyName: string;
+  /** @nullable */
+  purchaseId: number | null;
+  /** @nullable */
+  saleId: number | null;
+  occurredAt: string;
+  reason: string;
+  note: string;
+  itemsCount: number;
+  totalCost: string;
+  surplusValue: string;
+  shortageValue: string;
+  createdBy: string;
+}
+
+export interface PurchaseDetail {
+  purchase: Purchase;
+  lines: PurchaseLine[];
+  operations: DebtOperation[];
+  returns: StockDocument[];
+}
+
+export type PurchaseInputItemsItem = {
+  /** @minimum 1 */
+  productId: number;
+  quantity: Quantity;
+  unitCost: Money;
+  discount: Money;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  vatRate?: number;
+  /** @nullable */
+  expiryDate?: string | null;
+  retailPrice?: Money;
+};
+
+export interface PurchaseInput {
+  /** @minimum 1 */
+  branchId: number;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  counterpartyId?: number | null;
+  /** @minLength 2 */
+  supplierName: string;
+  documentNo?: string;
+  invoiceNo?: string;
+  eInvoiceId?: string;
+  /** @nullable */
+  invoiceDate?: string | null;
+  receivedAt: string;
+  discount: Money;
+  extraCosts: Money;
+  extraCostsNote?: string;
+  /** @nullable */
+  dueDate?: string | null;
+  note?: string;
+  paidAmount: Money;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  paymentAccountId?: number | null;
+  /** @minItems 1 */
+  items: PurchaseInputItemsItem[];
+}
+
+export interface StockDocumentLine {
+  id: number;
+  productId: number;
+  productName: string;
+  /** @nullable */
+  productCode: string | null;
+  unit: string;
+  movementType: string;
+  quantity: number;
+  /** @nullable */
+  expectedQuantity: number | null;
+  /** @nullable */
+  countedQuantity: number | null;
+  /** @nullable */
+  unitCost: string | null;
+  /** @nullable */
+  total: string | null;
+}
+
+export interface StockDocumentDetail {
+  document: StockDocument;
+  lines: StockDocumentLine[];
+}
+
+export type StockDocumentInputDocType = typeof StockDocumentInputDocType[keyof typeof StockDocumentInputDocType];
+
+
+export const StockDocumentInputDocType = {
+  transfer: 'transfer',
+  write_off: 'write_off',
+  supplier_return: 'supplier_return',
+  inventory_count: 'inventory_count',
+} as const;
+
+export type StockDocumentInputSettlement = typeof StockDocumentInputSettlement[keyof typeof StockDocumentInputSettlement];
+
+
+export const StockDocumentInputSettlement = {
+  debt: 'debt',
+  money: 'money',
+  none: 'none',
+} as const;
+
+export type StockDocumentInputItemsItem = {
+  /** @minimum 1 */
+  productId: number;
+  /**
+     * @minimum 0
+     * @maximum 100000000
+     */
+  quantity: number;
+  unitCost?: Money;
+};
+
+export interface StockDocumentInput {
+  docType: StockDocumentInputDocType;
+  /** @minimum 1 */
+  branchId: number;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  toBranchId?: number | null;
+  occurredAt: string;
+  documentNo?: string;
+  reason?: string;
+  note?: string;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  counterpartyId?: number | null;
+  counterpartyName?: string;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  purchaseId?: number | null;
+  settlement?: StockDocumentInputSettlement;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  accountId?: number | null;
+  /** @minItems 1 */
+  items: StockDocumentInputItemsItem[];
 }
 
 export type DashboardMode = typeof DashboardMode[keyof typeof DashboardMode];
@@ -458,6 +1230,45 @@ export const FomStatusLastSyncStatus = {
   waiting: 'waiting',
 } as const;
 
+export interface FomReportState {
+  key: string;
+  reportId: number;
+  label: string;
+  target: string;
+  dated: boolean;
+  /** @nullable */
+  rows: number | null;
+  /** @nullable */
+  imported: number | null;
+  /** @nullable */
+  error: string | null;
+  /** @nullable */
+  warning: string | null;
+}
+
+export interface FomSiteState {
+  configured: boolean;
+  /** @nullable */
+  path: string | null;
+  /** @nullable */
+  lastAt: string | null;
+  /** @nullable */
+  lastStatus: string | null;
+  /** @nullable */
+  lastMessage: string | null;
+  lastRecords: number;
+}
+
+export interface FomTotals {
+  branches: number;
+  products: number;
+  counterparties: number;
+  stockLines: number;
+  purchases: number;
+  sales: number;
+  stockDocuments: number;
+}
+
 export interface FomStatus {
   connected: boolean;
   configured: boolean;
@@ -470,11 +1281,103 @@ export interface FomStatus {
   /** @nullable */
   lastMessage: string | null;
   importedRecords: number;
+  running: boolean;
+  filialIds: string[];
+  intervalMinutes: number;
+  refsIntervalMinutes: number;
+  /** @nullable */
+  refsAt: string | null;
+  /** @nullable */
+  lastSyncFrom: string | null;
+  /** @nullable */
+  lastSyncTo: string | null;
+  reports: FomReportState[];
+  site: FomSiteState;
+  totals: FomTotals;
 }
 
+export type FomSettingsSource = typeof FomSettingsSource[keyof typeof FomSettingsSource];
+
+
+export const FomSettingsSource = {
+  saved: 'saved',
+  env: 'env',
+  none: 'none',
+} as const;
+
+export type FomSettingsProtocol = typeof FomSettingsProtocol[keyof typeof FomSettingsProtocol];
+
+
+export const FomSettingsProtocol = {
+  http: 'http',
+  https: 'https',
+} as const;
+
+export interface FomSettings {
+  source: FomSettingsSource;
+  protocol: FomSettingsProtocol;
+  host: string;
+  /** @nullable */
+  port: number | null;
+  /** @nullable */
+  reportUrl: string | null;
+  filialIds: string[];
+  intervalMinutes: number;
+  initialDays: number;
+  timeoutSeconds: number;
+  apiTokenSet: boolean;
+  /** @nullable */
+  apiTokenHint: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export type FomSettingsInputProtocol = typeof FomSettingsInputProtocol[keyof typeof FomSettingsInputProtocol];
+
+
+export const FomSettingsInputProtocol = {
+  http: 'http',
+  https: 'https',
+} as const;
+
 export interface FomSettingsInput {
-  /** Server URL only; never submit a FOM API key from the browser. */
-  baseUrl: string;
+  protocol: FomSettingsInputProtocol;
+  /**
+     * @minLength 1
+     * @maxLength 253
+     */
+  host: string;
+  /**
+     * @minimum 1
+     * @maximum 65535
+     * @nullable
+     */
+  port: number | null;
+  /** @maxLength 500 */
+  filialIds: string;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     */
+  intervalMinutes: number;
+  /**
+     * @minimum 1
+     * @maximum 3650
+     */
+  initialDays: number;
+  /**
+     * @minimum 5
+     * @maximum 600
+     */
+  timeoutSeconds: number;
+  /** @maxLength 500 */
+  apiToken?: string;
+  clearApiToken?: boolean;
+}
+
+export interface FomSyncInput {
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export type FomActionResultStatus = typeof FomActionResultStatus[keyof typeof FomActionResultStatus];
@@ -482,6 +1385,7 @@ export type FomActionResultStatus = typeof FomActionResultStatus[keyof typeof Fo
 
 export const FomActionResultStatus = {
   waiting: 'waiting',
+  running: 'running',
   success: 'success',
   error: 'error',
 } as const;
@@ -583,7 +1487,7 @@ export type ListCashAccountsParams = {
 branchId?: BranchIdParameter;
 };
 
-export type ListMoneyTransactionsParams = {
+export type GetCashRegisterParams = {
 dateFrom?: DateFromParameter;
 dateTo?: DateToParameter;
 /**
@@ -592,6 +1496,31 @@ dateTo?: DateToParameter;
 branchId?: BranchIdParameter;
 };
 
+export type ListMoneyTransactionsParams = {
+dateFrom?: DateFromParameter;
+dateTo?: DateToParameter;
+/**
+ * @minimum 1
+ */
+branchId?: BranchIdParameter;
+/**
+ * @minimum 1
+ */
+accountId?: number;
+type?: string;
+direction?: ListMoneyTransactionsDirection;
+search?: string;
+};
+
+export type ListMoneyTransactionsDirection = typeof ListMoneyTransactionsDirection[keyof typeof ListMoneyTransactionsDirection];
+
+
+export const ListMoneyTransactionsDirection = {
+  in: 'in',
+  out: 'out',
+  internal: 'internal',
+} as const;
+
 export type ListDebtsParams = {
 /**
  * @minimum 1
@@ -599,6 +1528,11 @@ export type ListDebtsParams = {
 branchId?: BranchIdParameter;
 kind?: ListDebtsKind;
 search?: string;
+status?: ListDebtsStatus;
+/**
+ * @minimum 1
+ */
+counterpartyId?: number;
 };
 
 export type ListDebtsKind = typeof ListDebtsKind[keyof typeof ListDebtsKind];
@@ -608,6 +1542,142 @@ export const ListDebtsKind = {
   payable: 'payable',
   receivable: 'receivable',
 } as const;
+
+export type ListDebtsStatus = typeof ListDebtsStatus[keyof typeof ListDebtsStatus];
+
+
+export const ListDebtsStatus = {
+  open: 'open',
+  closed: 'closed',
+  overdue: 'overdue',
+  all: 'all',
+} as const;
+
+export type GetDebtParams = {
+/**
+ * @minimum 1
+ */
+debtId: number;
+};
+
+export type ListCounterpartyBalancesParams = {
+/**
+ * @minimum 1
+ */
+branchId?: BranchIdParameter;
+kind?: ListCounterpartyBalancesKind;
+};
+
+export type ListCounterpartyBalancesKind = typeof ListCounterpartyBalancesKind[keyof typeof ListCounterpartyBalancesKind];
+
+
+export const ListCounterpartyBalancesKind = {
+  payable: 'payable',
+  receivable: 'receivable',
+} as const;
+
+export type ListProductsParams = {
+search?: string;
+};
+
+export type ListCounterpartiesParams = {
+kind?: ListCounterpartiesKind;
+search?: string;
+};
+
+export type ListCounterpartiesKind = typeof ListCounterpartiesKind[keyof typeof ListCounterpartiesKind];
+
+
+export const ListCounterpartiesKind = {
+  supplier: 'supplier',
+  customer: 'customer',
+} as const;
+
+export type ListReceiptsParams = {
+dateFrom?: DateFromParameter;
+dateTo?: DateToParameter;
+/**
+ * @minimum 1
+ */
+branchId?: BranchIdParameter;
+search?: string;
+kind?: ListReceiptsKind;
+status?: ListReceiptsStatus;
+paymentMethod?: string;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+limit?: number;
+};
+
+export type ListReceiptsKind = typeof ListReceiptsKind[keyof typeof ListReceiptsKind];
+
+
+export const ListReceiptsKind = {
+  sale: 'sale',
+  return: 'return',
+} as const;
+
+export type ListReceiptsStatus = typeof ListReceiptsStatus[keyof typeof ListReceiptsStatus];
+
+
+export const ListReceiptsStatus = {
+  completed: 'completed',
+  voided: 'voided',
+} as const;
+
+export type GetReceiptParams = {
+/**
+ * @minimum 1
+ */
+receiptId: number;
+};
+
+export type ListPurchasesParams = {
+dateFrom?: DateFromParameter;
+dateTo?: DateToParameter;
+/**
+ * @minimum 1
+ */
+branchId?: BranchIdParameter;
+search?: string;
+paymentStatus?: ListPurchasesPaymentStatus;
+};
+
+export type ListPurchasesPaymentStatus = typeof ListPurchasesPaymentStatus[keyof typeof ListPurchasesPaymentStatus];
+
+
+export const ListPurchasesPaymentStatus = {
+  paid: 'paid',
+  partial: 'partial',
+  unpaid: 'unpaid',
+  overdue: 'overdue',
+} as const;
+
+export type GetPurchaseParams = {
+/**
+ * @minimum 1
+ */
+purchaseId: number;
+};
+
+export type ListStockDocumentsParams = {
+dateFrom?: DateFromParameter;
+dateTo?: DateToParameter;
+/**
+ * @minimum 1
+ */
+branchId?: BranchIdParameter;
+docType?: StockDocType;
+};
+
+export type GetStockDocumentParams = {
+/**
+ * @minimum 1
+ */
+documentId: number;
+};
 
 export type GetReportParams = {
 reportType: GetReportReportType;

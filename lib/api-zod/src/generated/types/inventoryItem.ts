@@ -13,6 +13,8 @@ export interface InventoryItem {
   /** @nullable */
   barcode?: string | null;
   group: string;
+  manufacturer?: string;
+  ikpu?: string;
   branchId: number;
   branchName: string;
   quantity: number;

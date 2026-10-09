@@ -5,8 +5,39 @@
  * Dorixona moliyaviy boshqaruv platformasi API
  * OpenAPI spec version: 0.1.0
  */
+import type { FomSettingsInputProtocol } from './fomSettingsInputProtocol';
 
 export interface FomSettingsInput {
-  /** Server URL only; never submit a FOM API key from the browser. */
-  baseUrl: string;
+  protocol: FomSettingsInputProtocol;
+  /**
+     * @minLength 1
+     * @maxLength 253
+     */
+  host: string;
+  /**
+     * @minimum 1
+     * @maximum 65535
+     * @nullable
+     */
+  port: number | null;
+  /** @maxLength 500 */
+  filialIds: string;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     */
+  intervalMinutes: number;
+  /**
+     * @minimum 1
+     * @maximum 3650
+     */
+  initialDays: number;
+  /**
+     * @minimum 5
+     * @maximum 600
+     */
+  timeoutSeconds: number;
+  /** @maxLength 500 */
+  apiToken?: string;
+  clearApiToken?: boolean;
 }

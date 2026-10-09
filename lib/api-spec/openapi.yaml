@@ -17,6 +17,9 @@ tags:
   - name: debts
   - name: reports
   - name: fom
+  - name: catalog
+  - name: purchases
+  - name: stock
 paths:
   /healthz:
     get:
@@ -275,6 +278,63 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CashAccount"
+    post:
+      operationId: createCashAccount
+      tags: [finance]
+      summary: Open a cash desk or bank account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashAccountInput"
+      responses:
+        "201":
+          description: Created account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashAccount"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /cash-register:
+    get:
+      operationId: getCashRegister
+      tags: [finance]
+      summary: Opening and closing balance of every account for a period
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+      responses:
+        "200":
+          description: Per-account period balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CashRegisterRow"
+  /money-operations:
+    post:
+      operationId: createMoneyOperation
+      tags: [finance]
+      summary: Record a cash or bank receipt, payment, expense or owner operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoneyOperationInput"
+      responses:
+        "201":
+          description: Created money operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoneyTransaction"
+        "400":
+          $ref: "#/components/responses/BadRequest"
   /money-transactions:
     get:
       operationId: listMoneyTransactions
@@ -284,6 +344,18 @@ paths:
         - $ref: "#/components/parameters/DateFrom"
         - $ref: "#/components/parameters/DateTo"
         - $ref: "#/components/parameters/BranchId"
+        - name: accountId
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: direction
+          in: query
+          schema: { type: string, enum: [in, out, internal] }
+        - name: search
+          in: query
+          schema: { type: string }
       responses:
         "200":
           description: Money operations
@@ -328,6 +400,14 @@ paths:
         - name: search
           in: query
           schema: { type: string }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, closed, overdue, all]
+        - name: counterpartyId
+          in: query
+          schema: { type: integer, minimum: 1 }
       responses:
         "200":
           description: Debts
@@ -337,6 +417,395 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Debt"
+    post:
+      operationId: createDebt
+      tags: [debts]
+      summary: Register a manual or opening debt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DebtInput"
+      responses:
+        "201":
+          description: Created debt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Debt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /debt-detail:
+    get:
+      operationId: getDebt
+      tags: [debts]
+      summary: Debt with its full operations history
+      parameters:
+        - name: debtId
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Debt detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DebtDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /debt-operations:
+    post:
+      operationId: createDebtOperation
+      tags: [debts]
+      summary: Record a partial payment, return or write-off against a debt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DebtOperationInput"
+      responses:
+        "201":
+          description: Updated debt detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DebtDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /counterparty-balances:
+    get:
+      operationId: listCounterpartyBalances
+      tags: [debts]
+      summary: Debt totals grouped by counterparty
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [payable, receivable]
+      responses:
+        "200":
+          description: Counterparty balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CounterpartyBalance"
+  /products:
+    get:
+      operationId: listProducts
+      tags: [catalog]
+      summary: Product catalogue with total stock
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [catalog]
+      summary: Register a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Created product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /counterparties:
+    get:
+      operationId: listCounterparties
+      tags: [catalog]
+      summary: Suppliers and customers
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [supplier, customer] }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Counterparties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Counterparty"
+    post:
+      operationId: createCounterparty
+      tags: [catalog]
+      summary: Register a supplier or customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CounterpartyInput"
+      responses:
+        "201":
+          description: Created counterparty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Counterparty"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /receipts:
+    get:
+      operationId: listReceipts
+      tags: [trade]
+      summary: Sales receipts and returns
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: kind
+          in: query
+          schema: { type: string, enum: [sale, return] }
+        - name: status
+          in: query
+          schema: { type: string, enum: [completed, voided] }
+        - name: paymentMethod
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+      responses:
+        "200":
+          description: Receipts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Receipt"
+    post:
+      operationId: createReceipt
+      tags: [trade]
+      summary: Post a sales receipt, deducting stock and recording payments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptInput"
+      responses:
+        "201":
+          description: Posted receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /receipt-detail:
+    get:
+      operationId: getReceipt
+      tags: [trade]
+      summary: Receipt lines, payments and linked returns
+      parameters:
+        - name: receiptId
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Receipt detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /receipts/void:
+    post:
+      operationId: voidReceipt
+      tags: [trade]
+      summary: Cancel a receipt, restoring stock and reversing payments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptVoidInput"
+      responses:
+        "200":
+          description: Voided receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /receipts/return:
+    post:
+      operationId: returnReceipt
+      tags: [trade]
+      summary: Accept goods back from a customer against a receipt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptReturnInput"
+      responses:
+        "201":
+          description: Return document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /purchases:
+    get:
+      operationId: listPurchases
+      tags: [purchases]
+      summary: Supplier deliveries
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: paymentStatus
+          in: query
+          schema: { type: string, enum: [paid, partial, unpaid, overdue] }
+      responses:
+        "200":
+          description: Purchases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Purchase"
+    post:
+      operationId: createPurchase
+      tags: [purchases]
+      summary: Post a supplier delivery to stock, payables and cash
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseInput"
+      responses:
+        "201":
+          description: Posted purchase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /purchase-detail:
+    get:
+      operationId: getPurchase
+      tags: [purchases]
+      summary: Purchase lines, payments and returns
+      parameters:
+        - name: purchaseId
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Purchase detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /stock-documents:
+    get:
+      operationId: listStockDocuments
+      tags: [stock]
+      summary: Transfers, write-offs, returns and stock counts
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+        - name: docType
+          in: query
+          schema:
+            $ref: "#/components/schemas/StockDocType"
+      responses:
+        "200":
+          description: Stock documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockDocument"
+    post:
+      operationId: createStockDocument
+      tags: [stock]
+      summary: Post a transfer, write-off, supplier return or stock count
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StockDocumentInput"
+      responses:
+        "201":
+          description: Posted document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockDocumentDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /stock-document-detail:
+    get:
+      operationId: getStockDocument
+      tags: [stock]
+      summary: Stock document lines
+      parameters:
+        - name: documentId
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Document detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockDocumentDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /reports:
     get:
       operationId: getReport
@@ -372,10 +841,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/FomStatus"
   /fom/settings:
+    get:
+      operationId: getFomSettings
+      tags: [fom]
+      summary: REPORT.exe connection settings (access key is masked)
+      responses:
+        "200":
+          description: Connection settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FomSettings"
     put:
       operationId: saveFomSettings
       tags: [fom]
-      summary: Save the FOM API base URL without storing credentials in the browser
+      summary: Save REPORT.exe connection settings on the server
       requestBody:
         required: true
         content:
@@ -384,13 +864,11 @@ paths:
               $ref: "#/components/schemas/FomSettingsInput"
       responses:
         "200":
-          description: Saved settings summary
+          description: Saved settings
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/FomStatus"
-        "400":
-          $ref: "#/components/responses/BadRequest"
+                $ref: "#/components/schemas/FomSettings"
   /fom/test:
     post:
       operationId: testFomConnection
@@ -407,7 +885,13 @@ paths:
     post:
       operationId: syncFom
       tags: [fom]
-      summary: Start an idempotent FOM import when its adapter is configured
+      summary: Start an idempotent FOM import in the background
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FomSyncInput"
       responses:
         "200":
           description: Import state
@@ -478,18 +962,20 @@ components:
         id: { type: integer }
         name: { type: string }
         fomId: { type: ["string", "null"] }
+        kind: { type: string, enum: [pharmacy, warehouse] }
         region: { type: string }
         address: { type: string }
         manager: { type: string }
         status: { type: string }
         source: { type: string, enum: [demo, manual, fom] }
         updatedAt: { type: string, format: date-time }
-      required: [id, name, region, address, manager, status, source, updatedAt]
+      required: [id, name, kind, region, address, manager, status, source, updatedAt]
     BranchInput:
       type: object
       properties:
         name: { type: string, minLength: 2 }
         fomId: { type: ["string", "null"] }
+        kind: { type: string, enum: [pharmacy, warehouse] }
         region: { type: string }
         address: { type: string }
         manager: { type: string }
@@ -549,6 +1035,8 @@ components:
         productName: { type: string }
         barcode: { type: ["string", "null"] }
         group: { type: string }
+        manufacturer: { type: string }
+        ikpu: { type: string }
         branchId: { type: integer }
         branchName: { type: string }
         quantity: { type: number }
@@ -589,6 +1077,7 @@ components:
         category: { type: string, minLength: 1 }
         description: { type: string }
         amount: { type: string, pattern: "^[0-9]+(\\.[0-9]{1,2})?$" }
+        accountId: { type: integer, minimum: 1 }
       required: [date, branchId, category, description, amount]
     CashAccount:
       type: object
@@ -604,21 +1093,71 @@ components:
         balance: { type: string }
         source: { type: string, enum: [demo, manual, fom] }
       required: [id, name, kind, branchName, openingBalance, inflow, outflow, balance, source]
+    CashAccountInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2 }
+        kind: { type: string, enum: [cash, bank] }
+        branchId: { type: ["integer", "null"], minimum: 1 }
+        openingBalance: { $ref: "#/components/schemas/Money" }
+      required: [name, kind, openingBalance]
+    CashRegisterRow:
+      type: object
+      properties:
+        accountId: { type: integer }
+        accountName: { type: string }
+        kind: { type: string, enum: [cash, bank] }
+        branchId: { type: ["integer", "null"] }
+        branchName: { type: string }
+        openingBalance: { type: string }
+        inflow: { type: string }
+        outflow: { type: string }
+        closingBalance: { type: string }
+        operations: { type: integer }
+        cashSales: { type: string }
+        encashment: { type: string }
+      required: [accountId, accountName, kind, branchId, branchName, openingBalance, inflow, outflow, closingBalance, operations, cashSales, encashment]
+    MoneyOperationType:
+      type: string
+      enum: [cash_in, cash_out, bank_receipt, supplier_payment, customer_payment, expense, owner_in, owner_out]
+    MoneyOperationInput:
+      type: object
+      properties:
+        type: { $ref: "#/components/schemas/MoneyOperationType" }
+        accountId: { type: integer, minimum: 1 }
+        amount: { $ref: "#/components/schemas/Money" }
+        date: { type: string, format: date-time }
+        category: { type: string }
+        counterpartyName: { type: string }
+        debtId: { type: ["integer", "null"], minimum: 1 }
+        branchId: { type: ["integer", "null"], minimum: 1 }
+        documentNo: { type: string }
+        note: { type: string }
+      required: [type, accountId, amount, date]
     MoneyTransaction:
       type: object
       properties:
         id: { type: integer }
         date: { type: string, format: date-time }
         type: { type: string }
+        category: { type: string }
         amount: { type: string }
         direction: { type: string, enum: [in, out, internal] }
+        accountId: { type: integer }
         accountName: { type: string }
+        accountKind: { type: string }
         branchId: { type: ["integer", "null"] }
         branchName: { type: string }
+        counterpartyName: { type: string }
+        transferGroupId: { type: ["string", "null"] }
+        debtId: { type: ["integer", "null"] }
+        saleId: { type: ["integer", "null"] }
+        purchaseId: { type: ["integer", "null"] }
         documentNo: { type: string }
         note: { type: string }
+        createdBy: { type: string }
         source: { type: string, enum: [demo, manual, fom] }
-      required: [id, date, type, amount, direction, accountName, branchName, documentNo, note, source]
+      required: [id, date, type, category, amount, direction, accountId, accountName, accountKind, branchName, counterpartyName, transferGroupId, debtId, saleId, purchaseId, documentNo, note, createdBy, source]
     MoneyTransferInput:
       type: object
       properties:
@@ -627,6 +1166,7 @@ components:
         amount: { type: string, pattern: "^[0-9]+(\\.[0-9]{1,2})?$" }
         date: { type: string, format: date-time }
         note: { type: string }
+        kind: { type: string, enum: [transfer, encashment] }
       required: [fromAccountId, toAccountId, amount, date, note]
     MoneyTransferResult:
       type: object
@@ -649,9 +1189,430 @@ components:
         dueDate: { type: string, format: date }
         initialAmount: { type: string }
         paidAmount: { type: string }
+        returnedAmount: { type: string }
         balance: { type: string }
+        counterpartyId: { type: ["integer", "null"] }
+        originType: { type: string, enum: [purchase, sale, manual, opening] }
+        originId: { type: ["integer", "null"] }
+        state: { type: string, enum: [open, partial, closed, overdue, cancelled] }
+        overdueDays: { type: integer }
+        note: { type: string }
         source: { type: string, enum: [demo, manual, fom] }
-      required: [id, kind, counterparty, documentNo, branchId, branchName, issuedDate, dueDate, initialAmount, paidAmount, balance, source]
+      required: [id, kind, counterparty, documentNo, branchId, branchName, issuedDate, dueDate, initialAmount, paidAmount, returnedAmount, balance, counterpartyId, originType, originId, state, overdueDays, note, source]
+    DebtInput:
+      type: object
+      properties:
+        kind: { type: string, enum: [payable, receivable] }
+        counterpartyId: { type: ["integer", "null"], minimum: 1 }
+        counterparty: { type: string, minLength: 2 }
+        documentNo: { type: string }
+        branchId: { type: integer, minimum: 1 }
+        issuedDate: { type: string, format: date }
+        dueDate: { type: string, format: date }
+        amount: { $ref: "#/components/schemas/Money" }
+        originType: { type: string, enum: [manual, opening] }
+        note: { type: string }
+      required: [kind, counterparty, branchId, issuedDate, dueDate, amount]
+    DebtOperation:
+      type: object
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [initial, payment, return, writeoff] }
+        date: { type: string, format: date-time }
+        amount: { type: string }
+        balanceAfter: { type: string }
+        accountName: { type: string }
+        note: { type: string }
+        createdBy: { type: string }
+      required: [id, kind, date, amount, balanceAfter, accountName, note, createdBy]
+    DebtDetail:
+      type: object
+      properties:
+        debt: { $ref: "#/components/schemas/Debt" }
+        operations:
+          type: array
+          items: { $ref: "#/components/schemas/DebtOperation" }
+      required: [debt, operations]
+    DebtOperationInput:
+      type: object
+      properties:
+        debtId: { type: integer, minimum: 1 }
+        kind: { type: string, enum: [payment, return, writeoff] }
+        amount: { $ref: "#/components/schemas/Money" }
+        date: { type: string, format: date-time }
+        accountId: { type: ["integer", "null"], minimum: 1 }
+        note: { type: string }
+      required: [debtId, kind, amount, date]
+    CounterpartyBalance:
+      type: object
+      properties:
+        counterparty: { type: string }
+        counterpartyId: { type: ["integer", "null"] }
+        kind: { type: string, enum: [payable, receivable] }
+        debts: { type: integer }
+        initialAmount: { type: string }
+        paidAmount: { type: string }
+        returnedAmount: { type: string }
+        balance: { type: string }
+        overdueAmount: { type: string }
+        firstIssuedDate: { type: string, format: date }
+        nearestDueDate: { type: ["string", "null"], format: date }
+      required: [counterparty, counterpartyId, kind, debts, initialAmount, paidAmount, returnedAmount, balance, overdueAmount, firstIssuedDate, nearestDueDate]
+    Money:
+      type: string
+      pattern: "^[0-9]+(\\.[0-9]{1,2})?$"
+    Quantity:
+      type: number
+      exclusiveMinimum: 0
+      maximum: 100000000
+    Product:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        code: { type: ["string", "null"] }
+        barcode: { type: ["string", "null"] }
+        group: { type: string }
+        unit: { type: string }
+        manufacturer: { type: string }
+        ikpu: { type: string }
+        fomId: { type: ["string", "null"] }
+        retailPrice: { type: string }
+        costPrice: { type: ["string", "null"] }
+        vatRate: { type: number }
+        expiryDate: { type: ["string", "null"], format: date }
+        stock: { type: number }
+        source: { type: string, enum: [demo, manual, fom] }
+      required: [id, name, code, barcode, group, unit, manufacturer, ikpu, fomId, retailPrice, costPrice, vatRate, expiryDate, stock, source]
+    ProductInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2 }
+        code: { type: ["string", "null"] }
+        barcode: { type: ["string", "null"] }
+        group: { type: string }
+        unit: { type: string }
+        retailPrice: { $ref: "#/components/schemas/Money" }
+        vatRate: { type: number, minimum: 0, maximum: 100 }
+        expiryDate: { type: ["string", "null"], format: date }
+      required: [name, retailPrice]
+    Counterparty:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        kind: { type: string, enum: [supplier, customer] }
+        taxId: { type: string }
+        phone: { type: string }
+        note: { type: string }
+        payable: { type: string }
+        receivable: { type: string }
+      required: [id, name, kind, taxId, phone, note, payable, receivable]
+    CounterpartyInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2 }
+        kind: { type: string, enum: [supplier, customer] }
+        taxId: { type: string }
+        phone: { type: string }
+        note: { type: string }
+      required: [name, kind]
+    PaymentMethod:
+      type: string
+      enum: [cash, card, transfer, credit, other]
+    Receipt:
+      type: object
+      properties:
+        id: { type: integer }
+        receiptNo: { type: string }
+        soldAt: { type: string, format: date-time }
+        kind: { type: string, enum: [sale, return] }
+        status: { type: string, enum: [completed, voided] }
+        branchId: { type: integer }
+        branchName: { type: string }
+        cashier: { type: string }
+        customerName: { type: string }
+        itemsCount: { type: integer }
+        grossAmount: { type: string }
+        discount: { type: string }
+        total: { type: string }
+        vatAmount: { type: string }
+        cost: { type: ["string", "null"] }
+        grossProfit: { type: ["string", "null"] }
+        payments:
+          type: array
+          items: { $ref: "#/components/schemas/ReceiptPayment" }
+        returnedAmount: { type: string }
+        originalSaleId: { type: ["integer", "null"] }
+        originalReceiptNo: { type: ["string", "null"] }
+        voidedAt: { type: ["string", "null"], format: date-time }
+        voidReason: { type: string }
+        note: { type: string }
+        createdBy: { type: string }
+        source: { type: string, enum: [demo, manual, fom] }
+      required: [id, receiptNo, soldAt, kind, status, branchId, branchName, cashier, customerName, itemsCount, grossAmount, discount, total, vatAmount, cost, grossProfit, payments, returnedAmount, originalSaleId, originalReceiptNo, voidedAt, voidReason, note, createdBy, source]
+    ReceiptPayment:
+      type: object
+      properties:
+        method: { $ref: "#/components/schemas/PaymentMethod" }
+        amount: { type: string }
+        accountName: { type: string }
+      required: [method, amount, accountName]
+    ReceiptLine:
+      type: object
+      properties:
+        id: { type: integer }
+        productId: { type: integer }
+        productName: { type: string }
+        productCode: { type: ["string", "null"] }
+        unit: { type: string }
+        quantity: { type: number }
+        unitPrice: { type: string }
+        discount: { type: string }
+        total: { type: string }
+        vatRate: { type: number }
+        vatAmount: { type: string }
+        costPrice: { type: ["string", "null"] }
+        cost: { type: ["string", "null"] }
+        grossProfit: { type: ["string", "null"] }
+        returnedQuantity: { type: number }
+      required: [id, productId, productName, productCode, unit, quantity, unitPrice, discount, total, vatRate, vatAmount, costPrice, cost, grossProfit, returnedQuantity]
+    ReceiptDetail:
+      type: object
+      properties:
+        receipt: { $ref: "#/components/schemas/Receipt" }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/ReceiptLine" }
+        returns:
+          type: array
+          items: { $ref: "#/components/schemas/Receipt" }
+      required: [receipt, lines, returns]
+    ReceiptInput:
+      type: object
+      properties:
+        branchId: { type: integer, minimum: 1 }
+        soldAt: { type: string, format: date-time }
+        receiptNo: { type: string }
+        cashier: { type: string }
+        customerName: { type: string }
+        counterpartyId: { type: ["integer", "null"], minimum: 1 }
+        dueDate: { type: ["string", "null"], format: date }
+        note: { type: string }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              productId: { type: integer, minimum: 1 }
+              quantity: { $ref: "#/components/schemas/Quantity" }
+              unitPrice: { $ref: "#/components/schemas/Money" }
+              discount: { $ref: "#/components/schemas/Money" }
+            required: [productId, quantity, unitPrice, discount]
+        payments:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              method: { $ref: "#/components/schemas/PaymentMethod" }
+              amount: { $ref: "#/components/schemas/Money" }
+              accountId: { type: ["integer", "null"], minimum: 1 }
+            required: [method, amount]
+      required: [branchId, soldAt, cashier, items, payments]
+    ReceiptVoidInput:
+      type: object
+      properties:
+        receiptId: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 3 }
+      required: [receiptId, reason]
+    ReceiptReturnInput:
+      type: object
+      properties:
+        receiptId: { type: integer, minimum: 1 }
+        date: { type: string, format: date-time }
+        reason: { type: string, minLength: 3 }
+        refundMethod: { $ref: "#/components/schemas/PaymentMethod" }
+        accountId: { type: ["integer", "null"], minimum: 1 }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              lineId: { type: integer, minimum: 1 }
+              quantity: { $ref: "#/components/schemas/Quantity" }
+            required: [lineId, quantity]
+      required: [receiptId, date, reason, refundMethod, items]
+    Purchase:
+      type: object
+      properties:
+        id: { type: integer }
+        branchId: { type: integer }
+        branchName: { type: string }
+        counterpartyId: { type: ["integer", "null"] }
+        supplierName: { type: string }
+        documentNo: { type: string }
+        invoiceNo: { type: string }
+        eInvoiceId: { type: string }
+        invoiceDate: { type: ["string", "null"], format: date }
+        receivedAt: { type: string, format: date-time }
+        itemsCount: { type: integer }
+        itemsTotal: { type: string }
+        discount: { type: string }
+        extraCosts: { type: string }
+        extraCostsNote: { type: string }
+        vatAmount: { type: string }
+        totalAmount: { type: string }
+        paidAmount: { type: string }
+        returnedAmount: { type: string }
+        balance: { type: string }
+        dueDate: { type: ["string", "null"], format: date }
+        paymentStatus: { type: string, enum: [paid, partial, unpaid, overdue] }
+        debtId: { type: ["integer", "null"] }
+        note: { type: string }
+        createdBy: { type: string }
+      required: [id, branchId, branchName, counterpartyId, supplierName, documentNo, invoiceNo, eInvoiceId, invoiceDate, receivedAt, itemsCount, itemsTotal, discount, extraCosts, extraCostsNote, vatAmount, totalAmount, paidAmount, returnedAmount, balance, dueDate, paymentStatus, debtId, note, createdBy]
+    PurchaseLine:
+      type: object
+      properties:
+        id: { type: integer }
+        productId: { type: integer }
+        productName: { type: string }
+        productCode: { type: ["string", "null"] }
+        unit: { type: string }
+        quantity: { type: number }
+        unitCost: { type: string }
+        discount: { type: string }
+        total: { type: string }
+        vatRate: { type: number }
+        landedUnitCost: { type: string }
+        expiryDate: { type: ["string", "null"], format: date }
+      required: [id, productId, productName, productCode, unit, quantity, unitCost, discount, total, vatRate, landedUnitCost, expiryDate]
+    PurchaseDetail:
+      type: object
+      properties:
+        purchase: { $ref: "#/components/schemas/Purchase" }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseLine" }
+        operations:
+          type: array
+          items: { $ref: "#/components/schemas/DebtOperation" }
+        returns:
+          type: array
+          items: { $ref: "#/components/schemas/StockDocument" }
+      required: [purchase, lines, operations, returns]
+    PurchaseInput:
+      type: object
+      properties:
+        branchId: { type: integer, minimum: 1 }
+        counterpartyId: { type: ["integer", "null"], minimum: 1 }
+        supplierName: { type: string, minLength: 2 }
+        documentNo: { type: string }
+        invoiceNo: { type: string }
+        eInvoiceId: { type: string }
+        invoiceDate: { type: ["string", "null"], format: date }
+        receivedAt: { type: string, format: date-time }
+        discount: { $ref: "#/components/schemas/Money" }
+        extraCosts: { $ref: "#/components/schemas/Money" }
+        extraCostsNote: { type: string }
+        dueDate: { type: ["string", "null"], format: date }
+        note: { type: string }
+        paidAmount: { $ref: "#/components/schemas/Money" }
+        paymentAccountId: { type: ["integer", "null"], minimum: 1 }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              productId: { type: integer, minimum: 1 }
+              quantity: { $ref: "#/components/schemas/Quantity" }
+              unitCost: { $ref: "#/components/schemas/Money" }
+              discount: { $ref: "#/components/schemas/Money" }
+              vatRate: { type: number, minimum: 0, maximum: 100 }
+              expiryDate: { type: ["string", "null"], format: date }
+              retailPrice: { $ref: "#/components/schemas/Money" }
+            required: [productId, quantity, unitCost, discount]
+      required: [branchId, supplierName, receivedAt, discount, extraCosts, paidAmount, items]
+    StockDocType:
+      type: string
+      enum: [transfer, write_off, supplier_return, customer_return, inventory_count]
+    StockDocument:
+      type: object
+      properties:
+        id: { type: integer }
+        docType: { $ref: "#/components/schemas/StockDocType" }
+        documentNo: { type: string }
+        branchId: { type: integer }
+        branchName: { type: string }
+        branchKind: { type: string }
+        toBranchId: { type: ["integer", "null"] }
+        toBranchName: { type: ["string", "null"] }
+        toBranchKind: { type: ["string", "null"] }
+        counterpartyName: { type: string }
+        purchaseId: { type: ["integer", "null"] }
+        saleId: { type: ["integer", "null"] }
+        occurredAt: { type: string, format: date-time }
+        reason: { type: string }
+        note: { type: string }
+        itemsCount: { type: integer }
+        totalCost: { type: string }
+        surplusValue: { type: string }
+        shortageValue: { type: string }
+        createdBy: { type: string }
+      required: [id, docType, documentNo, branchId, branchName, branchKind, toBranchId, toBranchName, toBranchKind, counterpartyName, purchaseId, saleId, occurredAt, reason, note, itemsCount, totalCost, surplusValue, shortageValue, createdBy]
+    StockDocumentLine:
+      type: object
+      properties:
+        id: { type: integer }
+        productId: { type: integer }
+        productName: { type: string }
+        productCode: { type: ["string", "null"] }
+        unit: { type: string }
+        movementType: { type: string }
+        quantity: { type: number }
+        expectedQuantity: { type: ["number", "null"] }
+        countedQuantity: { type: ["number", "null"] }
+        unitCost: { type: ["string", "null"] }
+        total: { type: ["string", "null"] }
+      required: [id, productId, productName, productCode, unit, movementType, quantity, expectedQuantity, countedQuantity, unitCost, total]
+    StockDocumentDetail:
+      type: object
+      properties:
+        document: { $ref: "#/components/schemas/StockDocument" }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/StockDocumentLine" }
+      required: [document, lines]
+    StockDocumentInput:
+      type: object
+      properties:
+        docType: { type: string, enum: [transfer, write_off, supplier_return, inventory_count] }
+        branchId: { type: integer, minimum: 1 }
+        toBranchId: { type: ["integer", "null"], minimum: 1 }
+        occurredAt: { type: string, format: date-time }
+        documentNo: { type: string }
+        reason: { type: string }
+        note: { type: string }
+        counterpartyId: { type: ["integer", "null"], minimum: 1 }
+        counterpartyName: { type: string }
+        purchaseId: { type: ["integer", "null"], minimum: 1 }
+        settlement: { type: string, enum: [debt, money, none] }
+        accountId: { type: ["integer", "null"], minimum: 1 }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              productId: { type: integer, minimum: 1 }
+              quantity: { type: number, minimum: 0, maximum: 100000000 }
+              unitCost: { $ref: "#/components/schemas/Money" }
+            required: [productId, quantity]
+      required: [docType, branchId, occurredAt, items]
     Dashboard:
       type: object
       properties:
@@ -782,19 +1743,98 @@ components:
         lastSyncStatus: { type: string, enum: [not_started, success, error, running, waiting] }
         lastMessage: { type: ["string", "null"] }
         importedRecords: { type: integer }
-      required: [connected, configured, baseUrl, keyConfigured, lastSyncAt, lastSyncStatus, lastMessage, importedRecords]
+        running: { type: boolean }
+        filialIds:
+          type: array
+          items: { type: string }
+        intervalMinutes: { type: integer }
+        refsIntervalMinutes: { type: integer }
+        refsAt: { type: ["string", "null"], format: date-time }
+        lastSyncFrom: { type: ["string", "null"], format: date }
+        lastSyncTo: { type: ["string", "null"], format: date }
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/FomReportState"
+        site:
+          $ref: "#/components/schemas/FomSiteState"
+        totals:
+          $ref: "#/components/schemas/FomTotals"
+      required: [connected, configured, baseUrl, keyConfigured, lastSyncAt, lastSyncStatus, lastMessage, importedRecords, running, filialIds, intervalMinutes, refsIntervalMinutes, refsAt, lastSyncFrom, lastSyncTo, reports, site, totals]
+    FomReportState:
+      type: object
+      properties:
+        key: { type: string }
+        reportId: { type: integer }
+        label: { type: string }
+        target: { type: string }
+        dated: { type: boolean }
+        rows: { type: ["integer", "null"] }
+        imported: { type: ["integer", "null"] }
+        error: { type: ["string", "null"] }
+        warning: { type: ["string", "null"] }
+      required: [key, reportId, label, target, dated, rows, imported, error, warning]
+    FomSiteState:
+      type: object
+      properties:
+        configured: { type: boolean }
+        path: { type: ["string", "null"] }
+        lastAt: { type: ["string", "null"], format: date-time }
+        lastStatus: { type: ["string", "null"] }
+        lastMessage: { type: ["string", "null"] }
+        lastRecords: { type: integer }
+      required: [configured, path, lastAt, lastStatus, lastMessage, lastRecords]
+    FomTotals:
+      type: object
+      properties:
+        branches: { type: integer }
+        products: { type: integer }
+        counterparties: { type: integer }
+        stockLines: { type: integer }
+        purchases: { type: integer }
+        sales: { type: integer }
+        stockDocuments: { type: integer }
+      required: [branches, products, counterparties, stockLines, purchases, sales, stockDocuments]
+    FomSettings:
+      type: object
+      properties:
+        source: { type: string, enum: [saved, env, none] }
+        protocol: { type: string, enum: [http, https] }
+        host: { type: string }
+        port: { type: ["integer", "null"] }
+        reportUrl: { type: ["string", "null"] }
+        filialIds:
+          type: array
+          items: { type: string }
+        intervalMinutes: { type: integer }
+        initialDays: { type: integer }
+        timeoutSeconds: { type: integer }
+        apiTokenSet: { type: boolean }
+        apiTokenHint: { type: ["string", "null"] }
+        updatedAt: { type: ["string", "null"], format: date-time }
+      required: [source, protocol, host, port, reportUrl, filialIds, intervalMinutes, initialDays, timeoutSeconds, apiTokenSet, apiTokenHint, updatedAt]
     FomSettingsInput:
       type: object
       properties:
-        baseUrl:
-          type: string
-          format: uri
-          description: Server URL only; never submit a FOM API key from the browser.
-      required: [baseUrl]
+        protocol: { type: string, enum: [http, https] }
+        host: { type: string, minLength: 1, maxLength: 253 }
+        port: { type: ["integer", "null"], minimum: 1, maximum: 65535 }
+        filialIds: { type: string, maxLength: 500 }
+        intervalMinutes: { type: integer, minimum: 0, maximum: 1440 }
+        initialDays: { type: integer, minimum: 1, maximum: 3650 }
+        timeoutSeconds: { type: integer, minimum: 5, maximum: 600 }
+        apiToken: { type: string, maxLength: 500 }
+        clearApiToken: { type: boolean }
+      required: [protocol, host, port, filialIds, intervalMinutes, initialDays, timeoutSeconds]
+    FomSyncInput:
+      type: object
+      properties:
+        dateFrom: { type: string, format: date }
+        dateTo: { type: string, format: date }
     FomActionResult:
       type: object
       properties:
-        status: { type: string, enum: [waiting, success, error] }
+        status: { type: string, enum: [waiting, running, success, error] }
         message: { type: string }
         checkedAt: { type: string, format: date-time }
       required: [status, message, checkedAt]

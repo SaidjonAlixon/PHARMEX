@@ -24,6 +24,7 @@ export const expensesTable = pgTable(
     category: text("category").notNull(),
     description: text("description").notNull().default(""),
     amount: numeric("amount", { precision: 16, scale: 2 }).notNull(),
+    accountId: integer("account_id"),
     source: text("source").notNull().default("manual"),
     sourceId: text("source_id"),
     status: text("status").notNull().default("confirmed"),
@@ -63,6 +64,7 @@ export const moneyTransactionsTable = pgTable(
     id: serial("id").primaryKey(),
     date: timestamp("date", { withTimezone: true }).notNull(),
     type: text("type").notNull(),
+    category: text("category").notNull().default(""),
     amount: numeric("amount", { precision: 16, scale: 2 }).notNull(),
     direction: text("direction").notNull(),
     accountId: integer("account_id")
@@ -70,12 +72,19 @@ export const moneyTransactionsTable = pgTable(
       .references(() => cashAccountsTable.id),
     branchId: integer("branch_id").references(() => branchesTable.id),
     transferGroupId: text("transfer_group_id"),
+    counterpartyName: text("counterparty_name").notNull().default(""),
+    debtId: integer("debt_id"),
+    saleId: integer("sale_id"),
+    purchaseId: integer("purchase_id"),
     documentNo: text("document_no").notNull().default(""),
     note: text("note").notNull().default(""),
+    createdBy: text("created_by").notNull().default(""),
     source: text("source").notNull().default("manual"),
     sourceId: text("source_id"),
   },
   (table) => [
+    index("pharmacy_money_transactions_date_idx").on(table.date),
+    index("pharmacy_money_transactions_account_idx").on(table.accountId),
     uniqueIndex("pharmacy_money_transactions_source_id_idx").on(
       table.source,
       table.sourceId,
@@ -89,6 +98,9 @@ export const debtsTable = pgTable(
     id: serial("id").primaryKey(),
     kind: text("kind").notNull(),
     counterparty: text("counterparty").notNull(),
+    counterpartyId: integer("counterparty_id"),
+    originType: text("origin_type").notNull().default("manual"),
+    originId: integer("origin_id"),
     documentNo: text("document_no").notNull(),
     branchId: integer("branch_id")
       .notNull()
@@ -101,25 +113,43 @@ export const debtsTable = pgTable(
     paidAmount: numeric("paid_amount", { precision: 16, scale: 2 })
       .notNull()
       .default("0"),
+    returnedAmount: numeric("returned_amount", { precision: 16, scale: 2 })
+      .notNull()
+      .default("0"),
+    status: text("status").notNull().default("active"),
+    note: text("note").notNull().default(""),
     source: text("source").notNull().default("manual"),
     sourceId: text("source_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
+    index("pharmacy_debts_kind_idx").on(table.kind),
     uniqueIndex("pharmacy_debts_source_id_idx").on(table.source, table.sourceId),
   ],
 );
 
-export const debtPaymentsTable = pgTable("pharmacy_debt_payments", {
-  id: serial("id").primaryKey(),
-  debtId: integer("debt_id")
-    .notNull()
-    .references(() => debtsTable.id),
-  amount: numeric("amount", { precision: 16, scale: 2 }).notNull(),
-  date: timestamp("date", { withTimezone: true }).notNull(),
-  note: text("note").notNull().default(""),
-  source: text("source").notNull().default("manual"),
-  sourceId: text("source_id"),
-});
+export const debtPaymentsTable = pgTable(
+  "pharmacy_debt_payments",
+  {
+    id: serial("id").primaryKey(),
+    debtId: integer("debt_id")
+      .notNull()
+      .references(() => debtsTable.id),
+    kind: text("kind").notNull().default("payment"),
+    amount: numeric("amount", { precision: 16, scale: 2 }).notNull(),
+    date: timestamp("date", { withTimezone: true }).notNull(),
+    accountId: integer("account_id"),
+    moneyTransactionId: integer("money_transaction_id"),
+    stockDocumentId: integer("stock_document_id"),
+    note: text("note").notNull().default(""),
+    createdBy: text("created_by").notNull().default(""),
+    source: text("source").notNull().default("manual"),
+    sourceId: text("source_id"),
+  },
+  (table) => [index("pharmacy_debt_payments_debt_idx").on(table.debtId)],
+);
 
 export const insertExpenseSchema = createInsertSchema(expensesTable).omit({
   id: true,

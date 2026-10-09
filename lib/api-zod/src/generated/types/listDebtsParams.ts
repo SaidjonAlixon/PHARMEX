@@ -7,6 +7,7 @@
  */
 import type { BranchIdParameter } from './branchIdParameter';
 import type { ListDebtsKind } from './listDebtsKind';
+import type { ListDebtsStatus } from './listDebtsStatus';
 
 export type ListDebtsParams = {
 /**
@@ -15,4 +16,9 @@ export type ListDebtsParams = {
 branchId?: BranchIdParameter;
 kind?: ListDebtsKind;
 search?: string;
+status?: ListDebtsStatus;
+/**
+ * @minimum 1
+ */
+counterpartyId?: number;
 };

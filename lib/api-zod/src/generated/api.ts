@@ -71,8 +71,8 @@ export const UpdateUserRoleResponse = zod.object({
 
 
 export const GetDashboardQueryParams = zod.object({
-  "dateFrom": zod.date().optional(),
-  "dateTo": zod.date().optional(),
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
   "branchId": zod.coerce.number().int().min(1).optional()
 })
 
@@ -148,6 +148,7 @@ export const ListBranchesResponseItem = zod.object({
   "id": zod.number().int(),
   "name": zod.string(),
   "fomId": zod.string().nullish(),
+  "kind": zod.enum(['pharmacy', 'warehouse']),
   "region": zod.string(),
   "address": zod.string(),
   "manager": zod.string(),
@@ -168,6 +169,7 @@ export const createBranchBodyNameMin = 2;
 export const CreateBranchBody = zod.object({
   "name": zod.string().min(createBranchBodyNameMin),
   "fomId": zod.string().nullish(),
+  "kind": zod.enum(['pharmacy', 'warehouse']).optional(),
   "region": zod.string(),
   "address": zod.string(),
   "manager": zod.string()
@@ -177,6 +179,7 @@ export const CreateBranchResponse = zod.object({
   "id": zod.number().int(),
   "name": zod.string(),
   "fomId": zod.string().nullish(),
+  "kind": zod.enum(['pharmacy', 'warehouse']),
   "region": zod.string(),
   "address": zod.string(),
   "manager": zod.string(),
@@ -194,8 +197,8 @@ export const CreateBranchResponse = zod.object({
 
 export const GetBranchQueryParams = zod.object({
   "branchId": zod.coerce.number().int().min(1),
-  "dateFrom": zod.date().optional(),
-  "dateTo": zod.date().optional()
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional()
 })
 
 export const GetBranchResponse = zod.object({
@@ -203,6 +206,7 @@ export const GetBranchResponse = zod.object({
   "id": zod.number().int(),
   "name": zod.string(),
   "fomId": zod.string().nullish(),
+  "kind": zod.enum(['pharmacy', 'warehouse']),
   "region": zod.string(),
   "address": zod.string(),
   "manager": zod.string(),
@@ -262,8 +266,8 @@ export const listSalesQueryLimitMax = 500;
 
 
 export const ListSalesQueryParams = zod.object({
-  "dateFrom": zod.date().optional(),
-  "dateTo": zod.date().optional(),
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
   "branchId": zod.coerce.number().int().min(1).optional(),
   "search": zod.coerce.string().optional(),
   "paymentType": zod.coerce.string().optional(),
@@ -308,6 +312,8 @@ export const ListInventoryResponseItem = zod.object({
   "productName": zod.string(),
   "barcode": zod.string().nullish(),
   "group": zod.string(),
+  "manufacturer": zod.string().optional(),
+  "ikpu": zod.string().optional(),
   "branchId": zod.number().int(),
   "branchName": zod.string(),
   "quantity": zod.number(),
@@ -336,6 +342,8 @@ export const GetProductResponse = zod.object({
   "productName": zod.string(),
   "barcode": zod.string().nullish(),
   "group": zod.string(),
+  "manufacturer": zod.string().optional(),
+  "ikpu": zod.string().optional(),
   "branchId": zod.number().int(),
   "branchName": zod.string(),
   "quantity": zod.number(),
@@ -350,6 +358,8 @@ export const GetProductResponse = zod.object({
   "productName": zod.string(),
   "barcode": zod.string().nullish(),
   "group": zod.string(),
+  "manufacturer": zod.string().optional(),
+  "ikpu": zod.string().optional(),
   "branchId": zod.number().int(),
   "branchName": zod.string(),
   "quantity": zod.number(),
@@ -369,8 +379,8 @@ export const GetProductResponse = zod.object({
 
 
 export const ListExpensesQueryParams = zod.object({
-  "dateFrom": zod.date().optional(),
-  "dateTo": zod.date().optional(),
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
   "branchId": zod.coerce.number().int().min(1).optional(),
   "category": zod.coerce.string().optional()
 })
@@ -397,12 +407,14 @@ export const ListExpensesResponse = zod.array(ListExpensesResponseItem)
 export const createExpenseBodyAmountRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
 
 
+
 export const CreateExpenseBody = zod.object({
   "date": zod.coerce.date(),
   "branchId": zod.number().int().min(1),
   "category": zod.string().min(1),
   "description": zod.string(),
-  "amount": zod.string().regex(createExpenseBodyAmountRegExp)
+  "amount": zod.string().regex(createExpenseBodyAmountRegExp),
+  "accountId": zod.number().int().min(1).optional()
 })
 
 export const CreateExpenseResponse = zod.object({
@@ -444,28 +456,147 @@ export const ListCashAccountsResponse = zod.array(ListCashAccountsResponseItem)
 
 
 /**
+ * @summary Open a cash desk or bank account
+ */
+export const createCashAccountBodyNameMin = 2;
+
+
+export const createCashAccountBodyOpeningBalanceRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+
+
+export const CreateCashAccountBody = zod.object({
+  "name": zod.string().min(createCashAccountBodyNameMin),
+  "kind": zod.enum(['cash', 'bank']),
+  "branchId": zod.number().int().min(1).nullish(),
+  "openingBalance": zod.string().regex(createCashAccountBodyOpeningBalanceRegExp)
+})
+
+export const CreateCashAccountResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "kind": zod.enum(['cash', 'bank']),
+  "branchId": zod.number().int().nullish(),
+  "branchName": zod.string(),
+  "openingBalance": zod.string(),
+  "inflow": zod.string(),
+  "outflow": zod.string(),
+  "balance": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+})
+
+
+/**
+ * @summary Opening and closing balance of every account for a period
+ */
+
+
+
+export const GetCashRegisterQueryParams = zod.object({
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
+  "branchId": zod.coerce.number().int().min(1).optional()
+})
+
+export const GetCashRegisterResponseItem = zod.object({
+  "accountId": zod.number().int(),
+  "accountName": zod.string(),
+  "kind": zod.enum(['cash', 'bank']),
+  "branchId": zod.number().int().nullable(),
+  "branchName": zod.string(),
+  "openingBalance": zod.string(),
+  "inflow": zod.string(),
+  "outflow": zod.string(),
+  "closingBalance": zod.string(),
+  "operations": zod.number().int(),
+  "cashSales": zod.string(),
+  "encashment": zod.string()
+})
+export const GetCashRegisterResponse = zod.array(GetCashRegisterResponseItem)
+
+
+/**
+ * @summary Record a cash or bank receipt, payment, expense or owner operation
+ */
+
+export const createMoneyOperationBodyAmountRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+
+
+
+
+export const CreateMoneyOperationBody = zod.object({
+  "type": zod.enum(['cash_in', 'cash_out', 'bank_receipt', 'supplier_payment', 'customer_payment', 'expense', 'owner_in', 'owner_out']),
+  "accountId": zod.number().int().min(1),
+  "amount": zod.string().regex(createMoneyOperationBodyAmountRegExp),
+  "date": zod.coerce.date(),
+  "category": zod.string().optional(),
+  "counterpartyName": zod.string().optional(),
+  "debtId": zod.number().int().min(1).nullish(),
+  "branchId": zod.number().int().min(1).nullish(),
+  "documentNo": zod.string().optional(),
+  "note": zod.string().optional()
+})
+
+export const CreateMoneyOperationResponse = zod.object({
+  "id": zod.number().int(),
+  "date": zod.coerce.date(),
+  "type": zod.string(),
+  "category": zod.string(),
+  "amount": zod.string(),
+  "direction": zod.enum(['in', 'out', 'internal']),
+  "accountId": zod.number().int(),
+  "accountName": zod.string(),
+  "accountKind": zod.string(),
+  "branchId": zod.number().int().nullish(),
+  "branchName": zod.string(),
+  "counterpartyName": zod.string(),
+  "transferGroupId": zod.string().nullable(),
+  "debtId": zod.number().int().nullable(),
+  "saleId": zod.number().int().nullable(),
+  "purchaseId": zod.number().int().nullable(),
+  "documentNo": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+})
+
+
+/**
  * @summary Cash flow operations
  */
 
 
 
+
 export const ListMoneyTransactionsQueryParams = zod.object({
-  "dateFrom": zod.date().optional(),
-  "dateTo": zod.date().optional(),
-  "branchId": zod.coerce.number().int().min(1).optional()
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
+  "branchId": zod.coerce.number().int().min(1).optional(),
+  "accountId": zod.coerce.number().int().min(1).optional(),
+  "type": zod.coerce.string().optional(),
+  "direction": zod.enum(['in', 'out', 'internal']).optional(),
+  "search": zod.coerce.string().optional()
 })
 
 export const ListMoneyTransactionsResponseItem = zod.object({
   "id": zod.number().int(),
   "date": zod.coerce.date(),
   "type": zod.string(),
+  "category": zod.string(),
   "amount": zod.string(),
   "direction": zod.enum(['in', 'out', 'internal']),
+  "accountId": zod.number().int(),
   "accountName": zod.string(),
+  "accountKind": zod.string(),
   "branchId": zod.number().int().nullish(),
   "branchName": zod.string(),
+  "counterpartyName": zod.string(),
+  "transferGroupId": zod.string().nullable(),
+  "debtId": zod.number().int().nullable(),
+  "saleId": zod.number().int().nullable(),
+  "purchaseId": zod.number().int().nullable(),
   "documentNo": zod.string(),
   "note": zod.string(),
+  "createdBy": zod.string(),
   "source": zod.enum(['demo', 'manual', 'fom'])
 })
 export const ListMoneyTransactionsResponse = zod.array(ListMoneyTransactionsResponseItem)
@@ -484,7 +615,8 @@ export const CreateMoneyTransferBody = zod.object({
   "toAccountId": zod.number().int().min(1),
   "amount": zod.string().regex(createMoneyTransferBodyAmountRegExp),
   "date": zod.coerce.date(),
-  "note": zod.string()
+  "note": zod.string(),
+  "kind": zod.enum(['transfer', 'encashment']).optional()
 })
 
 export const CreateMoneyTransferResponse = zod.object({
@@ -492,26 +624,44 @@ export const CreateMoneyTransferResponse = zod.object({
   "id": zod.number().int(),
   "date": zod.coerce.date(),
   "type": zod.string(),
+  "category": zod.string(),
   "amount": zod.string(),
   "direction": zod.enum(['in', 'out', 'internal']),
+  "accountId": zod.number().int(),
   "accountName": zod.string(),
+  "accountKind": zod.string(),
   "branchId": zod.number().int().nullish(),
   "branchName": zod.string(),
+  "counterpartyName": zod.string(),
+  "transferGroupId": zod.string().nullable(),
+  "debtId": zod.number().int().nullable(),
+  "saleId": zod.number().int().nullable(),
+  "purchaseId": zod.number().int().nullable(),
   "documentNo": zod.string(),
   "note": zod.string(),
+  "createdBy": zod.string(),
   "source": zod.enum(['demo', 'manual', 'fom'])
 }),
   "to": zod.object({
   "id": zod.number().int(),
   "date": zod.coerce.date(),
   "type": zod.string(),
+  "category": zod.string(),
   "amount": zod.string(),
   "direction": zod.enum(['in', 'out', 'internal']),
+  "accountId": zod.number().int(),
   "accountName": zod.string(),
+  "accountKind": zod.string(),
   "branchId": zod.number().int().nullish(),
   "branchName": zod.string(),
+  "counterpartyName": zod.string(),
+  "transferGroupId": zod.string().nullable(),
+  "debtId": zod.number().int().nullable(),
+  "saleId": zod.number().int().nullable(),
+  "purchaseId": zod.number().int().nullable(),
   "documentNo": zod.string(),
   "note": zod.string(),
+  "createdBy": zod.string(),
   "source": zod.enum(['demo', 'manual', 'fom'])
 })
 })
@@ -523,10 +673,13 @@ export const CreateMoneyTransferResponse = zod.object({
 
 
 
+
 export const ListDebtsQueryParams = zod.object({
   "branchId": zod.coerce.number().int().min(1).optional(),
   "kind": zod.enum(['payable', 'receivable']).optional(),
-  "search": zod.coerce.string().optional()
+  "search": zod.coerce.string().optional(),
+  "status": zod.enum(['open', 'closed', 'overdue', 'all']).optional(),
+  "counterpartyId": zod.coerce.number().int().min(1).optional()
 })
 
 export const ListDebtsResponseItem = zod.object({
@@ -540,10 +693,1198 @@ export const ListDebtsResponseItem = zod.object({
   "dueDate": zod.coerce.date(),
   "initialAmount": zod.string(),
   "paidAmount": zod.string(),
+  "returnedAmount": zod.string(),
   "balance": zod.string(),
+  "counterpartyId": zod.number().int().nullable(),
+  "originType": zod.enum(['purchase', 'sale', 'manual', 'opening']),
+  "originId": zod.number().int().nullable(),
+  "state": zod.enum(['open', 'partial', 'closed', 'overdue', 'cancelled']),
+  "overdueDays": zod.number().int(),
+  "note": zod.string(),
   "source": zod.enum(['demo', 'manual', 'fom'])
 })
 export const ListDebtsResponse = zod.array(ListDebtsResponseItem)
+
+
+/**
+ * @summary Register a manual or opening debt
+ */
+
+export const createDebtBodyCounterpartyMin = 2;
+
+
+export const createDebtBodyAmountRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+
+
+export const CreateDebtBody = zod.object({
+  "kind": zod.enum(['payable', 'receivable']),
+  "counterpartyId": zod.number().int().min(1).nullish(),
+  "counterparty": zod.string().min(createDebtBodyCounterpartyMin),
+  "documentNo": zod.string().optional(),
+  "branchId": zod.number().int().min(1),
+  "issuedDate": zod.coerce.date(),
+  "dueDate": zod.coerce.date(),
+  "amount": zod.string().regex(createDebtBodyAmountRegExp),
+  "originType": zod.enum(['manual', 'opening']).optional(),
+  "note": zod.string().optional()
+})
+
+export const CreateDebtResponse = zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['payable', 'receivable']),
+  "counterparty": zod.string(),
+  "documentNo": zod.string(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "issuedDate": zod.coerce.date(),
+  "dueDate": zod.coerce.date(),
+  "initialAmount": zod.string(),
+  "paidAmount": zod.string(),
+  "returnedAmount": zod.string(),
+  "balance": zod.string(),
+  "counterpartyId": zod.number().int().nullable(),
+  "originType": zod.enum(['purchase', 'sale', 'manual', 'opening']),
+  "originId": zod.number().int().nullable(),
+  "state": zod.enum(['open', 'partial', 'closed', 'overdue', 'cancelled']),
+  "overdueDays": zod.number().int(),
+  "note": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+})
+
+
+/**
+ * @summary Debt with its full operations history
+ */
+
+
+
+export const GetDebtQueryParams = zod.object({
+  "debtId": zod.coerce.number().int().min(1)
+})
+
+export const GetDebtResponse = zod.object({
+  "debt": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['payable', 'receivable']),
+  "counterparty": zod.string(),
+  "documentNo": zod.string(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "issuedDate": zod.coerce.date(),
+  "dueDate": zod.coerce.date(),
+  "initialAmount": zod.string(),
+  "paidAmount": zod.string(),
+  "returnedAmount": zod.string(),
+  "balance": zod.string(),
+  "counterpartyId": zod.number().int().nullable(),
+  "originType": zod.enum(['purchase', 'sale', 'manual', 'opening']),
+  "originId": zod.number().int().nullable(),
+  "state": zod.enum(['open', 'partial', 'closed', 'overdue', 'cancelled']),
+  "overdueDays": zod.number().int(),
+  "note": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}),
+  "operations": zod.array(zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['initial', 'payment', 'return', 'writeoff']),
+  "date": zod.coerce.date(),
+  "amount": zod.string(),
+  "balanceAfter": zod.string(),
+  "accountName": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string()
+}))
+})
+
+
+/**
+ * @summary Record a partial payment, return or write-off against a debt
+ */
+
+export const createDebtOperationBodyAmountRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+
+
+
+export const CreateDebtOperationBody = zod.object({
+  "debtId": zod.number().int().min(1),
+  "kind": zod.enum(['payment', 'return', 'writeoff']),
+  "amount": zod.string().regex(createDebtOperationBodyAmountRegExp),
+  "date": zod.coerce.date(),
+  "accountId": zod.number().int().min(1).nullish(),
+  "note": zod.string().optional()
+})
+
+export const CreateDebtOperationResponse = zod.object({
+  "debt": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['payable', 'receivable']),
+  "counterparty": zod.string(),
+  "documentNo": zod.string(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "issuedDate": zod.coerce.date(),
+  "dueDate": zod.coerce.date(),
+  "initialAmount": zod.string(),
+  "paidAmount": zod.string(),
+  "returnedAmount": zod.string(),
+  "balance": zod.string(),
+  "counterpartyId": zod.number().int().nullable(),
+  "originType": zod.enum(['purchase', 'sale', 'manual', 'opening']),
+  "originId": zod.number().int().nullable(),
+  "state": zod.enum(['open', 'partial', 'closed', 'overdue', 'cancelled']),
+  "overdueDays": zod.number().int(),
+  "note": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}),
+  "operations": zod.array(zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['initial', 'payment', 'return', 'writeoff']),
+  "date": zod.coerce.date(),
+  "amount": zod.string(),
+  "balanceAfter": zod.string(),
+  "accountName": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string()
+}))
+})
+
+
+/**
+ * @summary Debt totals grouped by counterparty
+ */
+
+
+
+export const ListCounterpartyBalancesQueryParams = zod.object({
+  "branchId": zod.coerce.number().int().min(1).optional(),
+  "kind": zod.enum(['payable', 'receivable']).optional()
+})
+
+export const ListCounterpartyBalancesResponseItem = zod.object({
+  "counterparty": zod.string(),
+  "counterpartyId": zod.number().int().nullable(),
+  "kind": zod.enum(['payable', 'receivable']),
+  "debts": zod.number().int(),
+  "initialAmount": zod.string(),
+  "paidAmount": zod.string(),
+  "returnedAmount": zod.string(),
+  "balance": zod.string(),
+  "overdueAmount": zod.string(),
+  "firstIssuedDate": zod.coerce.date(),
+  "nearestDueDate": zod.coerce.date().nullable()
+})
+export const ListCounterpartyBalancesResponse = zod.array(ListCounterpartyBalancesResponseItem)
+
+
+/**
+ * @summary Product catalogue with total stock
+ */
+export const ListProductsQueryParams = zod.object({
+  "search": zod.coerce.string().optional()
+})
+
+export const ListProductsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "code": zod.string().nullable(),
+  "barcode": zod.string().nullable(),
+  "group": zod.string(),
+  "unit": zod.string(),
+  "manufacturer": zod.string(),
+  "ikpu": zod.string(),
+  "fomId": zod.string().nullable(),
+  "retailPrice": zod.string(),
+  "costPrice": zod.string().nullable(),
+  "vatRate": zod.number(),
+  "expiryDate": zod.coerce.date().nullable(),
+  "stock": zod.number(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+})
+export const ListProductsResponse = zod.array(ListProductsResponseItem)
+
+
+/**
+ * @summary Register a product
+ */
+export const createProductBodyNameMin = 2;
+
+export const createProductBodyRetailPriceRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+export const createProductBodyVatRateMin = 0;
+export const createProductBodyVatRateMax = 100;
+
+
+
+export const CreateProductBody = zod.object({
+  "name": zod.string().min(createProductBodyNameMin),
+  "code": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "group": zod.string().optional(),
+  "unit": zod.string().optional(),
+  "retailPrice": zod.string().regex(createProductBodyRetailPriceRegExp),
+  "vatRate": zod.number().min(createProductBodyVatRateMin).max(createProductBodyVatRateMax).optional(),
+  "expiryDate": zod.coerce.date().nullish()
+})
+
+export const CreateProductResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "code": zod.string().nullable(),
+  "barcode": zod.string().nullable(),
+  "group": zod.string(),
+  "unit": zod.string(),
+  "manufacturer": zod.string(),
+  "ikpu": zod.string(),
+  "fomId": zod.string().nullable(),
+  "retailPrice": zod.string(),
+  "costPrice": zod.string().nullable(),
+  "vatRate": zod.number(),
+  "expiryDate": zod.coerce.date().nullable(),
+  "stock": zod.number(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+})
+
+
+/**
+ * @summary Suppliers and customers
+ */
+export const ListCounterpartiesQueryParams = zod.object({
+  "kind": zod.enum(['supplier', 'customer']).optional(),
+  "search": zod.coerce.string().optional()
+})
+
+export const ListCounterpartiesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "kind": zod.enum(['supplier', 'customer']),
+  "taxId": zod.string(),
+  "phone": zod.string(),
+  "note": zod.string(),
+  "payable": zod.string(),
+  "receivable": zod.string()
+})
+export const ListCounterpartiesResponse = zod.array(ListCounterpartiesResponseItem)
+
+
+/**
+ * @summary Register a supplier or customer
+ */
+export const createCounterpartyBodyNameMin = 2;
+
+
+
+export const CreateCounterpartyBody = zod.object({
+  "name": zod.string().min(createCounterpartyBodyNameMin),
+  "kind": zod.enum(['supplier', 'customer']),
+  "taxId": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "note": zod.string().optional()
+})
+
+export const CreateCounterpartyResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "kind": zod.enum(['supplier', 'customer']),
+  "taxId": zod.string(),
+  "phone": zod.string(),
+  "note": zod.string(),
+  "payable": zod.string(),
+  "receivable": zod.string()
+})
+
+
+/**
+ * @summary Sales receipts and returns
+ */
+
+export const listReceiptsQueryLimitDefault = 200;
+export const listReceiptsQueryLimitMax = 500;
+
+
+
+export const ListReceiptsQueryParams = zod.object({
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
+  "branchId": zod.coerce.number().int().min(1).optional(),
+  "search": zod.coerce.string().optional(),
+  "kind": zod.enum(['sale', 'return']).optional(),
+  "status": zod.enum(['completed', 'voided']).optional(),
+  "paymentMethod": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().int().min(1).max(listReceiptsQueryLimitMax).default(listReceiptsQueryLimitDefault)
+})
+
+export const ListReceiptsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "receiptNo": zod.string(),
+  "soldAt": zod.coerce.date(),
+  "kind": zod.enum(['sale', 'return']),
+  "status": zod.enum(['completed', 'voided']),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "cashier": zod.string(),
+  "customerName": zod.string(),
+  "itemsCount": zod.number().int(),
+  "grossAmount": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatAmount": zod.string(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string(),
+  "accountName": zod.string()
+})),
+  "returnedAmount": zod.string(),
+  "originalSaleId": zod.number().int().nullable(),
+  "originalReceiptNo": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+})
+export const ListReceiptsResponse = zod.array(ListReceiptsResponseItem)
+
+
+/**
+ * @summary Post a sales receipt, deducting stock and recording payments
+ */
+
+
+
+export const createReceiptBodyItemsItemQuantityExclusiveMin = 0;
+export const createReceiptBodyItemsItemQuantityMax = 100000000;
+
+export const createReceiptBodyItemsItemUnitPriceRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+export const createReceiptBodyItemsItemDiscountRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+
+export const createReceiptBodyPaymentsItemAmountRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+
+
+
+
+export const CreateReceiptBody = zod.object({
+  "branchId": zod.number().int().min(1),
+  "soldAt": zod.coerce.date(),
+  "receiptNo": zod.string().optional(),
+  "cashier": zod.string(),
+  "customerName": zod.string().optional(),
+  "counterpartyId": zod.number().int().min(1).nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "note": zod.string().optional(),
+  "items": zod.array(zod.object({
+  "productId": zod.number().int().min(1),
+  "quantity": zod.number().gt(createReceiptBodyItemsItemQuantityExclusiveMin).max(createReceiptBodyItemsItemQuantityMax),
+  "unitPrice": zod.string().regex(createReceiptBodyItemsItemUnitPriceRegExp),
+  "discount": zod.string().regex(createReceiptBodyItemsItemDiscountRegExp)
+})).min(1),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string().regex(createReceiptBodyPaymentsItemAmountRegExp),
+  "accountId": zod.number().int().min(1).nullish()
+})).min(1)
+})
+
+export const CreateReceiptResponse = zod.object({
+  "receipt": zod.object({
+  "id": zod.number().int(),
+  "receiptNo": zod.string(),
+  "soldAt": zod.coerce.date(),
+  "kind": zod.enum(['sale', 'return']),
+  "status": zod.enum(['completed', 'voided']),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "cashier": zod.string(),
+  "customerName": zod.string(),
+  "itemsCount": zod.number().int(),
+  "grossAmount": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatAmount": zod.string(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string(),
+  "accountName": zod.string()
+})),
+  "returnedAmount": zod.string(),
+  "originalSaleId": zod.number().int().nullable(),
+  "originalReceiptNo": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "productCode": zod.string().nullable(),
+  "unit": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatRate": zod.number(),
+  "vatAmount": zod.string(),
+  "costPrice": zod.string().nullable(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "returnedQuantity": zod.number()
+})),
+  "returns": zod.array(zod.object({
+  "id": zod.number().int(),
+  "receiptNo": zod.string(),
+  "soldAt": zod.coerce.date(),
+  "kind": zod.enum(['sale', 'return']),
+  "status": zod.enum(['completed', 'voided']),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "cashier": zod.string(),
+  "customerName": zod.string(),
+  "itemsCount": zod.number().int(),
+  "grossAmount": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatAmount": zod.string(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string(),
+  "accountName": zod.string()
+})),
+  "returnedAmount": zod.string(),
+  "originalSaleId": zod.number().int().nullable(),
+  "originalReceiptNo": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}))
+})
+
+
+/**
+ * @summary Receipt lines, payments and linked returns
+ */
+
+
+
+export const GetReceiptQueryParams = zod.object({
+  "receiptId": zod.coerce.number().int().min(1)
+})
+
+export const GetReceiptResponse = zod.object({
+  "receipt": zod.object({
+  "id": zod.number().int(),
+  "receiptNo": zod.string(),
+  "soldAt": zod.coerce.date(),
+  "kind": zod.enum(['sale', 'return']),
+  "status": zod.enum(['completed', 'voided']),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "cashier": zod.string(),
+  "customerName": zod.string(),
+  "itemsCount": zod.number().int(),
+  "grossAmount": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatAmount": zod.string(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string(),
+  "accountName": zod.string()
+})),
+  "returnedAmount": zod.string(),
+  "originalSaleId": zod.number().int().nullable(),
+  "originalReceiptNo": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "productCode": zod.string().nullable(),
+  "unit": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatRate": zod.number(),
+  "vatAmount": zod.string(),
+  "costPrice": zod.string().nullable(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "returnedQuantity": zod.number()
+})),
+  "returns": zod.array(zod.object({
+  "id": zod.number().int(),
+  "receiptNo": zod.string(),
+  "soldAt": zod.coerce.date(),
+  "kind": zod.enum(['sale', 'return']),
+  "status": zod.enum(['completed', 'voided']),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "cashier": zod.string(),
+  "customerName": zod.string(),
+  "itemsCount": zod.number().int(),
+  "grossAmount": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatAmount": zod.string(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string(),
+  "accountName": zod.string()
+})),
+  "returnedAmount": zod.string(),
+  "originalSaleId": zod.number().int().nullable(),
+  "originalReceiptNo": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}))
+})
+
+
+/**
+ * @summary Cancel a receipt, restoring stock and reversing payments
+ */
+
+export const voidReceiptBodyReasonMin = 3;
+
+
+
+export const VoidReceiptBody = zod.object({
+  "receiptId": zod.number().int().min(1),
+  "reason": zod.string().min(voidReceiptBodyReasonMin)
+})
+
+export const VoidReceiptResponse = zod.object({
+  "receipt": zod.object({
+  "id": zod.number().int(),
+  "receiptNo": zod.string(),
+  "soldAt": zod.coerce.date(),
+  "kind": zod.enum(['sale', 'return']),
+  "status": zod.enum(['completed', 'voided']),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "cashier": zod.string(),
+  "customerName": zod.string(),
+  "itemsCount": zod.number().int(),
+  "grossAmount": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatAmount": zod.string(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string(),
+  "accountName": zod.string()
+})),
+  "returnedAmount": zod.string(),
+  "originalSaleId": zod.number().int().nullable(),
+  "originalReceiptNo": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "productCode": zod.string().nullable(),
+  "unit": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatRate": zod.number(),
+  "vatAmount": zod.string(),
+  "costPrice": zod.string().nullable(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "returnedQuantity": zod.number()
+})),
+  "returns": zod.array(zod.object({
+  "id": zod.number().int(),
+  "receiptNo": zod.string(),
+  "soldAt": zod.coerce.date(),
+  "kind": zod.enum(['sale', 'return']),
+  "status": zod.enum(['completed', 'voided']),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "cashier": zod.string(),
+  "customerName": zod.string(),
+  "itemsCount": zod.number().int(),
+  "grossAmount": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatAmount": zod.string(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string(),
+  "accountName": zod.string()
+})),
+  "returnedAmount": zod.string(),
+  "originalSaleId": zod.number().int().nullable(),
+  "originalReceiptNo": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}))
+})
+
+
+/**
+ * @summary Accept goods back from a customer against a receipt
+ */
+
+export const returnReceiptBodyReasonMin = 3;
+
+
+
+export const returnReceiptBodyItemsItemQuantityExclusiveMin = 0;
+export const returnReceiptBodyItemsItemQuantityMax = 100000000;
+
+
+
+
+export const ReturnReceiptBody = zod.object({
+  "receiptId": zod.number().int().min(1),
+  "date": zod.coerce.date(),
+  "reason": zod.string().min(returnReceiptBodyReasonMin),
+  "refundMethod": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "accountId": zod.number().int().min(1).nullish(),
+  "items": zod.array(zod.object({
+  "lineId": zod.number().int().min(1),
+  "quantity": zod.number().gt(returnReceiptBodyItemsItemQuantityExclusiveMin).max(returnReceiptBodyItemsItemQuantityMax)
+})).min(1)
+})
+
+export const ReturnReceiptResponse = zod.object({
+  "receipt": zod.object({
+  "id": zod.number().int(),
+  "receiptNo": zod.string(),
+  "soldAt": zod.coerce.date(),
+  "kind": zod.enum(['sale', 'return']),
+  "status": zod.enum(['completed', 'voided']),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "cashier": zod.string(),
+  "customerName": zod.string(),
+  "itemsCount": zod.number().int(),
+  "grossAmount": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatAmount": zod.string(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string(),
+  "accountName": zod.string()
+})),
+  "returnedAmount": zod.string(),
+  "originalSaleId": zod.number().int().nullable(),
+  "originalReceiptNo": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "productCode": zod.string().nullable(),
+  "unit": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatRate": zod.number(),
+  "vatAmount": zod.string(),
+  "costPrice": zod.string().nullable(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "returnedQuantity": zod.number()
+})),
+  "returns": zod.array(zod.object({
+  "id": zod.number().int(),
+  "receiptNo": zod.string(),
+  "soldAt": zod.coerce.date(),
+  "kind": zod.enum(['sale', 'return']),
+  "status": zod.enum(['completed', 'voided']),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "cashier": zod.string(),
+  "customerName": zod.string(),
+  "itemsCount": zod.number().int(),
+  "grossAmount": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatAmount": zod.string(),
+  "cost": zod.string().nullable(),
+  "grossProfit": zod.string().nullable(),
+  "payments": zod.array(zod.object({
+  "method": zod.enum(['cash', 'card', 'transfer', 'credit', 'other']),
+  "amount": zod.string(),
+  "accountName": zod.string()
+})),
+  "returnedAmount": zod.string(),
+  "originalSaleId": zod.number().int().nullable(),
+  "originalReceiptNo": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string(),
+  "source": zod.enum(['demo', 'manual', 'fom'])
+}))
+})
+
+
+/**
+ * @summary Supplier deliveries
+ */
+
+
+
+export const ListPurchasesQueryParams = zod.object({
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
+  "branchId": zod.coerce.number().int().min(1).optional(),
+  "search": zod.coerce.string().optional(),
+  "paymentStatus": zod.enum(['paid', 'partial', 'unpaid', 'overdue']).optional()
+})
+
+export const ListPurchasesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "counterpartyId": zod.number().int().nullable(),
+  "supplierName": zod.string(),
+  "documentNo": zod.string(),
+  "invoiceNo": zod.string(),
+  "eInvoiceId": zod.string(),
+  "invoiceDate": zod.coerce.date().nullable(),
+  "receivedAt": zod.coerce.date(),
+  "itemsCount": zod.number().int(),
+  "itemsTotal": zod.string(),
+  "discount": zod.string(),
+  "extraCosts": zod.string(),
+  "extraCostsNote": zod.string(),
+  "vatAmount": zod.string(),
+  "totalAmount": zod.string(),
+  "paidAmount": zod.string(),
+  "returnedAmount": zod.string(),
+  "balance": zod.string(),
+  "dueDate": zod.coerce.date().nullable(),
+  "paymentStatus": zod.enum(['paid', 'partial', 'unpaid', 'overdue']),
+  "debtId": zod.number().int().nullable(),
+  "note": zod.string(),
+  "createdBy": zod.string()
+})
+export const ListPurchasesResponse = zod.array(ListPurchasesResponseItem)
+
+
+/**
+ * @summary Post a supplier delivery to stock, payables and cash
+ */
+
+
+export const createPurchaseBodySupplierNameMin = 2;
+
+export const createPurchaseBodyDiscountRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+export const createPurchaseBodyExtraCostsRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+export const createPurchaseBodyPaidAmountRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+
+
+export const createPurchaseBodyItemsItemQuantityExclusiveMin = 0;
+export const createPurchaseBodyItemsItemQuantityMax = 100000000;
+
+export const createPurchaseBodyItemsItemUnitCostRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+export const createPurchaseBodyItemsItemDiscountRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+export const createPurchaseBodyItemsItemVatRateMin = 0;
+export const createPurchaseBodyItemsItemVatRateMax = 100;
+
+export const createPurchaseBodyItemsItemRetailPriceRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+
+
+
+export const CreatePurchaseBody = zod.object({
+  "branchId": zod.number().int().min(1),
+  "counterpartyId": zod.number().int().min(1).nullish(),
+  "supplierName": zod.string().min(createPurchaseBodySupplierNameMin),
+  "documentNo": zod.string().optional(),
+  "invoiceNo": zod.string().optional(),
+  "eInvoiceId": zod.string().optional(),
+  "invoiceDate": zod.coerce.date().nullish(),
+  "receivedAt": zod.coerce.date(),
+  "discount": zod.string().regex(createPurchaseBodyDiscountRegExp),
+  "extraCosts": zod.string().regex(createPurchaseBodyExtraCostsRegExp),
+  "extraCostsNote": zod.string().optional(),
+  "dueDate": zod.coerce.date().nullish(),
+  "note": zod.string().optional(),
+  "paidAmount": zod.string().regex(createPurchaseBodyPaidAmountRegExp),
+  "paymentAccountId": zod.number().int().min(1).nullish(),
+  "items": zod.array(zod.object({
+  "productId": zod.number().int().min(1),
+  "quantity": zod.number().gt(createPurchaseBodyItemsItemQuantityExclusiveMin).max(createPurchaseBodyItemsItemQuantityMax),
+  "unitCost": zod.string().regex(createPurchaseBodyItemsItemUnitCostRegExp),
+  "discount": zod.string().regex(createPurchaseBodyItemsItemDiscountRegExp),
+  "vatRate": zod.number().min(createPurchaseBodyItemsItemVatRateMin).max(createPurchaseBodyItemsItemVatRateMax).optional(),
+  "expiryDate": zod.coerce.date().nullish(),
+  "retailPrice": zod.string().regex(createPurchaseBodyItemsItemRetailPriceRegExp).optional()
+})).min(1)
+})
+
+export const CreatePurchaseResponse = zod.object({
+  "purchase": zod.object({
+  "id": zod.number().int(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "counterpartyId": zod.number().int().nullable(),
+  "supplierName": zod.string(),
+  "documentNo": zod.string(),
+  "invoiceNo": zod.string(),
+  "eInvoiceId": zod.string(),
+  "invoiceDate": zod.coerce.date().nullable(),
+  "receivedAt": zod.coerce.date(),
+  "itemsCount": zod.number().int(),
+  "itemsTotal": zod.string(),
+  "discount": zod.string(),
+  "extraCosts": zod.string(),
+  "extraCostsNote": zod.string(),
+  "vatAmount": zod.string(),
+  "totalAmount": zod.string(),
+  "paidAmount": zod.string(),
+  "returnedAmount": zod.string(),
+  "balance": zod.string(),
+  "dueDate": zod.coerce.date().nullable(),
+  "paymentStatus": zod.enum(['paid', 'partial', 'unpaid', 'overdue']),
+  "debtId": zod.number().int().nullable(),
+  "note": zod.string(),
+  "createdBy": zod.string()
+}),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "productCode": zod.string().nullable(),
+  "unit": zod.string(),
+  "quantity": zod.number(),
+  "unitCost": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatRate": zod.number(),
+  "landedUnitCost": zod.string(),
+  "expiryDate": zod.coerce.date().nullable()
+})),
+  "operations": zod.array(zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['initial', 'payment', 'return', 'writeoff']),
+  "date": zod.coerce.date(),
+  "amount": zod.string(),
+  "balanceAfter": zod.string(),
+  "accountName": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string()
+})),
+  "returns": zod.array(zod.object({
+  "id": zod.number().int(),
+  "docType": zod.enum(['transfer', 'write_off', 'supplier_return', 'customer_return', 'inventory_count']),
+  "documentNo": zod.string(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "branchKind": zod.string(),
+  "toBranchId": zod.number().int().nullable(),
+  "toBranchName": zod.string().nullable(),
+  "toBranchKind": zod.string().nullable(),
+  "counterpartyName": zod.string(),
+  "purchaseId": zod.number().int().nullable(),
+  "saleId": zod.number().int().nullable(),
+  "occurredAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "note": zod.string(),
+  "itemsCount": zod.number().int(),
+  "totalCost": zod.string(),
+  "surplusValue": zod.string(),
+  "shortageValue": zod.string(),
+  "createdBy": zod.string()
+}))
+})
+
+
+/**
+ * @summary Purchase lines, payments and returns
+ */
+
+
+
+export const GetPurchaseQueryParams = zod.object({
+  "purchaseId": zod.coerce.number().int().min(1)
+})
+
+export const GetPurchaseResponse = zod.object({
+  "purchase": zod.object({
+  "id": zod.number().int(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "counterpartyId": zod.number().int().nullable(),
+  "supplierName": zod.string(),
+  "documentNo": zod.string(),
+  "invoiceNo": zod.string(),
+  "eInvoiceId": zod.string(),
+  "invoiceDate": zod.coerce.date().nullable(),
+  "receivedAt": zod.coerce.date(),
+  "itemsCount": zod.number().int(),
+  "itemsTotal": zod.string(),
+  "discount": zod.string(),
+  "extraCosts": zod.string(),
+  "extraCostsNote": zod.string(),
+  "vatAmount": zod.string(),
+  "totalAmount": zod.string(),
+  "paidAmount": zod.string(),
+  "returnedAmount": zod.string(),
+  "balance": zod.string(),
+  "dueDate": zod.coerce.date().nullable(),
+  "paymentStatus": zod.enum(['paid', 'partial', 'unpaid', 'overdue']),
+  "debtId": zod.number().int().nullable(),
+  "note": zod.string(),
+  "createdBy": zod.string()
+}),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "productCode": zod.string().nullable(),
+  "unit": zod.string(),
+  "quantity": zod.number(),
+  "unitCost": zod.string(),
+  "discount": zod.string(),
+  "total": zod.string(),
+  "vatRate": zod.number(),
+  "landedUnitCost": zod.string(),
+  "expiryDate": zod.coerce.date().nullable()
+})),
+  "operations": zod.array(zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['initial', 'payment', 'return', 'writeoff']),
+  "date": zod.coerce.date(),
+  "amount": zod.string(),
+  "balanceAfter": zod.string(),
+  "accountName": zod.string(),
+  "note": zod.string(),
+  "createdBy": zod.string()
+})),
+  "returns": zod.array(zod.object({
+  "id": zod.number().int(),
+  "docType": zod.enum(['transfer', 'write_off', 'supplier_return', 'customer_return', 'inventory_count']),
+  "documentNo": zod.string(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "branchKind": zod.string(),
+  "toBranchId": zod.number().int().nullable(),
+  "toBranchName": zod.string().nullable(),
+  "toBranchKind": zod.string().nullable(),
+  "counterpartyName": zod.string(),
+  "purchaseId": zod.number().int().nullable(),
+  "saleId": zod.number().int().nullable(),
+  "occurredAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "note": zod.string(),
+  "itemsCount": zod.number().int(),
+  "totalCost": zod.string(),
+  "surplusValue": zod.string(),
+  "shortageValue": zod.string(),
+  "createdBy": zod.string()
+}))
+})
+
+
+/**
+ * @summary Transfers, write-offs, returns and stock counts
+ */
+
+
+
+export const ListStockDocumentsQueryParams = zod.object({
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
+  "branchId": zod.coerce.number().int().min(1).optional(),
+  "docType": zod.enum(['transfer', 'write_off', 'supplier_return', 'customer_return', 'inventory_count']).optional()
+})
+
+export const ListStockDocumentsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "docType": zod.enum(['transfer', 'write_off', 'supplier_return', 'customer_return', 'inventory_count']),
+  "documentNo": zod.string(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "branchKind": zod.string(),
+  "toBranchId": zod.number().int().nullable(),
+  "toBranchName": zod.string().nullable(),
+  "toBranchKind": zod.string().nullable(),
+  "counterpartyName": zod.string(),
+  "purchaseId": zod.number().int().nullable(),
+  "saleId": zod.number().int().nullable(),
+  "occurredAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "note": zod.string(),
+  "itemsCount": zod.number().int(),
+  "totalCost": zod.string(),
+  "surplusValue": zod.string(),
+  "shortageValue": zod.string(),
+  "createdBy": zod.string()
+})
+export const ListStockDocumentsResponse = zod.array(ListStockDocumentsResponseItem)
+
+
+/**
+ * @summary Post a transfer, write-off, supplier return or stock count
+ */
+
+
+
+
+
+
+export const createStockDocumentBodyItemsItemQuantityMin = 0;
+export const createStockDocumentBodyItemsItemQuantityMax = 100000000;
+
+export const createStockDocumentBodyItemsItemUnitCostRegExp = new RegExp('^[0-9]+(\\.[0-9]{1,2})?$');
+
+
+
+export const CreateStockDocumentBody = zod.object({
+  "docType": zod.enum(['transfer', 'write_off', 'supplier_return', 'inventory_count']),
+  "branchId": zod.number().int().min(1),
+  "toBranchId": zod.number().int().min(1).nullish(),
+  "occurredAt": zod.coerce.date(),
+  "documentNo": zod.string().optional(),
+  "reason": zod.string().optional(),
+  "note": zod.string().optional(),
+  "counterpartyId": zod.number().int().min(1).nullish(),
+  "counterpartyName": zod.string().optional(),
+  "purchaseId": zod.number().int().min(1).nullish(),
+  "settlement": zod.enum(['debt', 'money', 'none']).optional(),
+  "accountId": zod.number().int().min(1).nullish(),
+  "items": zod.array(zod.object({
+  "productId": zod.number().int().min(1),
+  "quantity": zod.number().min(createStockDocumentBodyItemsItemQuantityMin).max(createStockDocumentBodyItemsItemQuantityMax),
+  "unitCost": zod.string().regex(createStockDocumentBodyItemsItemUnitCostRegExp).optional()
+})).min(1)
+})
+
+export const CreateStockDocumentResponse = zod.object({
+  "document": zod.object({
+  "id": zod.number().int(),
+  "docType": zod.enum(['transfer', 'write_off', 'supplier_return', 'customer_return', 'inventory_count']),
+  "documentNo": zod.string(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "branchKind": zod.string(),
+  "toBranchId": zod.number().int().nullable(),
+  "toBranchName": zod.string().nullable(),
+  "toBranchKind": zod.string().nullable(),
+  "counterpartyName": zod.string(),
+  "purchaseId": zod.number().int().nullable(),
+  "saleId": zod.number().int().nullable(),
+  "occurredAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "note": zod.string(),
+  "itemsCount": zod.number().int(),
+  "totalCost": zod.string(),
+  "surplusValue": zod.string(),
+  "shortageValue": zod.string(),
+  "createdBy": zod.string()
+}),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "productCode": zod.string().nullable(),
+  "unit": zod.string(),
+  "movementType": zod.string(),
+  "quantity": zod.number(),
+  "expectedQuantity": zod.number().nullable(),
+  "countedQuantity": zod.number().nullable(),
+  "unitCost": zod.string().nullable(),
+  "total": zod.string().nullable()
+}))
+})
+
+
+/**
+ * @summary Stock document lines
+ */
+
+
+
+export const GetStockDocumentQueryParams = zod.object({
+  "documentId": zod.coerce.number().int().min(1)
+})
+
+export const GetStockDocumentResponse = zod.object({
+  "document": zod.object({
+  "id": zod.number().int(),
+  "docType": zod.enum(['transfer', 'write_off', 'supplier_return', 'customer_return', 'inventory_count']),
+  "documentNo": zod.string(),
+  "branchId": zod.number().int(),
+  "branchName": zod.string(),
+  "branchKind": zod.string(),
+  "toBranchId": zod.number().int().nullable(),
+  "toBranchName": zod.string().nullable(),
+  "toBranchKind": zod.string().nullable(),
+  "counterpartyName": zod.string(),
+  "purchaseId": zod.number().int().nullable(),
+  "saleId": zod.number().int().nullable(),
+  "occurredAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "note": zod.string(),
+  "itemsCount": zod.number().int(),
+  "totalCost": zod.string(),
+  "surplusValue": zod.string(),
+  "shortageValue": zod.string(),
+  "createdBy": zod.string()
+}),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "productCode": zod.string().nullable(),
+  "unit": zod.string(),
+  "movementType": zod.string(),
+  "quantity": zod.number(),
+  "expectedQuantity": zod.number().nullable(),
+  "countedQuantity": zod.number().nullable(),
+  "unitCost": zod.string().nullable(),
+  "total": zod.string().nullable()
+}))
+})
 
 
 /**
@@ -554,8 +1895,8 @@ export const ListDebtsResponse = zod.array(ListDebtsResponseItem)
 
 export const GetReportQueryParams = zod.object({
   "reportType": zod.enum(['sales', 'inventory', 'expenses', 'debts', 'profit', 'cashflow']),
-  "dateFrom": zod.date().optional(),
-  "dateTo": zod.date().optional(),
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
   "branchId": zod.coerce.number().int().min(1).optional()
 })
 
@@ -580,26 +1921,110 @@ export const GetFomStatusResponse = zod.object({
   "lastSyncAt": zod.coerce.date().nullable(),
   "lastSyncStatus": zod.enum(['not_started', 'success', 'error', 'running', 'waiting']),
   "lastMessage": zod.string().nullable(),
-  "importedRecords": zod.number().int()
+  "importedRecords": zod.number().int(),
+  "running": zod.boolean(),
+  "filialIds": zod.array(zod.string()),
+  "intervalMinutes": zod.number().int(),
+  "refsIntervalMinutes": zod.number().int(),
+  "refsAt": zod.coerce.date().nullable(),
+  "lastSyncFrom": zod.coerce.date().nullable(),
+  "lastSyncTo": zod.coerce.date().nullable(),
+  "reports": zod.array(zod.object({
+  "key": zod.string(),
+  "reportId": zod.number().int(),
+  "label": zod.string(),
+  "target": zod.string(),
+  "dated": zod.boolean(),
+  "rows": zod.number().int().nullable(),
+  "imported": zod.number().int().nullable(),
+  "error": zod.string().nullable(),
+  "warning": zod.string().nullable()
+})),
+  "site": zod.object({
+  "configured": zod.boolean(),
+  "path": zod.string().nullable(),
+  "lastAt": zod.coerce.date().nullable(),
+  "lastStatus": zod.string().nullable(),
+  "lastMessage": zod.string().nullable(),
+  "lastRecords": zod.number().int()
+}),
+  "totals": zod.object({
+  "branches": zod.number().int(),
+  "products": zod.number().int(),
+  "counterparties": zod.number().int(),
+  "stockLines": zod.number().int(),
+  "purchases": zod.number().int(),
+  "sales": zod.number().int(),
+  "stockDocuments": zod.number().int()
+})
 })
 
 
 /**
- * @summary Save the FOM API base URL without storing credentials in the browser
+ * @summary REPORT.exe connection settings (access key is masked)
  */
+export const GetFomSettingsResponse = zod.object({
+  "source": zod.enum(['saved', 'env', 'none']),
+  "protocol": zod.enum(['http', 'https']),
+  "host": zod.string(),
+  "port": zod.number().int().nullable(),
+  "reportUrl": zod.string().nullable(),
+  "filialIds": zod.array(zod.string()),
+  "intervalMinutes": zod.number().int(),
+  "initialDays": zod.number().int(),
+  "timeoutSeconds": zod.number().int(),
+  "apiTokenSet": zod.boolean(),
+  "apiTokenHint": zod.string().nullable(),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Save REPORT.exe connection settings on the server
+ */
+export const saveFomSettingsBodyHostMax = 253;
+
+export const saveFomSettingsBodyPortMax = 65535;
+
+export const saveFomSettingsBodyFilialIdsMax = 500;
+
+export const saveFomSettingsBodyIntervalMinutesMin = 0;
+export const saveFomSettingsBodyIntervalMinutesMax = 1440;
+
+export const saveFomSettingsBodyInitialDaysMax = 3650;
+
+export const saveFomSettingsBodyTimeoutSecondsMin = 5;
+export const saveFomSettingsBodyTimeoutSecondsMax = 600;
+
+export const saveFomSettingsBodyApiTokenMax = 500;
+
+
+
 export const SaveFomSettingsBody = zod.object({
-  "baseUrl": zod.string().url().describe('Server URL only; never submit a FOM API key from the browser.')
+  "protocol": zod.enum(['http', 'https']),
+  "host": zod.string().min(1).max(saveFomSettingsBodyHostMax),
+  "port": zod.number().int().min(1).max(saveFomSettingsBodyPortMax).nullable(),
+  "filialIds": zod.string().max(saveFomSettingsBodyFilialIdsMax),
+  "intervalMinutes": zod.number().int().min(saveFomSettingsBodyIntervalMinutesMin).max(saveFomSettingsBodyIntervalMinutesMax),
+  "initialDays": zod.number().int().min(1).max(saveFomSettingsBodyInitialDaysMax),
+  "timeoutSeconds": zod.number().int().min(saveFomSettingsBodyTimeoutSecondsMin).max(saveFomSettingsBodyTimeoutSecondsMax),
+  "apiToken": zod.string().max(saveFomSettingsBodyApiTokenMax).optional(),
+  "clearApiToken": zod.boolean().optional()
 })
 
 export const SaveFomSettingsResponse = zod.object({
-  "connected": zod.boolean(),
-  "configured": zod.boolean(),
-  "baseUrl": zod.string().nullable(),
-  "keyConfigured": zod.boolean(),
-  "lastSyncAt": zod.coerce.date().nullable(),
-  "lastSyncStatus": zod.enum(['not_started', 'success', 'error', 'running', 'waiting']),
-  "lastMessage": zod.string().nullable(),
-  "importedRecords": zod.number().int()
+  "source": zod.enum(['saved', 'env', 'none']),
+  "protocol": zod.enum(['http', 'https']),
+  "host": zod.string(),
+  "port": zod.number().int().nullable(),
+  "reportUrl": zod.string().nullable(),
+  "filialIds": zod.array(zod.string()),
+  "intervalMinutes": zod.number().int(),
+  "initialDays": zod.number().int(),
+  "timeoutSeconds": zod.number().int(),
+  "apiTokenSet": zod.boolean(),
+  "apiTokenHint": zod.string().nullable(),
+  "updatedAt": zod.coerce.date().nullable()
 })
 
 
@@ -607,17 +2032,22 @@ export const SaveFomSettingsResponse = zod.object({
  * @summary Check FOM connectivity without exposing the server-side key
  */
 export const TestFomConnectionResponse = zod.object({
-  "status": zod.enum(['waiting', 'success', 'error']),
+  "status": zod.enum(['waiting', 'running', 'success', 'error']),
   "message": zod.string(),
   "checkedAt": zod.coerce.date()
 })
 
 
 /**
- * @summary Start an idempotent FOM import when its adapter is configured
+ * @summary Start an idempotent FOM import in the background
  */
+export const SyncFomBody = zod.object({
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional()
+})
+
 export const SyncFomResponse = zod.object({
-  "status": zod.enum(['waiting', 'success', 'error']),
+  "status": zod.enum(['waiting', 'running', 'success', 'error']),
   "message": zod.string(),
   "checkedAt": zod.coerce.date()
 })

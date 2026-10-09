@@ -22,8 +22,30 @@ export function centsMoney(value: bigint): string {
   return `${sign}${absolute / 100n}.${String(absolute % 100n).padStart(2, "0")}`;
 }
 
-function quantityMilli(value: string | number): bigint {
-  const raw = String(value);
+export function milliQuantity(value: bigint): string {
+  const sign = value < 0n ? "-" : "";
+  const absolute = value < 0n ? -value : value;
+  return `${sign}${absolute / 1000n}.${String(absolute % 1000n).padStart(3, "0")}`;
+}
+
+export function divideRounded(numerator: bigint, denominator: bigint): bigint {
+  if (denominator === 0n) return 0n;
+  const negative = numerator < 0n !== denominator < 0n;
+  const n = numerator < 0n ? -numerator : numerator;
+  const d = denominator < 0n ? -denominator : denominator;
+  const rounded = (n * 2n + d) / (2n * d);
+  return negative ? -rounded : rounded;
+}
+
+/** VAT already included in a gross amount at `rate` percent. */
+export function includedVatCents(grossCents: bigint, rate: string | number): bigint {
+  const rateBp = BigInt(Math.round(toNumber(rate) * 100));
+  if (rateBp <= 0n) return 0n;
+  return divideRounded(grossCents * rateBp, 10000n + rateBp);
+}
+
+export function quantityMilli(value: string | number): bigint {
+  const raw = typeof value === "number" ? value.toFixed(3) : String(value);
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(raw);
   if (!match) return 0n;
   const fraction = match[3] ?? "";

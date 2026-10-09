@@ -1,5 +1,11 @@
-import express, { type Express } from "express";
+import express, {
+  type Express,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
@@ -10,6 +16,8 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { assertLocalAuthConfig, localAuthEnabled } from "./lib/localAuth";
+import { BusinessError } from "./lib/ledger";
 
 const app: Express = express();
 
@@ -37,15 +45,31 @@ app.use(cors({ credentials: true, origin: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(
-  clerkMiddleware((req) => ({
-    publishableKey: publishableKeyFromHost(
-      getClerkProxyHost(req) ?? "",
-      process.env.CLERK_PUBLISHABLE_KEY,
-    ),
-  })),
-);
+if (localAuthEnabled) {
+  assertLocalAuthConfig();
+  app.use(cookieParser());
+} else {
+  app.use(
+    clerkMiddleware((req) => ({
+      publishableKey: publishableKeyFromHost(
+        getClerkProxyHost(req) ?? "",
+        process.env.CLERK_PUBLISHABLE_KEY,
+      ),
+    })),
+  );
+}
 
 app.use("/api", router);
+
+app.use(
+  (error: unknown, req: Request, res: Response, _next: NextFunction): void => {
+    if (error instanceof BusinessError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    req.log.error({ err: error }, "Unhandled request error");
+    res.status(500).json({ error: "Serverda kutilmagan xatolik yuz berdi." });
+  },
+);
 
 export default app;

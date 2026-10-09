@@ -3,8 +3,10 @@ import {
   desc,
   eq,
   ilike,
-  lte,
+  inArray,
+  ne,
   or,
+  sql,
   type SQL,
 } from "drizzle-orm";
 import {
@@ -44,6 +46,7 @@ export interface QueryFilters {
 export async function loadSaleLines(filters: QueryFilters) {
   const where = and(
     sourceCondition(salesTable.source, filters.mode),
+    ne(salesTable.status, "voided"),
     filters.branchId ? eq(salesTable.branchId, filters.branchId) : undefined,
     dateConditions(salesTable.soldAt, filters.dateFrom, filters.dateTo),
     filters.paymentType
@@ -75,6 +78,7 @@ export async function loadSaleLines(filters: QueryFilters) {
       costPrice: saleItemsTable.costPrice,
       paymentType: salesTable.paymentType,
       status: salesTable.status,
+      kind: salesTable.kind,
       source: salesTable.source,
     })
     .from(salesTable)
@@ -86,10 +90,13 @@ export async function loadSaleLines(filters: QueryFilters) {
 
   const rows = filters.limit ? await query.limit(filters.limit) : await query;
   return rows.map((row) => {
+    // Customer returns are stored with positive quantities and reduce sales.
+    const sign = row.kind === "return" ? -1n : 1n;
+    const quantity = row.kind === "return" ? `-${row.quantity}` : row.quantity;
     const revenueCents =
-      extendedMoney(row.unitPrice, row.quantity) - moneyCents(row.discount);
+      extendedMoney(row.unitPrice, quantity) - sign * moneyCents(row.discount);
     const costCents = row.costPrice
-      ? extendedMoney(row.costPrice, row.quantity)
+      ? extendedMoney(row.costPrice, quantity)
       : null;
     return {
       id: row.id,
@@ -100,7 +107,7 @@ export async function loadSaleLines(filters: QueryFilters) {
       cashier: row.cashier,
       productId: row.productId,
       productName: row.productName,
-      quantity: toNumber(row.quantity),
+      quantity: toNumber(quantity),
       unitPrice: row.unitPrice,
       discount: row.discount,
       costPrice: row.costPrice,
@@ -147,6 +154,7 @@ export async function loadExpenses(filters: QueryFilters) {
 export async function loadInventory(filters: QueryFilters) {
   const conditions: Array<SQL | undefined> = [
     sourceCondition(inventoryBalancesTable.source, filters.mode),
+    sql`not (${inventoryBalancesTable.source} = 'fom' and ${inventoryBalancesTable.quantity} = 0)`,
     filters.branchId
       ? eq(inventoryBalancesTable.branchId, filters.branchId)
       : undefined,
@@ -154,6 +162,9 @@ export async function loadInventory(filters: QueryFilters) {
       ? or(
           ilike(productsTable.name, `%${filters.search}%`),
           ilike(productsTable.barcode, `%${filters.search}%`),
+          ilike(productsTable.code, `%${filters.search}%`),
+          ilike(productsTable.manufacturer, `%${filters.search}%`),
+          ilike(productsTable.ikpu, `%${filters.search}%`),
         )
       : undefined,
   ];
@@ -163,6 +174,8 @@ export async function loadInventory(filters: QueryFilters) {
       productName: productsTable.name,
       barcode: productsTable.barcode,
       group: productsTable.groupName,
+      manufacturer: productsTable.manufacturer,
+      ikpu: productsTable.ikpu,
       branchId: inventoryBalancesTable.branchId,
       branchName: branchesTable.name,
       quantity: inventoryBalancesTable.quantity,
@@ -188,6 +201,8 @@ export async function loadInventory(filters: QueryFilters) {
       productName: row.productName,
       barcode: row.barcode,
       group: row.group,
+      manufacturer: row.manufacturer,
+      ikpu: row.ikpu,
       branchId: row.branchId,
       branchName: row.branchName,
       quantity: toNumber(row.quantity),
@@ -200,12 +215,23 @@ export async function loadInventory(filters: QueryFilters) {
   });
 }
 
-export async function loadDebts(filters: QueryFilters & { kind?: string }) {
+export type DebtState = "open" | "partial" | "closed" | "overdue" | "cancelled";
+
+export async function loadDebts(
+  filters: QueryFilters & {
+    kind?: string;
+    status?: "open" | "closed" | "overdue" | "all";
+    counterpartyId?: number;
+    debtId?: number;
+    includeCancelled?: boolean;
+  },
+) {
   const rows = await db
     .select({
       id: debtsTable.id,
       kind: debtsTable.kind,
       counterparty: debtsTable.counterparty,
+      counterpartyId: debtsTable.counterpartyId,
       documentNo: debtsTable.documentNo,
       branchId: debtsTable.branchId,
       branchName: branchesTable.name,
@@ -213,6 +239,11 @@ export async function loadDebts(filters: QueryFilters & { kind?: string }) {
       dueDate: debtsTable.dueDate,
       initialAmount: debtsTable.initialAmount,
       paidAmount: debtsTable.paidAmount,
+      returnedAmount: debtsTable.returnedAmount,
+      originType: debtsTable.originType,
+      originId: debtsTable.originId,
+      status: debtsTable.status,
+      note: debtsTable.note,
       source: debtsTable.source,
     })
     .from(debtsTable)
@@ -220,8 +251,15 @@ export async function loadDebts(filters: QueryFilters & { kind?: string }) {
     .where(
       and(
         sourceCondition(debtsTable.source, filters.mode),
+        filters.includeCancelled || filters.debtId
+          ? undefined
+          : ne(debtsTable.status, "cancelled"),
+        filters.debtId ? eq(debtsTable.id, filters.debtId) : undefined,
         filters.branchId ? eq(debtsTable.branchId, filters.branchId) : undefined,
         filters.kind ? eq(debtsTable.kind, filters.kind) : undefined,
+        filters.counterpartyId
+          ? eq(debtsTable.counterpartyId, filters.counterpartyId)
+          : undefined,
         filters.search
           ? or(
               ilike(debtsTable.counterparty, `%${filters.search}%`),
@@ -231,28 +269,73 @@ export async function loadDebts(filters: QueryFilters & { kind?: string }) {
       ),
     )
     .orderBy(desc(debtsTable.dueDate));
-  return rows.map((row) => ({
-    ...row,
-    balance: centsMoney(
-      moneyCents(row.initialAmount) - moneyCents(row.paidAmount),
-    ),
-  }));
+  const today = new Date().toISOString().slice(0, 10);
+  const mapped = rows.map((row) => {
+    const balanceCents =
+      moneyCents(row.initialAmount) -
+      moneyCents(row.paidAmount) -
+      moneyCents(row.returnedAmount);
+    const settled =
+      moneyCents(row.paidAmount) + moneyCents(row.returnedAmount) > 0n;
+    let state: DebtState;
+    if (row.status === "cancelled") state = "cancelled";
+    else if (balanceCents <= 0n) state = "closed";
+    else if (row.dueDate < today) state = "overdue";
+    else if (settled) state = "partial";
+    else state = "open";
+    const overdueDays =
+      state === "overdue"
+        ? Math.floor(
+            (Date.parse(today) - Date.parse(row.dueDate)) / (24 * 60 * 60 * 1000),
+          )
+        : 0;
+    const { status: _status, ...rest } = row;
+    return {
+      ...rest,
+      balance: centsMoney(balanceCents),
+      state,
+      overdueDays,
+    };
+  });
+  if (!filters.status || filters.status === "all") return mapped;
+  if (filters.status === "open") {
+    return mapped.filter((debt) => debt.state !== "closed" && debt.state !== "cancelled");
+  }
+  if (filters.status === "overdue") {
+    return mapped.filter((debt) => debt.state === "overdue");
+  }
+  return mapped.filter((debt) => debt.state === "closed");
 }
 
-export async function loadMoneyTransactions(filters: QueryFilters) {
+export async function loadMoneyTransactions(
+  filters: QueryFilters & {
+    accountId?: number;
+    type?: string;
+    direction?: string;
+    ids?: number[];
+  },
+) {
   const rows = await db
     .select({
       id: moneyTransactionsTable.id,
       date: moneyTransactionsTable.date,
       type: moneyTransactionsTable.type,
+      category: moneyTransactionsTable.category,
       amount: moneyTransactionsTable.amount,
       direction: moneyTransactionsTable.direction,
+      accountId: moneyTransactionsTable.accountId,
       accountName: cashAccountsTable.name,
+      accountKind: cashAccountsTable.kind,
       branchId: moneyTransactionsTable.branchId,
       branchName: branchesTable.name,
+      counterpartyName: moneyTransactionsTable.counterpartyName,
       transferGroupId: moneyTransactionsTable.transferGroupId,
+      debtId: moneyTransactionsTable.debtId,
+      saleId: moneyTransactionsTable.saleId,
+      purchaseId: moneyTransactionsTable.purchaseId,
       documentNo: moneyTransactionsTable.documentNo,
       note: moneyTransactionsTable.note,
+      createdBy: moneyTransactionsTable.createdBy,
       source: moneyTransactionsTable.source,
     })
     .from(moneyTransactionsTable)
@@ -271,22 +354,28 @@ export async function loadMoneyTransactions(filters: QueryFilters) {
           ? eq(moneyTransactionsTable.branchId, filters.branchId)
           : undefined,
         dateConditions(moneyTransactionsTable.date, filters.dateFrom, filters.dateTo),
+        filters.accountId
+          ? eq(moneyTransactionsTable.accountId, filters.accountId)
+          : undefined,
+        filters.type ? eq(moneyTransactionsTable.type, filters.type) : undefined,
+        filters.direction
+          ? eq(moneyTransactionsTable.direction, filters.direction)
+          : undefined,
+        filters.ids ? inArray(moneyTransactionsTable.id, filters.ids) : undefined,
+        filters.search
+          ? or(
+              ilike(moneyTransactionsTable.note, `%${filters.search}%`),
+              ilike(moneyTransactionsTable.documentNo, `%${filters.search}%`),
+              ilike(moneyTransactionsTable.counterpartyName, `%${filters.search}%`),
+              ilike(moneyTransactionsTable.category, `%${filters.search}%`),
+            )
+          : undefined,
       ),
     )
-    .orderBy(desc(moneyTransactionsTable.date));
+    .orderBy(desc(moneyTransactionsTable.date), desc(moneyTransactionsTable.id));
   return rows.map((row) => ({
-    id: row.id,
-    date: row.date,
-    type: row.type,
-    amount: row.amount,
-    direction: row.direction,
-    accountName: row.accountName,
-    branchId: row.branchId,
+    ...row,
     branchName: row.branchName ?? "Kompaniya",
-    transferGroupId: row.transferGroupId,
-    documentNo: row.documentNo,
-    note: row.note,
-    source: row.source,
   }));
 }
 

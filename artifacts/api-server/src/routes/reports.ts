@@ -49,7 +49,7 @@ router.get("/reports", async (req, res): Promise<void> => {
         Tushum: sale.revenue,
         Tannarx: sale.costPrice,
         "Yalpi foyda": sale.grossProfit,
-        To‘lov: sale.paymentType,
+        "To‘lov": sale.paymentType,
         Manba: sale.source,
       }));
       total = sales.reduce((sum, sale) => sum + sale.revenueCents, 0n);
@@ -96,7 +96,7 @@ router.get("/reports", async (req, res): Promise<void> => {
         "Berilgan sana": debt.issuedDate,
         "To‘lov muddati": debt.dueDate,
         "Boshlang‘ich qarz": debt.initialAmount,
-        To‘langan: debt.paidAmount,
+        "To‘langan": debt.paidAmount,
         Qoldiq: debt.balance,
       }));
       total = debts.reduce((sum, debt) => sum + moneyCents(debt.balance), 0n);
@@ -110,7 +110,7 @@ router.get("/reports", async (req, res): Promise<void> => {
         Turi: item.type,
         Hisob: item.accountName,
         Filial: item.branchName,
-        Yo‘nalish: item.transferGroupId
+        "Yo‘nalish": item.transferGroupId
           ? "Ichki o‘tkazma"
           : item.direction === "in"
             ? "Kirim"

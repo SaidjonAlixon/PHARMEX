@@ -11,6 +11,7 @@ export type FomActionResultStatus = typeof FomActionResultStatus[keyof typeof Fo
 
 export const FomActionResultStatus = {
   waiting: 'waiting',
+  running: 'running',
   success: 'success',
   error: 'error',
 } as const;

@@ -38,7 +38,9 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- The Railway database is shared with another app. `drizzle-kit push` ignores `tablesFilter` for sequences and tries to drop the other app's `*_id_seq`; do not run `push` against it. Generate SQL with `drizzle-kit generate` and apply only `pharmacy_*` statements.
+- Auth without Clerk: set `AUTH_MODE=local` + `SESSION_SECRET` (32+ chars) on the API and `VITE_AUTH_MODE=local` on the web app. `ADMIN_USERNAME` / `ADMIN_PASSWORD` create the first admin on startup if it doesn't exist (never overwritten).
+- Locally the web app reaches the API through the Vite proxy: set `API_PROXY_TARGET=http://localhost:8080`.
 
 ## Pointers
 

@@ -1,0 +1,18 @@
+# Secrets and local-only data (test database, logs, credentials) must never be uploaded
+.env
+.env.*
+!.env.example
+.local
+.agents
+.conversation
+.cache
+.replit
+.replitignore
+replit.md
+
+# Installed / built on Vercel
+node_modules
+**/node_modules
+**/dist
+*.tsbuildinfo
+.vercel

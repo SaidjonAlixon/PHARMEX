@@ -3,16 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>Dorixona moliyaviy boshqaruvi</title>
+    <title>PHARMEX — Dorixona moliyaviy boshqaruvi</title>
     <meta name="description" content="Dorixona moliyaviy boshqaruvi — built on Replit. Update this description to reflect the app." />
     <meta name="robots" content="index, follow" />
-    <meta property="og:title" content="Dorixona moliyaviy boshqaruvi" />
+    <meta property="og:title" content="PHARMEX — Dorixona moliyaviy boshqaruvi" />
     <meta property="og:description" content="Dorixona moliyaviy boshqaruvi — built on Replit. Update this description to reflect the app." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Dorixona moliyaviy boshqaruvi" />
+    <meta name="twitter:title" content="PHARMEX — Dorixona moliyaviy boshqaruvi" />
     <meta name="twitter:description" content="Dorixona moliyaviy boshqaruvi — built on Replit. Update this description to reflect the app." />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      try {
+        var theme = localStorage.getItem('pharmex-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        if (theme === 'dark') document.documentElement.classList.add('dark');
+        document.documentElement.style.colorScheme = theme;
+      } catch (e) {}
+    </script>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">

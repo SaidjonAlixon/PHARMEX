@@ -5,6 +5,7 @@
  * Dorixona moliyaviy boshqaruv platformasi API
  * OpenAPI spec version: 0.1.0
  */
+import type { MoneyTransferInputKind } from './moneyTransferInputKind';
 
 export interface MoneyTransferInput {
   /** @minimum 1 */
@@ -15,4 +16,5 @@ export interface MoneyTransferInput {
   amount: string;
   date: Date;
   note: string;
+  kind?: MoneyTransferInputKind;
 }

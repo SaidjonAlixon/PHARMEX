@@ -5,6 +5,7 @@
  * Dorixona moliyaviy boshqaruv platformasi API
  * OpenAPI spec version: 0.1.0
  */
+import type { BranchKind } from './branchKind';
 import type { BranchSource } from './branchSource';
 
 export interface Branch {
@@ -12,6 +13,7 @@ export interface Branch {
   name: string;
   /** @nullable */
   fomId?: string | null;
+  kind: BranchKind;
   region: string;
   address: string;
   manager: string;

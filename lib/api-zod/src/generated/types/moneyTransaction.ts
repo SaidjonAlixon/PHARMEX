@@ -12,13 +12,26 @@ export interface MoneyTransaction {
   id: number;
   date: Date;
   type: string;
+  category: string;
   amount: string;
   direction: MoneyTransactionDirection;
+  accountId: number;
   accountName: string;
+  accountKind: string;
   /** @nullable */
   branchId?: number | null;
   branchName: string;
+  counterpartyName: string;
+  /** @nullable */
+  transferGroupId: string | null;
+  /** @nullable */
+  debtId: number | null;
+  /** @nullable */
+  saleId: number | null;
+  /** @nullable */
+  purchaseId: number | null;
   documentNo: string;
   note: string;
+  createdBy: string;
   source: MoneyTransactionSource;
 }

@@ -5,19 +5,35 @@ import branchesRouter from "./branches";
 import dashboardRouter from "./dashboard";
 import tradeRouter from "./trade";
 import financeRouter from "./finance";
+import debtsRouter from "./debts";
+import catalogRouter from "./catalog";
+import receiptsRouter from "./receipts";
+import purchasesRouter from "./purchases";
+import stockRouter from "./stock";
 import reportsRouter from "./reports";
-import fomRouter from "./fom";
+import fomRouter, { fomSiteRouter } from "./fom";
+import authRouter from "./auth";
+import accountsRouter from "./accounts";
 import { requireClerkUser } from "../middlewares/requireClerkUser";
+import { localAuthEnabled } from "../lib/localAuth";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(fomSiteRouter);
+if (localAuthEnabled) router.use(authRouter);
 router.use(requireClerkUser);
 router.use(identityRouter);
+if (localAuthEnabled) router.use(accountsRouter);
 router.use(branchesRouter);
 router.use(dashboardRouter);
 router.use(tradeRouter);
 router.use(financeRouter);
+router.use(debtsRouter);
+router.use(catalogRouter);
+router.use(receiptsRouter);
+router.use(purchasesRouter);
+router.use(stockRouter);
 router.use(reportsRouter);
 router.use(fomRouter);
 

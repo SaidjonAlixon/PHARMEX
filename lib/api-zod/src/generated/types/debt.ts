@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DebtKind } from './debtKind';
+import type { DebtOriginType } from './debtOriginType';
 import type { DebtSource } from './debtSource';
+import type { DebtState } from './debtState';
 
 export interface Debt {
   id: number;
@@ -19,6 +21,15 @@ export interface Debt {
   dueDate: Date;
   initialAmount: string;
   paidAmount: string;
+  returnedAmount: string;
   balance: string;
+  /** @nullable */
+  counterpartyId: number | null;
+  originType: DebtOriginType;
+  /** @nullable */
+  originId: number | null;
+  state: DebtState;
+  overdueDays: number;
+  note: string;
   source: DebtSource;
 }

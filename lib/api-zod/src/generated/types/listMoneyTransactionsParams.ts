@@ -8,6 +8,7 @@
 import type { BranchIdParameter } from './branchIdParameter';
 import type { DateFromParameter } from './dateFromParameter';
 import type { DateToParameter } from './dateToParameter';
+import type { ListMoneyTransactionsDirection } from './listMoneyTransactionsDirection';
 
 export type ListMoneyTransactionsParams = {
 dateFrom?: DateFromParameter;
@@ -16,4 +17,11 @@ dateTo?: DateToParameter;
  * @minimum 1
  */
 branchId?: BranchIdParameter;
+/**
+ * @minimum 1
+ */
+accountId?: number;
+type?: string;
+direction?: ListMoneyTransactionsDirection;
+search?: string;
 };

@@ -15,4 +15,6 @@ export interface ExpenseInput {
   description: string;
   /** @pattern ^[0-9]+(\.[0-9]{1,2})?$ */
   amount: string;
+  /** @minimum 1 */
+  accountId?: number;
 }
