@@ -6,9 +6,6 @@
 .agents
 .conversation
 .cache
-.replit
-.replitignore
-replit.md
 
 # Installed / built on Vercel
 node_modules
