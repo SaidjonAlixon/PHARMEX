@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Dorixona moliyaviy boshqaruvi"
+description = "Ko‘p filialli dorixona tarmog‘i uchun sotuv, pul oqimi, ombor, qarzdorlik va foydani yagona joyda boshqarish platformasi. FOM ma’lumotlari uchun xavfsiz integratsiya qatlami va sinov rejimi mavjud."
+version = "1.0.0"
+id = "artifacts/dorixona-moliya"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23723
+
+[services.development]
+run = "pnpm --filter @workspace/dorixona-moliya run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/dorixona-moliya", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/dorixona-moliya/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23723"
+BASE_PATH = "/"

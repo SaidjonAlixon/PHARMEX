@@ -3,20 +3,26 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Dorixona moliyaviy boshqaruv platformasi API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: identity
+  - name: dashboard
+  - name: branches
+  - name: trade
+  - name: finance
+  - name: debts
+  - name: reports
+  - name: fom
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +30,772 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /me:
+    get:
+      operationId: getCurrentUser
+      tags: [identity]
+      summary: Current signed-in user and role
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+        "401":
+          $ref: "#/components/responses/BadRequest"
+  /users:
+    get:
+      operationId: listUsers
+      tags: [identity]
+      summary: List application users (administrator only)
+      responses:
+        "200":
+          description: Users and assigned roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppUser"
+        "403":
+          $ref: "#/components/responses/BadRequest"
+  /users/role:
+    patch:
+      operationId: updateUserRole
+      tags: [identity]
+      summary: Change an application user's role (administrator only)
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRoleInput"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Filtered financial overview and chart data
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+      responses:
+        "200":
+          description: Financial overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /branches:
+    get:
+      operationId: listBranches
+      tags: [branches]
+      summary: List pharmacy branches
+      responses:
+        "200":
+          description: Branches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Branch"
+    post:
+      operationId: createBranch
+      tags: [branches]
+      summary: Register a branch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BranchInput"
+      responses:
+        "201":
+          description: Created branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /branch-detail:
+    get:
+      operationId: getBranch
+      tags: [branches]
+      summary: Branch details
+      parameters:
+        - $ref: "#/components/parameters/BranchIdRequired"
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+      responses:
+        "200":
+          description: Branch and financial summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /sales:
+    get:
+      operationId: listSales
+      tags: [trade]
+      summary: Search sales documents and line items
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: paymentType
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: Sales
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sale"
+  /inventory:
+    get:
+      operationId: listInventory
+      tags: [trade]
+      summary: Branch inventory balances
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Inventory balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryItem"
+  /product-detail:
+    get:
+      operationId: getProduct
+      tags: [trade]
+      summary: Product details and branch balances
+      parameters:
+        - name: productId
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /expenses:
+    get:
+      operationId: listExpenses
+      tags: [finance]
+      summary: Search expenses
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+        - name: category
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Expenses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Expense"
+    post:
+      operationId: createExpense
+      tags: [finance]
+      summary: Record a manual expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseInput"
+      responses:
+        "201":
+          description: Created expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /cash-accounts:
+    get:
+      operationId: listCashAccounts
+      tags: [finance]
+      summary: Cash desks and bank accounts
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+      responses:
+        "200":
+          description: Cash and bank balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CashAccount"
+  /money-transactions:
+    get:
+      operationId: listMoneyTransactions
+      tags: [finance]
+      summary: Cash flow operations
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+      responses:
+        "200":
+          description: Money operations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MoneyTransaction"
+  /money-transfers:
+    post:
+      operationId: createMoneyTransfer
+      tags: [finance]
+      summary: Transfer money between company cash or bank accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoneyTransferInput"
+      responses:
+        "201":
+          description: Matched debit and credit entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoneyTransferResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /debts:
+    get:
+      operationId: listDebts
+      tags: [debts]
+      summary: Receivables and payables
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [payable, receivable]
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Debts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Debt"
+  /reports:
+    get:
+      operationId: getReport
+      tags: [reports]
+      summary: Filtered report rows and totals
+      parameters:
+        - name: reportType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [sales, inventory, expenses, debts, profit, cashflow]
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+      responses:
+        "200":
+          description: Report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+  /fom/status:
+    get:
+      operationId: getFomStatus
+      tags: [fom]
+      summary: FOM integration readiness and latest import
+      responses:
+        "200":
+          description: Integration state (never returns a secret)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FomStatus"
+  /fom/settings:
+    put:
+      operationId: saveFomSettings
+      tags: [fom]
+      summary: Save the FOM API base URL without storing credentials in the browser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FomSettingsInput"
+      responses:
+        "200":
+          description: Saved settings summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FomStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /fom/test:
+    post:
+      operationId: testFomConnection
+      tags: [fom]
+      summary: Check FOM connectivity without exposing the server-side key
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FomActionResult"
+  /fom/sync:
+    post:
+      operationId: syncFom
+      tags: [fom]
+      summary: Start an idempotent FOM import when its adapter is configured
+      responses:
+        "200":
+          description: Import state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FomActionResult"
 components:
+  parameters:
+    BranchIdRequired:
+      name: branchId
+      in: query
+      required: true
+      schema: { type: integer, minimum: 1 }
+    BranchId:
+      name: branchId
+      in: query
+      schema: { type: integer, minimum: 1 }
+    DateFrom:
+      name: dateFrom
+      in: query
+      schema: { type: string, format: date }
+    DateTo:
+      name: dateTo
+      in: query
+      schema: { type: string, format: date }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Record not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
+    AppUser:
+      type: object
+      properties:
+        id: { type: integer }
+        displayName: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [admin, finance, viewer] }
+        createdAt: { type: string, format: date-time }
+      required: [id, displayName, email, role, createdAt]
+    UserRoleInput:
+      type: object
+      properties:
+        role: { type: string, enum: [admin, finance, viewer] }
+      required: [role]
     HealthStatus:
       type: object
       properties:
-        status:
+        status: { type: string }
+      required: [status]
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+    Branch:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        fomId: { type: ["string", "null"] }
+        region: { type: string }
+        address: { type: string }
+        manager: { type: string }
+        status: { type: string }
+        source: { type: string, enum: [demo, manual, fom] }
+        updatedAt: { type: string, format: date-time }
+      required: [id, name, region, address, manager, status, source, updatedAt]
+    BranchInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2 }
+        fomId: { type: ["string", "null"] }
+        region: { type: string }
+        address: { type: string }
+        manager: { type: string }
+      required: [name, region, address, manager]
+    BranchDetail:
+      type: object
+      properties:
+        branch:
+          $ref: "#/components/schemas/Branch"
+        summary:
+          $ref: "#/components/schemas/BranchMetrics"
+        recentSales:
+          type: array
+          items:
+            $ref: "#/components/schemas/Sale"
+        expenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Expense"
+      required: [branch, summary, recentSales, expenses]
+    BranchMetrics:
+      type: object
+      properties:
+        sales: { type: string }
+        grossProfit: { type: ["string", "null"] }
+        expenses: { type: string }
+        cashBalance: { type: string }
+        inventoryValue: { type: ["string", "null"] }
+        payable: { type: string }
+        receivable: { type: string }
+      required: [sales, grossProfit, expenses, cashBalance, inventoryValue, payable, receivable]
+    Sale:
+      type: object
+      properties:
+        id: { type: integer }
+        date: { type: string, format: date-time }
+        receiptNo: { type: string }
+        branchId: { type: integer }
+        branchName: { type: string }
+        cashier: { type: string }
+        productId: { type: integer }
+        productName: { type: string }
+        quantity: { type: number }
+        unitPrice: { type: string }
+        discount: { type: string }
+        costPrice: { type: ["string", "null"] }
+        revenue: { type: string }
+        grossProfit: { type: ["string", "null"] }
+        paymentType: { type: string }
+        status: { type: string }
+        source: { type: string, enum: [demo, manual, fom] }
+      required: [id, date, receiptNo, branchId, branchName, cashier, productId, productName, quantity, unitPrice, discount, revenue, paymentType, status, source]
+    InventoryItem:
+      type: object
+      properties:
+        productId: { type: integer }
+        productName: { type: string }
+        barcode: { type: ["string", "null"] }
+        group: { type: string }
+        branchId: { type: integer }
+        branchName: { type: string }
+        quantity: { type: number }
+        costPrice: { type: ["string", "null"] }
+        retailPrice: { type: string }
+        value: { type: ["string", "null"] }
+        expiryDate: { type: ["string", "null"], format: date }
+        source: { type: string, enum: [demo, manual, fom] }
+      required: [productId, productName, group, branchId, branchName, quantity, retailPrice, source]
+    ProductDetail:
+      type: object
+      properties:
+        product:
+          $ref: "#/components/schemas/InventoryItem"
+        branchBalances:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryItem"
+      required: [product, branchBalances]
+    Expense:
+      type: object
+      properties:
+        id: { type: integer }
+        date: { type: string, format: date }
+        branchId: { type: integer }
+        branchName: { type: string }
+        category: { type: string }
+        description: { type: string }
+        amount: { type: string }
+        source: { type: string, enum: [demo, manual, fom] }
+        status: { type: string }
+      required: [id, date, branchId, branchName, category, description, amount, source, status]
+    ExpenseInput:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        branchId: { type: integer, minimum: 1 }
+        category: { type: string, minLength: 1 }
+        description: { type: string }
+        amount: { type: string, pattern: "^[0-9]+(\\.[0-9]{1,2})?$" }
+      required: [date, branchId, category, description, amount]
+    CashAccount:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        kind: { type: string, enum: [cash, bank] }
+        branchId: { type: ["integer", "null"] }
+        branchName: { type: string }
+        openingBalance: { type: string }
+        inflow: { type: string }
+        outflow: { type: string }
+        balance: { type: string }
+        source: { type: string, enum: [demo, manual, fom] }
+      required: [id, name, kind, branchName, openingBalance, inflow, outflow, balance, source]
+    MoneyTransaction:
+      type: object
+      properties:
+        id: { type: integer }
+        date: { type: string, format: date-time }
+        type: { type: string }
+        amount: { type: string }
+        direction: { type: string, enum: [in, out, internal] }
+        accountName: { type: string }
+        branchId: { type: ["integer", "null"] }
+        branchName: { type: string }
+        documentNo: { type: string }
+        note: { type: string }
+        source: { type: string, enum: [demo, manual, fom] }
+      required: [id, date, type, amount, direction, accountName, branchName, documentNo, note, source]
+    MoneyTransferInput:
+      type: object
+      properties:
+        fromAccountId: { type: integer, minimum: 1 }
+        toAccountId: { type: integer, minimum: 1 }
+        amount: { type: string, pattern: "^[0-9]+(\\.[0-9]{1,2})?$" }
+        date: { type: string, format: date-time }
+        note: { type: string }
+      required: [fromAccountId, toAccountId, amount, date, note]
+    MoneyTransferResult:
+      type: object
+      properties:
+        from:
+          $ref: "#/components/schemas/MoneyTransaction"
+        to:
+          $ref: "#/components/schemas/MoneyTransaction"
+      required: [from, to]
+    Debt:
+      type: object
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [payable, receivable] }
+        counterparty: { type: string }
+        documentNo: { type: string }
+        branchId: { type: integer }
+        branchName: { type: string }
+        issuedDate: { type: string, format: date }
+        dueDate: { type: string, format: date }
+        initialAmount: { type: string }
+        paidAmount: { type: string }
+        balance: { type: string }
+        source: { type: string, enum: [demo, manual, fom] }
+      required: [id, kind, counterparty, documentNo, branchId, branchName, issuedDate, dueDate, initialAmount, paidAmount, balance, source]
+    Dashboard:
+      type: object
+      properties:
+        mode: { type: string, enum: [demo, live, empty] }
+        totals:
+          type: object
+          properties:
+            sales: { type: ["string", "null"] }
+            netSales: { type: ["string", "null"] }
+            grossProfit: { type: ["string", "null"] }
+            netProfit: { type: ["string", "null"] }
+            expenses: { type: ["string", "null"] }
+            cash: { type: ["string", "null"] }
+            cashBalance: { type: ["string", "null"] }
+            bankBalance: { type: ["string", "null"] }
+            inventoryValue: { type: ["string", "null"] }
+            payable: { type: ["string", "null"] }
+            receivable: { type: ["string", "null"] }
+            overdueDebt: { type: ["string", "null"] }
+            goodsIn: { type: ["string", "null"] }
+            goodsOut: { type: ["string", "null"] }
+          required: [sales, netSales, grossProfit, netProfit, expenses, cash, cashBalance, bankBalance, inventoryValue, payable, receivable, overdueDebt, goodsIn, goodsOut]
+        completeness: { type: string, enum: [complete, preliminary, insufficient] }
+        updatedAt: { type: string, format: date-time }
+        salesTrend:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendPoint"
+        branchComparison:
+          type: array
+          items:
+            $ref: "#/components/schemas/BranchDashboardRow"
+        expenseBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/BreakdownPoint"
+        moneyFlow:
+          type: array
+          items:
+            $ref: "#/components/schemas/MoneyFlowPoint"
+        topProducts:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopProduct"
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alert"
+      required: [mode, totals, completeness, updatedAt, salesTrend, branchComparison, expenseBreakdown, moneyFlow, topProducts, alerts]
+    TrendPoint:
+      type: object
+      properties:
+        label: { type: string }
+        sales: { type: string }
+        cost: { type: string }
+        grossProfit: { type: string }
+        netProfit: { type: ["string", "null"] }
+      required: [label, sales, cost, grossProfit, netProfit]
+    BranchDashboardRow:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        sales: { type: string }
+        grossProfit: { type: ["string", "null"] }
+        netProfit: { type: ["string", "null"] }
+        expenses: { type: string }
+        cashBalance: { type: string }
+        inventoryValue: { type: ["string", "null"] }
+        debt: { type: string }
+        updatedAt: { type: string, format: date-time }
+      required: [id, name, sales, grossProfit, netProfit, expenses, cashBalance, inventoryValue, debt, updatedAt]
+    BreakdownPoint:
+      type: object
+      properties:
+        label: { type: string }
+        value: { type: string }
+      required: [label, value]
+    MoneyFlowPoint:
+      type: object
+      properties:
+        label: { type: string }
+        inflow: { type: string }
+        outflow: { type: string }
+      required: [label, inflow, outflow]
+    TopProduct:
+      type: object
+      properties:
+        productId: { type: integer }
+        name: { type: string }
+        quantity: { type: number }
+        sales: { type: string }
+        grossProfit: { type: ["string", "null"] }
+      required: [productId, name, quantity, sales, grossProfit]
+    Alert:
+      type: object
+      properties:
+        id: { type: string }
+        severity: { type: string, enum: [warning, critical, info] }
+        title: { type: string }
+        description: { type: string }
+        target: { type: string }
+      required: [id, severity, title, description, target]
+    Report:
+      type: object
+      properties:
+        reportType: { type: string }
+        mode: { type: string, enum: [demo, live, empty] }
+        columns:
+          type: array
+          items: { type: string }
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        total: { type: ["string", "null"] }
+        updatedAt: { type: string, format: date-time }
+      required: [reportType, mode, columns, rows, total, updatedAt]
+    FomStatus:
+      type: object
+      properties:
+        connected: { type: boolean }
+        configured: { type: boolean }
+        baseUrl: { type: ["string", "null"] }
+        keyConfigured: { type: boolean }
+        lastSyncAt: { type: ["string", "null"], format: date-time }
+        lastSyncStatus: { type: string, enum: [not_started, success, error, running, waiting] }
+        lastMessage: { type: ["string", "null"] }
+        importedRecords: { type: integer }
+      required: [connected, configured, baseUrl, keyConfigured, lastSyncAt, lastSyncStatus, lastMessage, importedRecords]
+    FomSettingsInput:
+      type: object
+      properties:
+        baseUrl:
           type: string
-      required:
-        - status
+          format: uri
+          description: Server URL only; never submit a FOM API key from the browser.
+      required: [baseUrl]
+    FomActionResult:
+      type: object
+      properties:
+        status: { type: string, enum: [waiting, success, error] }
+        message: { type: string }
+        checkedAt: { type: string, format: date-time }
+      required: [status, message, checkedAt]
 

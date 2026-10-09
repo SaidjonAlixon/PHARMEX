@@ -1,0 +1,751 @@
+# REPLIT AI UCHUN TO‘LIQ TEXNIK TOPSHIRIQ VA ISHLAB CHIQISH PROMPTI
+
+## LOYIHA: DORIXONA TARMOG‘I UCHUN YAGONA MOLIYAVIY BOSHQARUV PLATFORMASI
+
+Sen tajribali full-stack dasturchi, dasturiy arxitektor, moliyaviy tizimlar mutaxassisi va professional UI/UX dizayner sifatida ishlaysan.
+
+Menga ko‘p filialli dorixona tarmog‘ining barcha moliyaviy va operatsion ma’lumotlarini bitta joyda birlashtiradigan zamonaviy, professional, to‘liq ishlaydigan veb-platforma yaratib ber.
+
+Platforma Replit muhitida ishlab chiqilsin. Hozircha FOM API manzili va API kaliti berilmagan. Shuning uchun birinchi bosqichda platformaning barcha sahifalari, ma’lumotlar bazasi, hisob-kitoblari, dashboardi, filtrlari, jadvallari, hisobotlari va integratsiyaga tayyor backend to‘liq ishlab chiqilsin. FOM API keyin berilganda uni ulash imkoniyati mavjud bo‘lsin.
+
+Faqat dizayn yoki statik maket yaratma. Haqiqiy backend, ma’lumotlar bazasi, ishlaydigan funksiyalar, moliyaviy hisob-kitoblar va ma’lumotlar bilan ishlaydigan interfeys yarat.
+
+Barcha foydalanuvchiga ko‘rinadigan matnlar o‘zbek tilida, lotin yozuvida bo‘lsin.
+
+---
+
+# 1. PLATFORMANING ASOSIY VAZIFASI
+
+Platformaning asosiy maqsadi — dorixona kompaniyasining barcha filiallarini bitta markaziy boshqaruv tizimiga birlashtirish va kompaniyaning umumiy moliyaviy holatini aniq ko‘rsatish.
+
+Rahbar platformaga kirgan zahoti quyidagilarni ko‘rishi kerak:
+
+- Barcha filiallar bo‘yicha jami sotuv.
+- Kompaniyaning jami pul mablag‘i.
+- Naqd kassa va bankdagi pul.
+- Jami xarajatlar.
+- Yalpi foyda.
+- Sof foyda.
+- Ombordagi mahsulotlarning qiymati.
+- Yetkazib beruvchilarga jami qarz.
+- Xaridorlar va tashkilotlardan olinadigan qarz.
+- Tovar kirimi va chiqimi.
+- Filiallar bo‘yicha moliyaviy natijalar.
+- Eng ko‘p sotilgan mahsulotlar.
+- Eng ko‘p foyda keltirgan mahsulotlar.
+- Muddati o‘tgan qarzlar.
+- Moliyaviy tafovutlar.
+- FOM ma’lumotlarining yangilanish holati.
+
+Barcha natijalar yagona ma’lumotlar bazasiga asoslangan bo‘lsin.
+
+Platforma oddiy statistik sayt emas, balki kompaniyaning moliyaviy boshqaruv markazi bo‘lishi kerak.
+
+# 2. ENG MUHIM TALAB: BITTA PLATFORMADA BARCHA ASOSIY BO‘LIMLAR
+
+Interfeysni ko‘plab mustaqil, bir-biridan uzilgan sahifalarga bo‘lib tashlama.
+
+Bitta umumiy platforma yarat. Unda chap tomonda ixcham yon menyu, yuqorida boshqaruv paneli va markazda ma’lumotlar ko‘rsatiladigan ishchi maydon bo‘lsin.
+
+Barcha asosiy bo‘limlar yagona ma’lumotlar bazasi va umumiy filtrlar bilan ishlasin.
+
+Asosiy navigatsiyada faqat quyidagi bo‘limlar bo‘lsin:
+
+1. **Bosh dashboard**
+2. **Filiallar**
+3. **Savdo va tovarlar**
+4. **Moliya va xarajatlar**
+5. **Qarzlar**
+6. **Foyda va zarar**
+7. **Hisobotlar**
+8. **Sozlamalar va FOM integratsiyasi**
+
+Boshqa barcha funksiyalar tegishli asosiy bo‘limlarning ichida joylashsin.
+
+Masalan:
+
+- Sotuvlar, kirim, chiqim, qaytarish, transfer va ombor — “Savdo va tovarlar” ichida.
+- Kassa, bank, pul o‘tkazmalari va xarajatlar — “Moliya va xarajatlar” ichida.
+- Yetkazib beruvchilar, xaridorlar, debitorlik va kreditorlik — “Qarzlar” ichida.
+- Yalpi foyda, sof foyda, marja va filiallar rentabelligi — “Foyda va zarar” ichida.
+- API ulanishi, sinxronizatsiya tarixi va import xatolari — “Sozlamalar va FOM integratsiyasi” ichida.
+
+Keraksiz ko‘plab menyular yaratma. Platforma tushunarli, ixcham va boshqarish uchun qulay bo‘lsin.
+
+# 3. DIZAYN VA FOYDALANUVCHI TAJRIBASI
+
+Professional korporativ moliyaviy platforma dizaynini yarat.
+
+Dizayn talablari:
+
+- Zamonaviy va minimalistik interfeys.
+- Oq yoki juda och kulrang fon.
+- To‘q yashil yoki zumrad rang asosiy rang sifatida.
+- Daromad va ijobiy natijalar yashil rangda.
+- Ogohlantirishlar sariq yoki to‘q sariq rangda.
+- Xatolar va jiddiy tafovutlar qizil rangda.
+- Ixcham, tartibli moliyaviy kartalar.
+- Sifatli grafiklar.
+- Professional jadvallar.
+- Yumaloq burchaklar va nozik chegaralar.
+- Bir xil ikonka uslubi.
+- O‘qilishi oson shrift.
+- Kompyuter, planshet va mobil telefonlarga moslashuvchan dizayn.
+
+Interfeys juda ko‘p ranglar, ortiqcha animatsiyalar yoki keraksiz bezaklar bilan to‘ldirilmasin.
+
+Asosiy maqsad — rahbar katta hajmdagi moliyaviy ma’lumotlarni tez tushunishi.
+
+Jadvallarda qidirish, saralash, filtr, sahifalash va Excel’ga eksport imkoniyatlari bo‘lsin.
+
+Yuklanish, bo‘sh ma’lumot, xato va muvaffaqiyat holatlari alohida dizayn qilinsin.
+
+# 4. BOSH DASHBOARD — PLATFORMANING ASOSIY SAHIFASI
+
+Dashboard eng muhim sahifa hisoblanadi.
+
+U kompaniyaning umumiy holatini bitta ekranda ko‘rsatishi kerak.
+
+## 4.1. Yuqori filtrlar paneli
+
+Dashboardning yuqori qismida quyidagi filtrlar joylashsin:
+
+- Sana oralig‘i.
+- Bugun.
+- Kecha.
+- Joriy hafta.
+- O‘tgan hafta.
+- Joriy oy.
+- O‘tgan oy.
+- Joriy yil.
+- Barcha filiallar.
+- Bitta filial.
+- Bir nechta filialni tanlash.
+- Mahsulot guruhi.
+- To‘lov turi.
+
+Filiallar uchun standart holat “Barcha filiallar” bo‘lsin.
+
+Sana yoki filial filtri o‘zgartirilganda barcha tegishli ko‘rsatkichlar, grafiklar va jadvallar qayta yangilansin.
+
+Filtrlarning ishlashi barcha modullarda izchil bo‘lsin.
+
+## 4.2. Asosiy moliyaviy kartalar
+
+Dashboardning yuqori qismida quyidagi ko‘rsatkichlar kartalar shaklida ko‘rsatilsin:
+
+1. Jami sotuv.
+2. Sof sotuv tushumi.
+3. Yalpi foyda.
+4. Sof foyda.
+5. Jami xarajatlar.
+6. Jami pul mablag‘i.
+7. Kassa qoldig‘i.
+8. Bankdagi pul.
+9. Ombordagi tovar qiymati.
+10. Yetkazib beruvchilarga qarz.
+11. Xaridorlardan olinadigan qarz.
+12. Tovar kirimi.
+13. Tovar chiqimi.
+14. Muddati o‘tgan qarzlar.
+
+Kartalar ekran o‘lchamiga mos ravishda tartibli joylashtirilsin.
+
+Har bir kartada quyidagilar bo‘lsin:
+
+- Ko‘rsatkich nomi.
+- Joriy qiymat.
+- Oldingi davr bilan taqqoslash.
+- Foiz o‘zgarishi.
+- Ko‘rsatkichni batafsil ochish imkoniyati.
+- Ma’lumot yangilangan vaqt.
+
+Karta bosilganda tegishli bo‘limning filtrlari oldindan tanlangan holatda ochilsin.
+
+Haqiqiy API ulanmaguncha namunaviy ma’lumotlar ishlatilsa, dashboardda “Sinov ma’lumotlari” belgisi ko‘rsatilsin. Namunaviy qiymatlar haqiqiy kompaniya ma’lumoti sifatida taqdim etilmasin.
+
+## 4.3. Dashboard grafiklari
+
+Quyidagi grafiklar bo‘lsin:
+
+**1. Sotuv dinamikasi**
+
+Kunlar, haftalar yoki oylar bo‘yicha sotuv summasi.
+
+**2. Sotuv va foyda**
+
+Bir grafikda sotuv, tannarx va yalpi foyda taqqoslansin.
+
+**3. Sof foyda dinamikasi**
+
+Kompaniya foydasining davrlar bo‘yicha o‘zgarishi.
+
+**4. Filiallar taqqoslanishi**
+
+Har bir filialning sotuv va foydasi.
+
+**5. Xarajatlar tarkibi**
+
+Ijara, ish haqi, logistika, kommunal va boshqa xarajatlar taqsimoti.
+
+**6. Pul harakati**
+
+Pul kirimi, pul chiqimi va sof pul oqimi.
+
+**7. Qarzlar dinamikasi**
+
+Debitorlik va kreditorlik qarzlarining davrlar bo‘yicha o‘zgarishi.
+
+**8. Eng yaxshi mahsulotlar**
+
+Eng ko‘p sotilgan va eng ko‘p foyda keltirgan mahsulotlar alohida ko‘rsatilsin.
+
+Grafiklarning barchasi haqiqiy tanlangan filtrlar asosida ishlasin.
+
+Grafiklar faqat bezak uchun yaratilmasin.
+
+## 4.4. Filiallar bo‘yicha qisqa jadval
+
+Dashboardda alohida filiallar jadvali bo‘lsin.
+
+Ustunlar:
+
+- Filial nomi.
+- Sotuv.
+- Yalpi foyda.
+- Sof foyda.
+- Xarajatlar.
+- Pul qoldig‘i.
+- Ombor qiymati.
+- Qarzlar.
+- Ma’lumot yangilangan vaqt.
+
+Jadvalni foyda, sotuv yoki xarajat bo‘yicha saralash mumkin bo‘lsin.
+
+Filial nomini bosganda shu filialning barcha ko‘rsatkichlari bilan alohida tafsilot oynasi ochilsin.
+
+## 4.5. Ogohlantirishlar
+
+Dashboardda alohida ixcham ogohlantirishlar paneli bo‘lsin.
+
+- Muddati o‘tgan qarz.
+- Kassa va hisob o‘rtasidagi tafovut.
+- FOM’dan ma’lumot kelmay qolishi.
+- Manfiy tovar qoldig‘i.
+- Yaroqlilik muddati yaqinlashgan mahsulot.
+- Noodatiy xarajat.
+- Tannarxi mavjud bo‘lmagan sotuv.
+- Integratsiya xatosi.
+
+Ogohlantirish ustiga bosilganda uning tafsilotlari ochilsin.
+
+# 5. FILIALLAR BO‘LIMI
+
+Bu bo‘limda kompaniyaning barcha filiallari bitta jadvalda ko‘rsatilsin.
+
+Har bir filial uchun:
+
+- Filial nomi.
+- FOM’dagi filial identifikatori.
+- Hududi va manzili.
+- Mas’ul shaxs.
+- Ish holati.
+- Sotuv.
+- Yalpi foyda.
+- Sof foyda.
+- Xarajatlar.
+- Pul qoldig‘i.
+- Ombor qiymati.
+- Yetkazib beruvchilarga qarz.
+- Xaridorlardan olinadigan qarz.
+- Oxirgi ma’lumot yangilanish vaqti.
+
+Filiallar jadvalida qidirish, saralash, filtrlash va eksport ishlasin.
+
+Filial kartasi ochilganda uning quyidagi ichki sahifalari yoki ichki tablari bo‘lsin:
+
+- Umumiy holat.
+- Sotuv va tovarlar.
+- Moliya.
+- Qarzlar.
+- Foyda va zarar.
+
+Yangi filiallarni tizim ichida ro‘yxatga olish imkoniyati bo‘lsin. FOM bilan identifikator orqali bog‘lash mumkin bo‘lsin.
+
+# 6. SAVDO VA TOVARLAR BO‘LIMI
+
+Bu bo‘limning ichida quyidagi tablar bo‘lsin:
+
+- Sotuvlar.
+- Tovar kirimi.
+- Tovar chiqimi.
+- Filiallararo transfer.
+- Qaytarishlar.
+- Ombor qoldiqlari.
+- Mahsulotlar.
+
+## 6.1. Sotuvlar
+
+Har bir sotuv uchun mavjud bo‘lgan ma’lumotlar ko‘rsatilsin:
+
+- Sana va vaqt.
+- Chek raqami.
+- Filial.
+- Kassa.
+- Kassir.
+- Mahsulot.
+- Miqdor.
+- Sotuv narxi.
+- Chegirma.
+- Tannarx.
+- Yalpi foyda.
+- To‘lov turi.
+- Hujjat holati.
+
+Sana, filial, chek raqami, mahsulot va to‘lov turi bo‘yicha qidirish imkoniyati bo‘lsin.
+
+## 6.2. Tovar kirimi
+
+Quyidagilar ko‘rsatilsin:
+
+- Kirim sanasi.
+- Hujjat raqami.
+- Yetkazib beruvchi.
+- Filial yoki ombor.
+- Mahsulot nomi.
+- Miqdor.
+- Xarid narxi.
+- Umumiy summa.
+- To‘langan summa.
+- Qolgan qarz.
+
+## 6.3. Tovar chiqimi
+
+Sotuv, hisobdan chiqarish, qaytarish va boshqa chiqimlar alohida operatsiya turlari bilan ko‘rsatilsin.
+
+Har bir operatsiyaning manbasi va hujjati mavjud bo‘lsin.
+
+## 6.4. Filiallararo transfer
+
+Qaysi filialdan qaysi filialga qancha mahsulot o‘tkazilgani ko‘rsatilsin.
+
+Transferning yuborilgan va qabul qilingan holati alohida nazorat qilinsin.
+
+Transfer kompaniyaning umumiy tovarini ikki marta hisobga olmasligi kerak.
+
+## 6.5. Ombor qoldiqlari
+
+Har bir mahsulot bo‘yicha:
+
+- Mahsulot nomi.
+- Shtrix-kod.
+- FOM identifikatori.
+- Filial.
+- Miqdor.
+- Xarid tannarxi, mavjud bo‘lsa.
+- Chakana narx.
+- Hisoblangan qiymat.
+- Oxirgi kirim.
+- Oxirgi sotuv.
+- Yaroqlilik muddati, mavjud bo‘lsa.
+
+Tannarx mavjud bo‘lmasa, chakana narx asosida hisoblangan qiymat tannarx sifatida ko‘rsatilmasin.
+
+## 6.6. Mahsulotlar
+
+Mahsulotlar yagona reyestrda saqlansin.
+
+Bir mahsulot turli filiallarda takroran kelganda, FOM identifikatori va boshqa ishonchli belgilar orqali to‘g‘ri bog‘lansin.
+
+# 7. MOLIYA VA XARAJATLAR BO‘LIMI
+
+Bu bo‘lim ichida quyidagi tablar bo‘lsin:
+
+- Pul balansi.
+- Kassa va bank.
+- Pul operatsiyalari.
+- Ichki o‘tkazmalar.
+- Xarajatlar.
+
+## 7.1. Pul balansi
+
+Har bir kassa va bank hisobi bo‘yicha:
+
+- Boshlang‘ich qoldiq.
+- Kirim.
+- Chiqim.
+- Ichki o‘tkazmalar.
+- Yakuniy qoldiq.
+
+Umumiy kompaniya balansi barcha pul hisoblari bo‘yicha yig‘ilsin.
+
+Ichki pul o‘tkazmalari kompaniyaning jami pulini oshirmasligi yoki kamaytirmasligi kerak.
+
+## 7.2. Pul operatsiyalari
+
+Har bir yozuvda:
+
+- Sana.
+- Operatsiya turi.
+- Summa.
+- Pul manbasi.
+- Qabul qiluvchi.
+- Filial.
+- Hujjat.
+- Izoh.
+- Ma’lumot manbasi.
+
+bo‘lsin.
+
+## 7.3. Xarajatlar
+
+Xarajatlar quyidagi toifalarga ajratilsin:
+
+- Ish haqi.
+- Ijara.
+- Kommunal.
+- Logistika.
+- Transport.
+- Bank komissiyasi.
+- Soliqlar.
+- Reklama.
+- Ta’mirlash.
+- Dasturiy ta’minot.
+- Boshqa xarajatlar.
+
+Har bir xarajatni sana, filial va toifa bo‘yicha ko‘rish mumkin bo‘lsin.
+
+Xarajatlarni qo‘lda kiritish faqat tegishli ruxsatga ega foydalanuvchilarga ochiq bo‘lsin.
+
+Qo‘lda kiritilgan xarajatlar FOM’dan avtomatik kelgan yozuvlardan farqlanadigan manba belgisi bilan saqlansin.
+
+# 8. QARZLAR BO‘LIMI
+
+Bu bo‘lim ichida quyidagi tablar bo‘lsin:
+
+- Yetkazib beruvchilarga qarz.
+- Xaridorlardan olinadigan qarz.
+- Yetkazib beruvchilar.
+- Xaridorlar va tashkilotlar.
+- To‘lovlar tarixi.
+
+## 8.1. Yetkazib beruvchilarga qarz
+
+Har bir yetkazib beruvchi uchun:
+
+- Jami qarz.
+- Yangi xaridlar.
+- To‘langan summa.
+- Qolgan qarz.
+- To‘lov muddati.
+- Muddati o‘tgan qarz.
+- Oxirgi to‘lov sanasi.
+
+## 8.2. Xaridorlardan olinadigan qarz
+
+Har bir qarzdor uchun:
+
+- Nomi.
+- Sotuv hujjatlari.
+- Jami qarz.
+- To‘langan summa.
+- Qolgan qarz.
+- To‘lov muddati.
+- Kechikish holati.
+
+## 8.3. Qarzlar formulasi
+
+Qolgan qarz = boshlang‘ich qarz + yangi majburiyatlar − to‘lovlar − tegishli qaytarishlar va tuzatishlar.
+
+Qisman to‘lovlarni qarzlarga biriktirish imkoniyati bo‘lsin.
+
+Bitta to‘lov bir necha marta hisoblanmasin.
+
+## 8.4. Qarzlar bo‘yicha ogohlantirish
+
+Muddati o‘tgan qarzlar qizil rangda ko‘rsatilsin.
+
+Yaqin kunlarda to‘lanishi kerak bo‘lgan qarzlar alohida ajratilsin.
+
+Qarzlarning yoshi quyidagi oraliqlarda ko‘rsatilsin:
+
+- Muddati kelmagan.
+- 1–7 kun.
+- 8–30 kun.
+- 31–60 kun.
+- 60 kundan ortiq.
+
+# 9. FOYDA VA ZARAR BO‘LIMI
+
+Bu bo‘lim kompaniyaning haqiqiy moliyaviy natijasini ko‘rsatadi.
+
+Asosiy ko‘rsatkichlar:
+
+- Sotuv tushumi.
+- Sof sotuv tushumi.
+- Sotilgan tovar tannarxi.
+- Yalpi foyda.
+- Yalpi foyda marjasi.
+- Operatsion xarajatlar.
+- Operatsion foyda.
+- Boshqa daromad va xarajatlar.
+- Soliqlar.
+- Sof foyda.
+- Sof foyda marjasi.
+
+Asosiy formulalar:
+
+Yalpi foyda = sof sotuv tushumi − sotilgan tovar tannarxi.
+
+Yalpi foyda marjasi = yalpi foyda / sof sotuv tushumi × 100%.
+
+Operatsion foyda = yalpi foyda − tegishli operatsion xarajatlar.
+
+Sof foyda = operatsion foyda + tegishli boshqa daromadlar − moliyaviy xarajatlar − soliqlar va boshqa tegishli moddalar.
+
+Hisob-kitoblar tasdiqlangan hisob siyosatiga muvofiq amalga oshirilsin.
+
+Agar tannarx yoki xarajatlar yetishmasa, tizim natijani to‘liq sof foyda deb ko‘rsatmasin. “Dastlabki hisob” yoki “Ma’lumot yetarli emas” belgisi ko‘rsatilsin.
+
+Filiallar, mahsulotlar va davrlar bo‘yicha foydani taqqoslash imkoniyati bo‘lsin.
+
+# 10. HISOBOTLAR BO‘LIMI
+
+Barcha asosiy hisobotlar bitta markazda jamlansin.
+
+Hisobotlar:
+
+- Kunlik va oylik sotuv.
+- Filiallar taqqoslanishi.
+- Tovar qoldiqlari.
+- Tovar harakati.
+- Pul balansi.
+- Pul kirimi va chiqimi.
+- Xarajatlar.
+- Yetkazib beruvchilarga qarz.
+- Xaridorlardan olinadigan qarz.
+- Foyda va zarar.
+- Mahsulotlar bo‘yicha foyda.
+- Ombor qiymati.
+- Filiallar bo‘yicha sof foyda.
+- FOM bilan tafovutlar.
+- Integratsiya xatolari.
+
+Barcha hisobotlarda sana va filial filtrlari bo‘lsin.
+
+Hisobotlarni Excel va PDF formatida yuklab olish mumkin bo‘lsin.
+
+Excel eksporti faqat ekrandagi ma’lumotlarning suratini emas, balki to‘g‘ri ustunlar, raqamli formatlar, sanalar va jami summalarni o‘z ichiga olsin.
+
+# 11. FOM API UCHUN OLDINDAN TAYYORLAB QO‘YILADIGAN ARXITEKTURA
+
+FOM API hozir berilmagan. Shu sababli API manzili yoki maydonlarini o‘zingdan to‘qib chiqarmagin.
+
+Lekin integratsiya qatlamini hozirdan yarat.
+
+Alohida `FOM Integration` servisi bo‘lsin.
+
+U quyidagi imkoniyatlarni ta’minlasin:
+
+- API konfiguratsiyasi.
+- API manzili uchun sozlama.
+- API kaliti yoki tokeni uchun maxfiy sozlama.
+- Ulanishni tekshirish.
+- Ma’lumotlarni olish.
+- Ma’lumotlarni normalashtirish.
+- Filial identifikatorlarini bog‘lash.
+- Mahsulot identifikatorlarini bog‘lash.
+- Takroriy yozuvlarni aniqlash.
+- Import tarixini saqlash.
+- Xatolarni qayd etish.
+- Qayta sinxronizatsiya qilish.
+- Oxirgi muvaffaqiyatli import vaqtini ko‘rsatish.
+
+API kalitini frontendga chiqarma va Git repozitoriyga ochiq joylashtirma.
+
+Kalit uchun Replit Secrets yoki server muhit o‘zgaruvchilaridan foydalan.
+
+FOM API’ning haqiqiy endpointlari va ma’lumotlar formati keyin taqdim etilganda faqat integratsiya qatlamini shu formatga moslashtirish imkoniyati bo‘lsin. Butun platformani qayta yozishga to‘g‘ri kelmasin.
+
+API mavjud bo‘lmaguncha platformani sinov ma’lumotlari bilan to‘liq tekshirish mumkin bo‘lsin.
+
+Sinov ma’lumotlari va haqiqiy ma’lumotlar aniq ajratilsin.
+
+Haqiqiy ma’lumotlar ulanganidan keyin sinov ma’lumotlari umumiy hisobotlarga aralashmasin.
+
+# 12. MA’LUMOTLAR BAZASI
+
+PostgreSQL’dan foydalan.
+
+Asosiy jadvallar:
+
+- Foydalanuvchilar.
+- Rollar va ruxsatlar.
+- Filiallar.
+- Kassalar va bank hisoblari.
+- Mahsulotlar.
+- Yetkazib beruvchilar.
+- Xaridorlar.
+- Sotuvlar.
+- Sotuv mahsulotlari.
+- Xarid hujjatlari.
+- Xarid mahsulotlari.
+- Tovar qoldiqlari.
+- Tovar harakatlari.
+- Qaytarishlar.
+- Pul operatsiyalari.
+- Xarajatlar.
+- To‘lovlar.
+- Debitorlik qarzlari.
+- Kreditorlik qarzlari.
+- To‘lovlarni hujjatlarga biriktirish.
+- Integratsiya sozlamalari.
+- Integratsiya importlari.
+- Integratsiya xatolari.
+- Audit jurnali.
+- Tizim sozlamalari.
+
+Jadvallar o‘zaro to‘g‘ri bog‘lansin.
+
+Pul qiymatlari aniq decimal formatda saqlansin.
+
+Har bir tashqi yozuv uchun FOM identifikatori va manba identifikatori saqlansin.
+
+Takroriy importlar bazada dublikat yaratmasligi uchun noyoblik cheklovlari va idempotent qayta ishlash mexanizmi ishlatilsin.
+
+Ma’lumotlar bazasi sxemasi migratsiyalar orqali boshqarilsin.
+
+# 13. TEXNOLOGIYALAR
+
+Quyidagi texnologiyalardan foydalan:
+
+- Frontend: React yoki Next.js va TypeScript.
+- Backend: Node.js va TypeScript.
+- API: Express yoki mos backend freymvorki.
+- Ma’lumotlar bazasi: PostgreSQL.
+- Ma’lumotlar bazasi vositasi: Prisma yoki unga teng ishonchli ORM.
+- Grafiklar: zamonaviy grafik kutubxonasi.
+- Formlar: validatsiyaga ega boshqariladigan formalar.
+- Excel eksporti: `.xlsx` fayllar yaratish imkoniyati.
+- PDF eksporti: hisobotlarni PDF formatida yaratish.
+- Autentifikatsiya: xavfsiz sessiya va parol boshqaruvi.
+- Fon vazifalari: keyinchalik API sinxronizatsiyasiga mos mexanizm.
+
+Agar Replit muhiti yoki tanlangan xizmatlar ayrim imkoniyatlarni cheklasa, ishonchli muqobil yechim tanla va loyihani ishlaydigan holatda saqla.
+
+# 14. XAVFSIZLIK
+
+Quyidagilar majburiy:
+
+- Login va parol orqali kirish.
+- Rollar asosida ruxsatlar.
+- Himoyalangan backend endpointlari.
+- API kalitlarini maxfiy saqlash.
+- Kirish urinishlarini cheklash.
+- Ma’lumotlarni serverda tekshirish.
+- Audit jurnali.
+- Xatolarni xavfsiz qayd etish.
+- Ma’lumotlar bazasining zaxira nusxalari uchun tayyorgarlik.
+- Moliyaviy ma’lumotlarni ruxsatsiz o‘zgartirishdan himoya.
+- Muhim yozuvlarni izsiz o‘chirishga yo‘l qo‘ymaslik.
+
+Dastlabki administratorni xavfsiz usulda yaratish imkoniyati bo‘lsin. Ochiq standart parolni ishlab chiqarish muhitida qoldirma.
+
+# 15. ISHLASH HOLATLARI
+
+Platformada ma’lumotlarning holati aniq ko‘rsatilishi kerak.
+
+Quyidagi holatlardan foydalan:
+
+- Haqiqiy ma’lumot.
+- Sinov ma’lumoti.
+- Ma’lumot kutilmoqda.
+- Ma’lumot to‘liq emas.
+- Integratsiya ulanmagan.
+- Import bajarilmoqda.
+- Import muvaffaqiyatli.
+- Importda xato.
+- Tekshirish talab qilinadi.
+
+Noma’lum qiymatni avtomatik ravishda nol deb ko‘rsatma.
+
+FOM’dan hali ma’lumot kelmagan bo‘lsa, soxta moliyaviy raqamlar yaratma.
+
+Sinov ma’lumotlari ishlatilayotgan bo‘lsa, interfeysning yuqori qismida “SINOV REJIMI” belgisi bo‘lsin.
+
+# 16. AMALIY ISHLASH TALABLARI
+
+Quyidagi funksiyalar haqiqatan ishlashi shart:
+
+- Barcha menyular ochilishi.
+- Barcha filtrlar ishlashi.
+- Sana oralig‘i bo‘yicha ma’lumotlar o‘zgarishi.
+- Filial tanlanganda tegishli ko‘rsatkichlar yangilanishi.
+- Grafiklar real ma’lumotlar asosida qurilishi.
+- Jadvallarda qidirish va saralash.
+- Excel va PDF eksporti.
+- Filial kartasini ochish.
+- Mahsulot tafsilotlarini ochish.
+- Qarzdorlik tafsilotlarini ko‘rish.
+- Moliyaviy operatsiyalar tarixini ko‘rish.
+- API ulanish holatini ko‘rsatish.
+- Import xatolarini ko‘rsatish.
+- Ruxsatsiz foydalanuvchiga cheklov qo‘llash.
+
+Faqat tugma yoki sahifa yaratib, uning funksiyasini ishlamaydigan holatda qoldirma.
+
+# 17. ISHLAB CHIQISH TARTIBI
+
+Ishni quyidagi tartibda bajar:
+
+1. Loyihaning to‘liq tuzilmasini yarat.
+2. PostgreSQL ma’lumotlar bazasini sozla.
+3. Ma’lumotlar bazasi jadvallari va migratsiyalarni yarat.
+4. Backend API’ni ishlab chiq.
+5. Autentifikatsiya va ruxsatlarni yarat.
+6. Sinov ma’lumotlarini kiritish mexanizmini yarat.
+7. Bosh dashboardni ishlab chiq.
+8. Filiallar bo‘limini yarat.
+9. Savdo va tovarlar bo‘limini yarat.
+10. Moliya va xarajatlar bo‘limini yarat.
+11. Qarzlar bo‘limini yarat.
+12. Foyda va zarar hisob-kitoblarini yarat.
+13. Hisobotlar markazini yarat.
+14. FOM integratsiyasi uchun alohida qatlam yarat.
+15. Excel va PDF eksportini qo‘sh.
+16. Mobil moslashuvchanlikni tekshir.
+17. Barcha tugmalar, filtrlar va hisob-kitoblarni sinovdan o‘tkaz.
+18. Loyihani Replit’da ishga tushadigan holatga keltir.
+
+Ishni faqat reja yozish bilan yakunlama. Fayllarni yarat, kodni yoz, ma’lumotlar bazasini sozla va amalda ishlaydigan natija hosil qil.
+
+# 18. YAKUNIY NATIJA
+
+Loyiha tugaganda quyidagilar tayyor bo‘lishi kerak:
+
+- Zamonaviy o‘zbek tilidagi yagona moliyaviy platforma.
+- Ishlaydigan bosh dashboard.
+- Filiallarni boshqarish.
+- Savdo va tovarlar hisoboti.
+- Kassa va bank moduli.
+- Xarajatlar moduli.
+- Qarzlar moduli.
+- Foyda va zarar hisob-kitoblari.
+- Hisobotlar va Excel/PDF eksporti.
+- PostgreSQL bazasi.
+- Backend API.
+- FOM API ulash uchun tayyor integratsiya qatlami.
+- Sinov ma’lumotlari.
+- Foydalanuvchilar va ruxsatlar.
+- Xatolar jurnali.
+- Ishlaydigan Replit loyihasi.
+
+Yakunida menga qisqacha quyidagilarni ko‘rsat:
+
+1. Qaysi funksiyalar to‘liq ishlaydi.
+2. Qaysi funksiyalar sinov ma’lumotlari bilan ishlaydi.
+3. FOM API ulanishi uchun keyinchalik qaysi ma’lumotlar kerak bo‘ladi.
+4. Loyihani qanday ishga tushirish mumkin.
+5. Qanday sinovlar bajarildi va natijalari qanday.
+
+**ENG MUHIM KO‘RSATMA:** Bitta yaxlit, sodda, professional va to‘liq ishlaydigan platforma yarat. Keraksiz menyular va ortiqcha sahifalar qo‘shma. Barcha asosiy funksiyalar sakkizta asosiy bo‘lim ichida joylashsin. Hozir FOM API mavjud emasligi ishni to‘xtatmasin: avval platformani to‘liq tayyorla, keyin API berilganda ma’lumotlarni ulash imkoniyati bo‘lsin.
