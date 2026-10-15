@@ -9,6 +9,7 @@ import {
 } from '@workspace/api-client-react';
 import type { FomReportState } from '@workspace/api-client-react';
 import { DataState, InfoGrid, KpiStrip, PageHeading, Panel, StatusBadge, TableWrap, apiErrorMessage, date, dateTime } from '@/components/kit';
+import { useAccess } from '@/lib/access';
 
 const syncStatusText: Record<string, { label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' | 'info' }> = {
   success: { label: 'Muvaffaqiyatli', tone: 'good' },
@@ -168,6 +169,7 @@ function FomConnectPanel({ onMessage }: { onMessage: (m: { tone: 'success' | 'er
 
 export function SettingsPage() {
   const qc = useQueryClient();
+  const { canEdit, isAdmin } = useAccess();
   const q = useGetFomStatus({ query: { queryKey: getGetFomStatusQueryKey(), refetchInterval: query => (query.state.data?.running ? 1500 : false) } });
   const test = useTestFomConnection();
   const sync = useSyncFom();
@@ -205,7 +207,7 @@ export function SettingsPage() {
   const setupIni = status?.site.path ? `[CONNECT]\nSERVER=LocalHost\nBASE=NAPTSKLAD\n[SERVER]\nURL=${origin}/api/fom/site/<FOM_SITE_TOKEN>\nTOCING=<FOM_SITE_TOKEN>` : '';
 
   return <>
-    <PageHeading eyebrow="INTEGRATSIYA" title="FOM (F-APTEKA) maʼlumotlari" subtitle="REPORT.exe orqali hisobotlarni tortish, SITE.exe orqali qoldiqlarni qabul qilish va import holati" actions={status && <div className="heading-button-group">
+    <PageHeading eyebrow="INTEGRATSIYA" title="FOM (F-APTEKA) maʼlumotlari" subtitle="REPORT.exe orqali hisobotlarni tortish, SITE.exe orqali qoldiqlarni qabul qilish va import holati" actions={canEdit && status && <div className="heading-button-group">
       <button className="button secondary" onClick={runTest} disabled={!status.configured || test.isPending} data-testid="button-test-fom"><Activity size={15} />{test.isPending ? 'Tekshirilmoqda…' : 'Ulanishni sinash'}</button>
       <button className="button primary" onClick={() => runSync(undefined, true)} disabled={!status.configured || status.running || sync.isPending} data-testid="button-sync-fom"><RefreshCw size={15} className={status.running ? 'spin' : ''} />{status.running ? 'Sinxronlanmoqda…' : 'Yangilash'}</button>
     </div>} />
@@ -219,7 +221,7 @@ export function SettingsPage() {
       </div>
       {message && <div className={`notice ${message.tone}`} data-testid="status-fom-message">{message.text}</div>}
 
-      <FomConnectPanel onMessage={setMessage} />
+      {isAdmin && <FomConnectPanel onMessage={setMessage} />}
 
       <KpiStrip items={[
         { label: 'Filiallar', value: status.totals.branches, count: true, icon: Building2 },
@@ -250,11 +252,11 @@ export function SettingsPage() {
             <div className="sync-status"><div className={`sync-orb ${status.running ? 'running' : status.lastSyncStatus}`}><RefreshCw size={19} className={status.running ? 'spin' : ''} /></div>
               <div className="sync-text"><span>Oxirgi sinxronlash</span><b>{status.lastSyncAt ? dateTime(status.lastSyncAt) : 'Hali bajarilmagan'}</b><small>{status.lastMessage ?? '—'}</small></div>
               {syncState && <StatusBadge tone={syncState.tone}>{syncState.label}</StatusBadge>}</div>
-            <form className="form-grid" onSubmit={runSync}>
+            {canEdit && <form className="form-grid" onSubmit={runSync}>
               <label>Boshlanish<input type="date" required value={range.from} max={range.to} onChange={e => setRange({ ...range, from: e.target.value })} data-testid="input-fom-from" /></label>
               <label>Tugash<input type="date" required value={range.to} min={range.from} onChange={e => setRange({ ...range, to: e.target.value })} data-testid="input-fom-to" /></label>
               <button className="button primary span-2" disabled={!status.configured || status.running || sync.isPending} data-testid="button-sync-range"><RefreshCw size={15} />Davr boʻyicha tortish</button>
-            </form>
+            </form>}
             <p className="field-hint">Takroriy tortish dublikat yaratmaydi: hujjatlar FOM ID boʻyicha yangilanadi.</p>
           </Panel>
 
@@ -266,7 +268,7 @@ export function SettingsPage() {
               { label: 'Qatorlar', value: status.site.lastRecords.toLocaleString('uz-UZ') },
             ]} />
             {status.site.lastMessage && <div className={`notice ${status.site.lastStatus === 'error' ? 'error' : 'info'}`}>{status.site.lastMessage}</div>}
-            {setupIni && <div className="code-block"><pre>{setupIni}</pre><button type="button" className="icon-button" onClick={() => copySetup(setupIni)} title="Nusxalash">{copied ? <Check size={15} /> : <Copy size={15} />}</button></div>}
+            {canEdit && setupIni && <div className="code-block"><pre>{setupIni}</pre><button type="button" className="icon-button" onClick={() => copySetup(setupIni)} title="Nusxalash">{copied ? <Check size={15} /> : <Copy size={15} />}</button></div>}
             <p className="field-hint"><ShieldCheck size={14} /> SITE.exe tokeni faqat server muhitida (env) saqlanadi, brauzerga toʻliq chiqarilmaydi.</p>
           </Panel>
         </div>

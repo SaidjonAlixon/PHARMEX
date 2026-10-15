@@ -7,10 +7,12 @@ import {
   sourceText, toMoney, useRefreshAll,
 } from '@/components/kit';
 import { units } from '@/lib/labels';
+import { useAccess } from '@/lib/access';
 
 type Tab = 'products' | 'supplier' | 'customer';
 
 export function CatalogPage() {
+  const { canEdit } = useAccess();
   const [tab, setTab] = useState<Tab>('products');
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState<Tab | null>(null);
@@ -25,7 +27,7 @@ export function CatalogPage() {
 
   return <>
     <PageHeading eyebrow="MAʼLUMOTNOMALAR" title="Mahsulotlar va hamkorlar" subtitle="Mahsulot kodi, oʻlchov birligi, QQS stavkasi; yetkazib beruvchilar va mijozlar roʻyxati"
-      actions={<button className="button primary" onClick={() => setCreating(tab)} data-testid="button-catalog-new"><Plus size={16} /> {tab === 'products' ? 'Mahsulot qoʻshish' : tab === 'supplier' ? 'Yetkazib beruvchi qoʻshish' : 'Mijoz qoʻshish'}</button>} />
+      actions={canEdit && <button className="button primary" onClick={() => setCreating(tab)} data-testid="button-catalog-new"><Plus size={16} /> {tab === 'products' ? 'Mahsulot qoʻshish' : tab === 'supplier' ? 'Yetkazib beruvchi qoʻshish' : 'Mijoz qoʻshish'}</button>} />
     <KpiStrip items={[
       { label: 'Mahsulotlar', value: products.length >= 1000 ? '1000+' : products.length, count: true, icon: Package, hint: `${products.filter(p => p.stock > 0).length} tasida qoldiq bor${products.length >= 1000 ? ' (koʻrsatilganlar)' : ''}` },
       { label: 'Yetkazib beruvchilar', value: suppliersQ.data?.length ?? null, count: true, icon: Truck },

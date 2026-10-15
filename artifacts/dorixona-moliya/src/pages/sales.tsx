@@ -14,6 +14,7 @@ import {
 import { paymentLabels } from '@/lib/labels';
 import { paymentMenu } from '@/lib/menu-options';
 import { SelectMenu } from '@/components/select-menu';
+import { useAccess } from '@/lib/access';
 
 type Tab = 'sales' | 'returns' | 'voided' | 'lines';
 
@@ -29,6 +30,7 @@ function ReceiptStatus({ receipt }: { receipt: Receipt }) {
 }
 
 export function SalesPage({ filters }: { filters: Filters }) {
+  const { canEdit } = useAccess();
   const [tab, setTab] = useState<Tab>('sales');
   const [search, setSearch] = useState('');
   const [method, setMethod] = useState('');
@@ -66,7 +68,7 @@ export function SalesPage({ filters }: { filters: Filters }) {
   const methodTotal = Object.values(stats.byMethod).reduce((s, v) => s + v, 0);
 
   return <>
-    <PageHeading eyebrow="SAVDO · ПРОДАЖА" title="Savdolar" subtitle="Cheklar, toʻlov turlari, chegirma, QQS, tannarx va yalpi foyda; bekor qilish va qaytarishlar" actions={<button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-receipt"><Plus size={16} /> Yangi chek</button>} />
+    <PageHeading eyebrow="SAVDO · ПРОДАЖА" title="Savdolar" subtitle="Cheklar, toʻlov turlari, chegirma, QQS, tannarx va yalpi foyda; bekor qilish va qaytarishlar" actions={canEdit && <button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-receipt"><Plus size={16} /> Yangi chek</button>} />
     <KpiStrip items={[
       { label: 'Cheklar', value: stats.count, count: true, icon: ReceiptIcon, hint: `${stats.voided} ta bekor qilingan` },
       { label: 'Sof savdo', value: round2(stats.net), icon: ShoppingCart, tone: 'good', hint: `Yalpi ${money(stats.gross)} soʻm` },
@@ -129,7 +131,8 @@ export function ReceiptDrawer({ id, onClose, onOpen }: { id: number; onClose: ()
   const d = q.data;
   const r = d?.receipt;
   const returnable = !!d && d.lines.some(l => l.quantity - l.returnedQuantity > 0);
-  const canAct = r?.kind === 'sale' && r.status === 'completed';
+  const { canEdit } = useAccess();
+  const canAct = canEdit && r?.kind === 'sale' && r.status === 'completed';
   return <Drawer eyebrow={r?.kind === 'return' ? 'QAYTARISH HUJJATI' : 'SAVDO CHEKI'} title={r ? `Chek ${r.receiptNo}` : 'Chek'} subtitle={r && <><ReceiptStatus receipt={r} /> <span>{dateTime(r.soldAt)}</span></>} onClose={onClose}
     actions={canAct && <>
       <button className="button secondary" disabled={!returnable} onClick={() => setAction('return')} data-testid="button-return-receipt"><Undo2 size={15} /> Qaytarish</button>

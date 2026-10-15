@@ -10,10 +10,12 @@ import {
 import { debtOperationLabels, purchaseStatusLabels } from '@/lib/labels';
 import { DebtOperationModal } from './debts';
 import { StockDocumentModal } from './stock';
+import { useAccess } from '@/lib/access';
 
 type Status = 'all' | 'unpaid' | 'partial' | 'paid' | 'overdue';
 
 export function PurchasesPage({ filters }: { filters: Filters }) {
+  const { canEdit } = useAccess();
   const [status, setStatus] = useState<Status>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<number | null>(null);
@@ -33,7 +35,7 @@ export function PurchasesPage({ filters }: { filters: Filters }) {
   }, [all]);
 
   return <>
-    <PageHeading eyebrow="KIRIM · ПРИХОД" title="Kirim" subtitle="Yetkazib beruvchilardan tovar qabul qilish: nakladnoy, hisob-faktura, xarid narxi, chegirma, qoʻshimcha xarajat va qarz" actions={<button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-purchase"><Plus size={16} /> Yangi kirim</button>} />
+    <PageHeading eyebrow="KIRIM · ПРИХОД" title="Kirim" subtitle="Yetkazib beruvchilardan tovar qabul qilish: nakladnoy, hisob-faktura, xarid narxi, chegirma, qoʻshimcha xarajat va qarz" actions={canEdit && <button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-purchase"><Plus size={16} /> Yangi kirim</button>} />
     <KpiStrip items={[
       { label: 'Kirim hujjatlari', value: all.length, count: true, icon: FileText },
       { label: 'Jami summa', value: stats.total, icon: Truck, hint: `Chegirma ${money(stats.discount)} · Xarajat ${money(stats.extra)}` },
@@ -72,10 +74,11 @@ function PurchaseDrawer({ id, onClose }: { id: number; onClose: () => void }) {
   const params = { purchaseId: id };
   const q = useGetPurchase(params, { query: { queryKey: getGetPurchaseQueryKey(params) } });
   const [action, setAction] = useState<'pay' | 'return' | null>(null);
+  const { canEdit } = useAccess();
   const d = q.data;
   const p = d?.purchase;
   return <Drawer eyebrow="KIRIM HUJJATI" title={p ? `${p.documentNo} · ${p.supplierName}` : 'Kirim'} subtitle={p && <><StatusBadge tone={purchaseStatusLabels[p.paymentStatus].tone}>{purchaseStatusLabels[p.paymentStatus].label}</StatusBadge> <span>{dateTime(p.receivedAt)}</span></>} onClose={onClose}
-    actions={p && <>
+    actions={canEdit && p && <>
       <button className="button primary" disabled={!p.debtId || !num(p.balance)} onClick={() => setAction('pay')} data-testid="button-pay-purchase"><Banknote size={15} /> Toʻlov qilish</button>
       <button className="button secondary" onClick={() => setAction('return')} data-testid="button-return-purchase"><Undo2 size={15} /> Yetkazib beruvchiga qaytarish</button>
     </>}>

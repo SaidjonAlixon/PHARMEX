@@ -37,6 +37,7 @@ import { HomePage } from '@/site/home';
 import { FaqPage, FeaturesPage, HowPage, IntegrationPage, SecurityPage, SolutionsPage } from '@/site/pages';
 import { AuthPage } from '@/site/auth';
 import { UsersPage, usePendingAccounts } from '@/pages/users';
+import { roleLabel, useAccess } from '@/lib/access';
 import { Route, Switch, useLocation, Router as WouterRouter, Redirect, Link } from 'wouter';
 
 const queryClient = new QueryClient({
@@ -105,6 +106,7 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const { user } = useUser();
   const { signOut } = useClerk();
   const accounts = usePendingAccounts();
+  const access = useAccess();
   const items = localAuth && accounts.isAdmin ? [...navItems.slice(0, -1), usersNavItem, navItems[navItems.length - 1]!] : navItems;
   const [period, setPeriod] = useState('this-month');
   const choosePeriod = (value: string) => {
@@ -125,7 +127,7 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
         const badge = item.href === '/users' && accounts.pending > 0 ? accounts.pending : 0;
         return <Link key={item.href} href={item.href} className={`nav-link ${active ? 'active' : ''}`} onClick={() => setMenuOpen(false)} data-testid={`link-nav-${item.href.slice(1) || 'dashboard'}`}><span className="nav-icon"><Icon size={17} strokeWidth={2} /></span><span>{item.label}</span>{badge > 0 && <span className="nav-badge" title={`${badge} ta ariza tasdiq kutmoqda`}>{badge}</span>}{active && <span className="nav-indicator" />}</Link>;
       })}</nav>
-      <div className="sidebar-bottom"><div className="reconcile-note"><ShieldCheck size={17} /><div><b>Yagona manba</b><span>Har bir raqam izchil manbaga bogʻlangan</span></div></div><div className="profile-mini"><div className="avatar">{(user?.firstName || user?.primaryEmailAddress?.emailAddress || 'M').slice(0, 1).toUpperCase()}</div><div className="profile-text"><b>{user?.fullName || 'Moliya mutaxassisi'}</b><span>{user?.primaryEmailAddress?.emailAddress || 'Dorixona guruhi'}</span></div><button title="Tizimdan chiqish" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="icon-button" data-testid="button-sign-out"><LogOut size={16} /></button></div></div>
+      <div className="sidebar-bottom"><div className="reconcile-note"><ShieldCheck size={17} /><div><b>Yagona manba</b><span>Har bir raqam izchil manbaga bogʻlangan</span></div></div><div className="profile-mini"><div className="avatar">{(user?.firstName || user?.primaryEmailAddress?.emailAddress || 'M').slice(0, 1).toUpperCase()}</div><div className="profile-text"><b>{user?.fullName || 'Moliya mutaxassisi'}</b><span>{user?.primaryEmailAddress?.emailAddress || 'Dorixona guruhi'}</span>{access.role && <i className={`profile-role role-${access.role}`} data-testid="text-user-role">{roleLabel(access.role)}</i>}</div><button title="Tizimdan chiqish" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="icon-button" data-testid="button-sign-out"><LogOut size={16} /></button></div></div>
     </aside>
     {menuOpen && <button className="mobile-shade" onClick={() => setMenuOpen(false)} aria-label="Menyuni yopish" />}
     <main className="main-area">
@@ -172,13 +174,14 @@ function BranchesPage({ filters }: { filters: Filters }) {
   const qc = useQueryClient();
   const branchesQ = useListBranches();
   const create = useCreateBranch();
+  const { canEdit } = useAccess();
   const [open, setOpen] = useState(false);
   const emptyForm = { name: '', kind: 'pharmacy' as 'pharmacy' | 'warehouse', region: '', address: '', manager: '', fomId: '' };
   const [form, setForm] = useState(emptyForm);
   const [query, setQuery] = useState('');
   const items = (branchesQ.data || []).filter(b => (!filters.branchId || String(b.id) === filters.branchId) && `${b.name} ${b.region} ${b.manager}`.toLowerCase().includes(query.toLowerCase()));
   const submit = (e: FormEvent) => { e.preventDefault(); create.mutate({ data: { ...form, fomId: form.fomId || null } }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListBranchesQueryKey() }); setOpen(false); setForm(emptyForm); } }); };
-  return <><PageHeading title="Filiallar" subtitle="Guruh tarkibini boshqaring va filiallar holatini kuzating" actions={<button className="button primary" onClick={() => setOpen(true)} data-testid="button-create-branch"><Plus size={16} /> Filial qoʻshish</button>} />
+  return <><PageHeading title="Filiallar" subtitle="Guruh tarkibini boshqaring va filiallar holatini kuzating" actions={canEdit && <button className="button primary" onClick={() => setOpen(true)} data-testid="button-create-branch"><Plus size={16} /> Filial qoʻshish</button>} />
     <Panel title="Filiallar roʻyxati" subtitle={`${branchesQ.data?.length ?? '—'} ta roʻyxatdagi filial`} action={<label className="search-field"><Search size={15} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Filial qidirish" data-testid="input-search-branches" /></label>}>
       <DataState loading={branchesQ.isLoading} error={branchesQ.isError} empty={!branchesQ.isLoading && !branchesQ.isError && !items.length} retry={() => branchesQ.refetch()} />
       {!!items.length && <TableWrap><thead><tr><th>FILIAL</th><th>TURI</th><th>HUDUD</th><th>MASʼUL</th><th>MANBA</th><th>HOLAT</th><th>YANGILANGAN</th><th /></tr></thead><tbody>{items.map(b => <tr key={b.id} data-testid={`row-branch-${b.id}`}><td><Link href={`/branches/${b.id}`} className="table-main-link" data-testid={`link-branch-details-${b.id}`}>{b.name}<ArrowRight size={13} /></Link><small>{b.address || 'Manzil koʻrsatilmagan'}</small></td><td><StatusBadge tone={b.kind === 'warehouse' ? 'info' : 'neutral'}>{b.kind === 'warehouse' ? 'Ombor' : 'Dorixona'}</StatusBadge></td><td>{b.region || '—'}</td><td>{b.manager || '—'}</td><td><StatusBadge tone={b.source === 'demo' ? 'warn' : 'neutral'}>{sourceText(b.source)}</StatusBadge></td><td><StatusBadge tone={b.status === 'active' ? 'good' : 'warn'}>{b.status === 'active' ? 'Faol' : b.status || 'Holat nomaʼlum'}</StatusBadge></td><td>{date(b.updatedAt)}</td><td><Link href={`/branches/${b.id}`} className="icon-button" aria-label="Filialni ochish"><ArrowRight size={16} /></Link></td></tr>)}</tbody></TableWrap>}

@@ -14,7 +14,7 @@ import reportsRouter from "./reports";
 import fomRouter, { fomSiteRouter } from "./fom";
 import authRouter from "./auth";
 import accountsRouter from "./accounts";
-import { requireClerkUser } from "../middlewares/requireClerkUser";
+import { readOnlyForViewers, requireClerkUser } from "../middlewares/requireClerkUser";
 import { localAuthEnabled } from "../lib/localAuth";
 
 const router: IRouter = Router();
@@ -23,6 +23,7 @@ router.use(healthRouter);
 router.use(fomSiteRouter);
 if (localAuthEnabled) router.use(authRouter);
 router.use(requireClerkUser);
+router.use(readOnlyForViewers);
 router.use(identityRouter);
 if (localAuthEnabled) router.use(accountsRouter);
 router.use(branchesRouter);

@@ -15,6 +15,7 @@ import {
 import { expenseCategories, moneyTypeLabels } from '@/lib/labels';
 import { moneyTypeMenu } from '@/lib/menu-options';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
+import { useAccess } from '@/lib/access';
 
 type Tab = 'register' | 'operations' | 'expenses' | 'owners';
 type Direction = 'all' | 'in' | 'out';
@@ -31,6 +32,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
   const [operation, setOperation] = useState<{ type: MoneyOperationType; accountId?: number } | null>(null);
   const [transfer, setTransfer] = useState<{ kind: 'transfer' | 'encashment'; from?: number } | null>(null);
   const [newAccount, setNewAccount] = useState(false);
+  const { canEdit } = useAccess();
   const base = filterParams(filters);
   const registerQ = useGetCashRegister(base);
   const txQ = useListMoneyTransactions({ ...base, accountId: accountId ? Number(accountId) : undefined, type: type || undefined, direction: direction === 'all' ? undefined : direction, search: search || undefined });
@@ -74,7 +76,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
 
   return <>
     <PageHeading eyebrow="PUL OPERATSIYALARI · ДЕНЕЖНЫЕ ОПЕРАЦИИ" title="Pul operatsiyalari" subtitle="Kassalar va bank hisoblari: boshlangʻich va yakuniy qoldiq, kirim-chiqim, inkassatsiya, toʻlovlar, xarajatlar va egalar mablagʻi"
-      actions={<div className="heading-button-group">
+      actions={canEdit && <div className="heading-button-group">
         <button className="button primary" onClick={() => setOperation({ type: 'cash_in' })} data-testid="button-money-in"><ArrowDownLeft size={15} /> Kirim</button>
         <button className="button primary danger-soft" onClick={() => setOperation({ type: 'expense' })} data-testid="button-money-out"><ArrowUpRight size={15} /> Chiqim / xarajat</button>
         <button className="button secondary" onClick={() => setTransfer({ kind: 'encashment' })} data-testid="button-encashment"><Vault size={15} /> Inkassatsiya</button>
@@ -110,11 +112,11 @@ export function MoneyPage({ filters }: { filters: Filters }) {
           <td className="num">{num(r.cashSales) ? money(r.cashSales) : '—'}</td>
           <td className="num">{num(r.encashment) ? money(r.encashment) : '—'}</td>
           <td className="num"><button className="link-button" onClick={() => { setAccountId(String(r.accountId)); setTab('operations'); }}>{r.operations}</button></td>
-          <td><div className="row-actions">
+          <td>{canEdit && <div className="row-actions">
             <button className="button ghost small" onClick={() => setOperation({ type: 'cash_in', accountId: r.accountId })} title="Kirim"><ArrowDownLeft size={13} /></button>
             <button className="button ghost small" onClick={() => setOperation({ type: 'expense', accountId: r.accountId })} title="Chiqim"><ArrowUpRight size={13} /></button>
             {r.kind === 'cash' && <button className="button ghost small" onClick={() => setTransfer({ kind: 'encashment', from: r.accountId })} title="Inkassatsiya"><Vault size={13} /></button>}
-          </div></td>
+          </div>}</td>
         </tr>)}</tbody>
         <tfoot><tr><td colSpan={2}>Jami</td><td className="num">{money(totals.opening)}</td><td className="num positive">+{money(totals.inflow)}</td><td className="num negative">−{money(totals.outflow)}</td><td className="num cell-strong">{money(totals.closing)}</td><td className="num">{money(totals.cashSales)}</td><td className="num">{money(totals.encashment)}</td><td colSpan={2} /></tr></tfoot></TableWrap>}
     </Panel>}
@@ -133,7 +135,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
     </>}
 
     {tab === 'expenses' && <div className="split-grid wide-left">
-      <Panel title="Xarajatlar" subtitle="Ish haqi, ijara, kommunal va boshqa xarajatlar" action={<button className="button primary small" onClick={() => setOperation({ type: 'expense' })}><Plus size={14} /> Xarajat</button>}>
+      <Panel title="Xarajatlar" subtitle="Ish haqi, ijara, kommunal va boshqa xarajatlar" action={canEdit && <button className="button primary small" onClick={() => setOperation({ type: 'expense' })}><Plus size={14} /> Xarajat</button>}>
         <DataState loading={expensesQ.isLoading} error={expensesQ.isError} empty={!expensesQ.isLoading && !expensesQ.isError && !(expensesQ.data || []).length} retry={() => expensesQ.refetch()} />
         {!!expensesQ.data?.length && <TableWrap><thead><tr><th>SANA</th><th>KATEGORIYA</th><th>FILIAL</th><th>IZOH</th><th className="num">SUMMA</th></tr></thead><tbody>{expensesQ.data.map(x => <tr key={x.id}><td>{date(x.date)}<small>{sourceText(x.source)}</small></td><td className="cell-strong">{x.category}</td><td>{x.branchName}</td><td>{x.description || '—'}</td><td className="num negative">{money(x.amount)}</td></tr>)}</tbody></TableWrap>}
       </Panel>
@@ -142,7 +144,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
       </Panel>
     </div>}
 
-    {tab === 'owners' && <Panel title="Egalar kiritgan va olgan mablagʻ" subtitle="Taʼsischilar hisobidan kiritilgan kapital va olingan dividend / shaxsiy ehtiyoj" action={<div className="toolbar"><button className="button secondary small" onClick={() => setOperation({ type: 'owner_in' })}><ArrowDownLeft size={13} /> Kiritildi</button><button className="button secondary small" onClick={() => setOperation({ type: 'owner_out' })}><ArrowUpRight size={13} /> Olindi</button></div>}>
+    {tab === 'owners' && <Panel title="Egalar kiritgan va olgan mablagʻ" subtitle="Taʼsischilar hisobidan kiritilgan kapital va olingan dividend / shaxsiy ehtiyoj" action={canEdit && <div className="toolbar"><button className="button secondary small" onClick={() => setOperation({ type: 'owner_in' })}><ArrowDownLeft size={13} /> Kiritildi</button><button className="button secondary small" onClick={() => setOperation({ type: 'owner_out' })}><ArrowUpRight size={13} /> Olindi</button></div>}>
       <div className="mini-metrics"><div><span>Kiritilgan</span><b className="positive">{money(ownerIn)} soʻm</b></div><div><span>Olingan</span><b className="negative">{money(ownerOut)} soʻm</b></div><div><span>Sof</span><b>{money(round2(ownerIn - ownerOut))} soʻm</b></div></div>
       <DataState loading={ownersQ.isLoading} error={ownersQ.isError} empty={!ownersQ.isLoading && !ownersQ.isError && !owners.length} retry={() => ownersQ.refetch()} emptyText="Bu davrda egalar mablagʻi harakati yoʻq." />
       {!!owners.length && <TransactionsTable rows={owners} />}

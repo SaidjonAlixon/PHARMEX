@@ -109,6 +109,16 @@ export const requireClerkUser: RequestHandler = localAuthEnabled
   ? requireLocalUser
   : requireClerkSessionUser;
 
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+export const readOnlyForViewers: RequestHandler = (req, res, next) => {
+  if (res.locals.userRole === "viewer" && !READ_METHODS.has(req.method)) {
+    res.status(403).json({ error: "Kuzatuvchi faqat koʻra oladi: maʼlumot kiritish yoki saqlash mumkin emas." });
+    return;
+  }
+  next();
+};
+
 export function requireRole(...allowedRoles: string[]): RequestHandler {
   return (req, res, next) => {
     if (!allowedRoles.includes(String(res.locals.userRole ?? ""))) {

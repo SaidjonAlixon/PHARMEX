@@ -8,6 +8,7 @@ import {
   useRefreshAll, type Filters,
 } from '@/components/kit';
 import { debtOperationLabels, debtOriginLabels, debtStateLabels } from '@/lib/labels';
+import { useAccess } from '@/lib/access';
 
 type Kind = 'payable' | 'receivable';
 type Status = 'open' | 'overdue' | 'closed' | 'all';
@@ -25,6 +26,7 @@ function DebtState({ debt }: { debt: Debt }) {
 }
 
 export function DebtsPage({ filters }: { filters: Filters }) {
+  const { canEdit } = useAccess();
   const [kind, setKind] = useState<Kind>('payable');
   const [view, setView] = useState<'documents' | 'counterparties'>('documents');
   const [status, setStatus] = useState<Status>('open');
@@ -54,7 +56,7 @@ export function DebtsPage({ filters }: { filters: Filters }) {
   const listTotal = round2(debts.reduce((s, d) => s + num(d.balance), 0));
 
   return <>
-    <PageHeading eyebrow="QARZLAR · ДОЛГИ" title="Qarzlar" subtitle="Kimga qarzmiz va kim bizdan qarzdor: paydo boʻlish sanasi, toʻlovlar, qaytarishlar, muddati oʻtganlar va toʻliq tarix" actions={<button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-debt"><Plus size={16} /> Qarz kiritish</button>} />
+    <PageHeading eyebrow="QARZLAR · ДОЛГИ" title="Qarzlar" subtitle="Kimga qarzmiz va kim bizdan qarzdor: paydo boʻlish sanasi, toʻlovlar, qaytarishlar, muddati oʻtganlar va toʻliq tarix" actions={canEdit && <button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-debt"><Plus size={16} /> Qarz kiritish</button>} />
     <KpiStrip items={[
       { label: 'Biz qarzdormiz', value: totals.payable, icon: ArrowUpRight, tone: totals.payable ? 'warn' : undefined, hint: `${totals.payableCount} ta yetkazib beruvchi` },
       { label: 'Shundan muddati oʻtgan', value: totals.payableOverdue, icon: AlertCircle, tone: totals.payableOverdue ? 'bad' : undefined },
@@ -118,7 +120,8 @@ function DebtDrawer({ id, onClose }: { id: number; onClose: () => void }) {
   const q = useGetDebt(params, { query: { queryKey: getGetDebtQueryKey(params) } });
   const [op, setOp] = useState<DebtOperationInputKind | null>(null);
   const d = q.data?.debt;
-  const open = !!d && num(d.balance) > 0 && d.state !== 'cancelled';
+  const { canEdit } = useAccess();
+  const open = canEdit && !!d && num(d.balance) > 0 && d.state !== 'cancelled';
   return <Drawer eyebrow={d?.kind === 'receivable' ? 'DEBITORLIK QARZI' : 'KREDITORLIK QARZI'} title={d ? d.counterparty : 'Qarz'} subtitle={d && <><DebtState debt={d} /> <span>{d.documentNo}</span></>} onClose={onClose}
     actions={open && <>
       <button className="button primary" onClick={() => setOp('payment')} data-testid="button-debt-payment"><Banknote size={15} /> {d!.kind === 'payable' ? 'Toʻlov qilish' : 'Toʻlov qabul qilish'}</button>

@@ -13,6 +13,7 @@ import {
   qty, round2, toMoney, useRefreshAll, type Filters, type PickedProduct,
 } from '@/components/kit';
 import { movementLabels, stockDocLabels, writeOffReasons } from '@/lib/labels';
+import { useAccess } from '@/lib/access';
 
 type Tab = 'balances' | 'all' | StockDocType;
 type NewDoc = 'transfer' | 'write_off' | 'supplier_return' | 'inventory_count';
@@ -35,6 +36,7 @@ function branchLabel(name: string | null | undefined, kind: string | null | unde
 }
 
 export function StockPage({ filters, productId }: { filters: Filters; productId?: number }) {
+  const { canEdit } = useAccess();
   const [tab, setTab] = useState<Tab>(productId ? 'balances' : 'all');
   const [search, setSearch] = useState('');
   const [stockFilter, setStockFilter] = useState<'all' | 'in' | 'zero' | 'expiring'>('all');
@@ -82,7 +84,7 @@ export function StockPage({ filters, productId }: { filters: Filters; productId?
 
   return <>
     <PageHeading eyebrow="TOVAR HARAKATI · ТОВАРООБОРОТ" title="Tovar harakati" subtitle="Filiallararo va ombor oʻtkazmalari, hisobdan chiqarish, qaytarishlar, inventarizatsiya va qoldiqlar"
-      actions={<div className="heading-button-group">
+      actions={canEdit && <div className="heading-button-group">
         <button className="button primary" onClick={() => setCreating('transfer')} data-testid="button-new-transfer"><ArrowLeftRight size={15} /> Oʻtkazma</button>
         <button className="button secondary" onClick={() => setCreating('write_off')} data-testid="button-new-writeoff"><PackageMinus size={15} /> Hisobdan chiqarish</button>
         <button className="button secondary" onClick={() => setCreating('supplier_return')} data-testid="button-new-supplier-return"><Truck size={15} /> Qaytarish</button>
