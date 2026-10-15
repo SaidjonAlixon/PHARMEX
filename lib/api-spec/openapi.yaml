@@ -1744,6 +1744,9 @@ components:
         lastMessage: { type: ["string", "null"] }
         importedRecords: { type: integer }
         running: { type: boolean }
+        reportAvailable:
+          type: boolean
+          description: false when the API runs where REPORT.exe cannot be reached (Vercel); data then arrives only via SITE.exe
         filialIds:
           type: array
           items: { type: string }
@@ -1760,7 +1763,7 @@ components:
           $ref: "#/components/schemas/FomSiteState"
         totals:
           $ref: "#/components/schemas/FomTotals"
-      required: [connected, configured, baseUrl, keyConfigured, lastSyncAt, lastSyncStatus, lastMessage, importedRecords, running, filialIds, intervalMinutes, refsIntervalMinutes, refsAt, lastSyncFrom, lastSyncTo, reports, site, totals]
+      required: [connected, configured, baseUrl, keyConfigured, lastSyncAt, lastSyncStatus, lastMessage, importedRecords, running, reportAvailable, filialIds, intervalMinutes, refsIntervalMinutes, refsAt, lastSyncFrom, lastSyncTo, reports, site, totals]
     FomReportState:
       type: object
       properties:

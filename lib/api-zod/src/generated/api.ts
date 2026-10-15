@@ -1923,6 +1923,7 @@ export const GetFomStatusResponse = zod.object({
   "lastMessage": zod.string().nullable(),
   "importedRecords": zod.number().int(),
   "running": zod.boolean(),
+  "reportAvailable": zod.boolean().describe('false when the API runs where REPORT.exe cannot be reached (Vercel); data then arrives only via SITE.exe'),
   "filialIds": zod.array(zod.string()),
   "intervalMinutes": zod.number().int(),
   "refsIntervalMinutes": zod.number().int(),

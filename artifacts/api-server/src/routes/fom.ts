@@ -35,6 +35,9 @@ import {
 
 const router: IRouter = Router();
 const LAST_TEST_KEY = "fom_last_test";
+const reportAvailable = !process.env.VERCEL;
+const REPORT_UNAVAILABLE =
+  "REPORT.exe Radmin VPN ichida: unga Vercel serveridan ulanib boʻlmaydi. Bu saytda maʼlumot SITE.exe orqali keladi.";
 
 async function latestImport(integration: string, statusFilter?: string) {
   const [row] = await db
@@ -95,8 +98,12 @@ async function readStatus() {
     ? lastImport.status === "success" ||
       (lastImport.status === "running" && Object.values(details?.reports ?? {}).some((r) => r && !r.error))
     : null;
-  const connected =
-    lastTest && (!syncAt || new Date(lastTest.at) > syncAt) ? lastTest.ok : Boolean(syncOk);
+  const siteAt = siteImport?.completedAt ?? siteImport?.startedAt ?? null;
+  const sitePushing =
+    siteImport?.status === "success" && !!siteAt && Date.now() - siteAt.getTime() < 30 * 60_000;
+  const connected = !reportAvailable
+    ? sitePushing
+    : lastTest && (!syncAt || new Date(lastTest.at) > syncAt) ? lastTest.ok : Boolean(syncOk);
 
   const [branches, products, counterparties, stockLines, purchases, sales, stockDocuments] =
     await Promise.all([
@@ -125,6 +132,7 @@ async function readStatus() {
     lastMessage: lastImport?.message || (config.reportUrl ? null : "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)."),
     importedRecords: lastImport?.importedRecords ?? 0,
     running: fomSyncRunning(),
+    reportAvailable,
     filialIds: details?.filials?.length ? details.filials : config.filialIds,
     intervalMinutes: config.intervalMinutes,
     refsIntervalMinutes: config.refsIntervalMinutes,
@@ -249,6 +257,10 @@ router.post(
   "/fom/test",
   requireRole("admin", "finance"),
   async (_req, res): Promise<void> => {
+    if (!reportAvailable) {
+      res.json(TestFomConnectionResponse.parse({ status: "error", message: REPORT_UNAVAILABLE, checkedAt: new Date() }));
+      return;
+    }
     const result = await testFomConnection();
     const value = JSON.stringify({ ok: result.ok, at: new Date().toISOString() });
     await db
@@ -269,6 +281,10 @@ router.post(
   "/fom/sync",
   requireRole("admin", "finance"),
   async (req, res): Promise<void> => {
+    if (!reportAvailable) {
+      res.json(SyncFomResponse.parse({ status: "error", message: REPORT_UNAVAILABLE, checkedAt: new Date() }));
+      return;
+    }
     const parsed = SyncFomBody.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });

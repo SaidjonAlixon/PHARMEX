@@ -178,6 +178,7 @@ export function SettingsPage() {
   const [copied, setCopied] = useState(false);
   const wasRunning = useRef(false);
   const status = q.data;
+  const pull = status?.reportAvailable !== false;
 
   useEffect(() => {
     if (!status) return;
@@ -207,21 +208,27 @@ export function SettingsPage() {
   const setupIni = status?.site.path ? `[CONNECT]\nSERVER=LocalHost\nBASE=NAPTSKLAD\n[SERVER]\nURL=${origin}/api/fom/site/<FOM_SITE_TOKEN>\nTOCING=<FOM_SITE_TOKEN>` : '';
 
   return <>
-    <PageHeading eyebrow="INTEGRATSIYA" title="FOM (F-APTEKA) maʼlumotlari" subtitle="REPORT.exe orqali hisobotlarni tortish, SITE.exe orqali qoldiqlarni qabul qilish va import holati" actions={canEdit && status && <div className="heading-button-group">
+    <PageHeading eyebrow="INTEGRATSIYA" title="FOM (F-APTEKA) maʼlumotlari" subtitle="REPORT.exe orqali hisobotlarni tortish, SITE.exe orqali qoldiqlarni qabul qilish va import holati" actions={canEdit && status && pull && <div className="heading-button-group">
       <button className="button secondary" onClick={runTest} disabled={!status.configured || test.isPending} data-testid="button-test-fom"><Activity size={15} />{test.isPending ? 'Tekshirilmoqda…' : 'Ulanishni sinash'}</button>
       <button className="button primary" onClick={() => runSync(undefined, true)} disabled={!status.configured || status.running || sync.isPending} data-testid="button-sync-fom"><RefreshCw size={15} className={status.running ? 'spin' : ''} />{status.running ? 'Sinxronlanmoqda…' : 'Yangilash'}</button>
     </div>} />
     <DataState loading={q.isLoading} error={q.isError} empty={false} retry={() => q.refetch()} />
     {status && <>
-      <div className={`integration-banner ${status.connected ? 'connected' : 'disconnected'}`} data-testid="status-fom-connection">
+      {pull ? <div className={`integration-banner ${status.connected ? 'connected' : 'disconnected'}`} data-testid="status-fom-connection">
         <div className="integration-icon">{status.connected ? <Check size={20} /> : <AlertCircle size={20} />}</div>
         <div><span className="eyebrow">REPORT.EXE SERVERI</span><b>{status.baseUrl ?? 'Server manzili kiritilmagan — pastdagi formani toʻldiring'}</b>
           <span>Filiallar (pFilial_id): {status.filialIds.length ? `${status.filialIds.join(', ')} — jami ${status.filialIds.length} ta` : 'avtomatik aniqlanadi'} · Real vaqt: {status.intervalMinutes > 0 ? `har ${status.intervalMinutes} daqiqada hujjatlar va qoldiqlar, har ${status.refsIntervalMinutes} daqiqada maʼlumotnomalar` : 'avto-sinxron oʻchirilgan'}{status.refsAt ? ` · maʼlumotnomalar: ${dateTime(status.refsAt)}` : ''}</span></div>
         <StatusBadge tone={status.connected ? 'good' : status.configured ? 'bad' : 'warn'}>{status.connected ? 'Ulangan' : status.configured ? 'Javob yoʻq' : 'Sozlanmagan'}</StatusBadge>
-      </div>
+      </div> : <div className={`integration-banner ${status.connected ? 'connected' : 'disconnected'}`} data-testid="status-fom-connection">
+        <div className="integration-icon">{status.connected ? <Check size={20} /> : <AlertCircle size={20} />}</div>
+        <div><span className="eyebrow">SITE.EXE ORQALI QABUL</span><b>{status.site.lastAt ? `Oxirgi qabul: ${dateTime(status.site.lastAt)}` : 'Apteka kompyuteridan hali maʼlumot kelmagan'}</b>
+          <span>{status.site.configured ? 'Token sozlangan. SITE.exe apteka kompyuterida ishga tushgach, qoldiqlar, tovarlar va filiallar shu yerga oʻzi keladi.' : 'FOM_SITE_TOKEN sozlanmagan: Vercel → Settings → Environment Variables ga qoʻshing va Redeploy qiling.'}</span></div>
+        <StatusBadge tone={status.connected ? 'good' : status.site.configured ? 'warn' : 'bad'}>{status.connected ? 'Maʼlumot kelyapti' : status.site.configured ? 'Kutilmoqda' : 'Token yoʻq'}</StatusBadge>
+      </div>}
       {message && <div className={`notice ${message.tone}`} data-testid="status-fom-message">{message.text}</div>}
 
-      {isAdmin && <FomConnectPanel onMessage={setMessage} />}
+      {isAdmin && pull && <FomConnectPanel onMessage={setMessage} />}
+      {!pull && <div className="notice info" data-testid="status-fom-site-mode">REPORT.exe (savdo, kirim, qaytarishlar) apteka tarmogʻidagi Radmin VPN ichida ishlaydi, unga bu saytdan ulanib boʻlmaydi. Bu yerda qoldiqlar SITE.exe orqali qabul qilinadi.</div>}
 
       <KpiStrip items={[
         { label: 'Filiallar', value: status.totals.branches, count: true, icon: Building2 },
@@ -233,8 +240,8 @@ export function SettingsPage() {
         { label: 'Tovar hujjatlari', value: status.totals.stockDocuments.toLocaleString('uz-UZ'), count: true, icon: FileText },
       ]} />
 
-      <div className="split-grid">
-        <Panel title="Hisobotlar (REPORT.exe)" subtitle={status.lastSyncFrom ? `Oxirgi davr: ${date(status.lastSyncFrom)} — ${date(status.lastSyncTo)}` : 'Hali sinxronlanmagan'}>
+      <div className={pull ? 'split-grid' : undefined}>
+        {pull && <Panel title="Hisobotlar (REPORT.exe)" subtitle={status.lastSyncFrom ? `Oxirgi davr: ${date(status.lastSyncFrom)} — ${date(status.lastSyncTo)}` : 'Hali sinxronlanmagan'}>
           <TableWrap><thead><tr><th>ID</th><th>Hisobot</th><th>Platformada</th><th className="num">Qator</th><th className="num">Import</th><th>Holat</th></tr></thead>
             <tbody>{status.reports.map(report => <tr key={report.key} data-testid={`row-fom-report-${report.key}`}>
               <td><code>{report.reportId}</code></td>
@@ -245,10 +252,10 @@ export function SettingsPage() {
               <td><ReportStatus report={report} running={status.running} /></td>
             </tr>)}</tbody>
           </TableWrap>
-        </Panel>
+        </Panel>}
 
         <div className="form-stack">
-          <Panel title="Sinxronlash" subtitle="Maʼlumotnomalar va qoldiqlar har safar toʻliq yangilanadi; hujjatlar tanlangan davr boʻyicha">
+          {pull && <Panel title="Sinxronlash" subtitle="Maʼlumotnomalar va qoldiqlar har safar toʻliq yangilanadi; hujjatlar tanlangan davr boʻyicha">
             <div className="sync-status"><div className={`sync-orb ${status.running ? 'running' : status.lastSyncStatus}`}><RefreshCw size={19} className={status.running ? 'spin' : ''} /></div>
               <div className="sync-text"><span>Oxirgi sinxronlash</span><b>{status.lastSyncAt ? dateTime(status.lastSyncAt) : 'Hali bajarilmagan'}</b><small>{status.lastMessage ?? '—'}</small></div>
               {syncState && <StatusBadge tone={syncState.tone}>{syncState.label}</StatusBadge>}</div>
@@ -258,7 +265,7 @@ export function SettingsPage() {
               <button className="button primary span-2" disabled={!status.configured || status.running || sync.isPending} data-testid="button-sync-range"><RefreshCw size={15} />Davr boʻyicha tortish</button>
             </form>}
             <p className="field-hint">Takroriy tortish dublikat yaratmaydi: hujjatlar FOM ID boʻyicha yangilanadi.</p>
-          </Panel>
+          </Panel>}
 
           <Panel title="Qoldiqlarni qabul qilish (SITE.exe)" subtitle="FOM texnigi SETUP.ini ga shu manzil va tokenni yozadi">
             <InfoGrid items={[

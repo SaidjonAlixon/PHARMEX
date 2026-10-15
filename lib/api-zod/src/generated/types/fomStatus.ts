@@ -23,6 +23,8 @@ export interface FomStatus {
   lastMessage: string | null;
   importedRecords: number;
   running: boolean;
+  /** false when the API runs where REPORT.exe cannot be reached (Vercel); data then arrives only via SITE.exe */
+  reportAvailable: boolean;
   filialIds: string[];
   intervalMinutes: number;
   refsIntervalMinutes: number;
