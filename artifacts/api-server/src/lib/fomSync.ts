@@ -1046,3 +1046,67 @@ export async function importSitePush(rows: FomRow[]): Promise<{ products: number
   ]);
   return { products, batches };
 }
+
+/**
+ * Import one REPORT.exe payload pushed by the on-prem PHARMEX FOM Agent.
+ * The agent runs on the pharmacy PC (localhost:8084) and posts rows here.
+ */
+export async function importAgentReport(input: {
+  report: FomReportKey;
+  filialId: string;
+  rows: FomRow[];
+}): Promise<{ imported: number }> {
+  const lookups = await loadLookups();
+  const { report, filialId, rows } = input;
+  switch (report) {
+    case "organizations":
+      return { imported: await importOrganizations(lookups, rows) };
+    case "catalog":
+      return {
+        imported: await importCatalog(
+          lookups,
+          rows.map((row) => ({
+            fomId: row.I,
+            name: row.N ?? "",
+            manufacturer: row.P,
+            unit: row.E,
+            ikpu: row.C,
+          })),
+        ),
+      };
+    case "stock":
+      return {
+        imported: await importStockSnapshot(lookups, [
+          rows
+            .filter((row) => row.G)
+            .map((row) => ({
+              branchFomId: row.O?.trim() || filialId,
+              productFomId: row.G,
+              quantity: row.Q,
+              retailPrice: row.P,
+              expiry: fomDay(row.E),
+            })),
+        ]),
+      };
+    case "purchases":
+      return { imported: await importPurchases(lookups, groupDocs(rows, "p", filialId, docKey)) };
+    case "supplierReturns":
+      return {
+        imported: await importStockDocuments(lookups, groupDocs(rows, "sr", filialId, docKey), "supplier_return"),
+      };
+    case "writeOffs":
+      return {
+        imported: await importStockDocuments(
+          lookups,
+          groupDocs(rows, "wo", filialId, (row) => fomDay(row.D) ?? row.D ?? ""),
+          "write_off",
+        ),
+      };
+    case "retailSales":
+      return { imported: await importSales(lookups, groupDocs(rows, "rs", filialId, docKey), "retail") };
+    case "insuranceSales":
+      return { imported: await importSales(lookups, groupDocs(rows, "is", filialId, docKey), "insurance") };
+    default:
+      throw new FomError(`Nomaʼlum hisobot: ${report}`);
+  }
+}

@@ -23,10 +23,19 @@ import {
   TestFomConnectionResponse,
 } from "@workspace/api-zod";
 import { requireRole } from "../middlewares/requireClerkUser";
-import { FOM_REPORTS, decodeXml, fomConfig, fomSavedConfig, parseFilialIds, parseFomXml } from "../lib/fomClient";
+import {
+  FOM_REPORTS,
+  decodeXml,
+  fomConfig,
+  fomSavedConfig,
+  parseFilialIds,
+  parseFomXml,
+  type FomReportKey,
+} from "../lib/fomClient";
 import { saveFomSettings } from "../lib/fomSettings";
 import {
   fomSyncRunning,
+  importAgentReport,
   importSitePush,
   startFomSync,
   testFomConnection,
@@ -403,6 +412,85 @@ fomSiteRouter.post(
         message: `SITE.exe: ${message}`.slice(0, 500),
       });
       res.status(400).type("text/plain").send(message);
+    }
+  },
+);
+
+// ---------------------------------------------------------------- On-prem Windows agent (pulls REPORT.exe locally, pushes here)
+
+const AGENT_REPORTS = new Set(Object.keys(FOM_REPORTS));
+
+fomSiteRouter.get(["/fom/agent/ping", "/fom/agent/:token/ping"], async (req, res): Promise<void> => {
+  const expected = fomConfig().siteToken;
+  if (!expected) {
+    res.status(503).json({ ok: false, error: "Agent token sozlanmagan (FOM_SITE_TOKEN)." });
+    return;
+  }
+  if (!sameToken(tokenFrom(req), expected)) {
+    res.status(401).json({ ok: false, error: "Invalid token" });
+    return;
+  }
+  res.json({
+    ok: true,
+    reports: Object.values(FOM_REPORTS).map((r) => ({ key: r.key, id: r.id, dated: r.dated, label: r.label })),
+  });
+});
+
+fomSiteRouter.post(
+  ["/fom/agent/report", "/fom/agent/:token/report"],
+  express.json({ limit: "4.5mb" }),
+  async (req, res): Promise<void> => {
+    const expected = fomConfig().siteToken;
+    if (!expected) {
+      res.status(503).json({ ok: false, error: "Agent token sozlanmagan (FOM_SITE_TOKEN)." });
+      return;
+    }
+    if (!sameToken(tokenFrom(req), expected)) {
+      res.status(401).json({ ok: false, error: "Invalid token" });
+      return;
+    }
+    const body = (req.body ?? {}) as {
+      report?: string;
+      filialId?: string;
+      xml?: string;
+      rows?: unknown;
+    };
+    const report = String(body.report ?? "").trim() as FomReportKey;
+    const filialId = String(body.filialId ?? "1").trim() || "1";
+    if (!AGENT_REPORTS.has(report)) {
+      res.status(400).json({ ok: false, error: `Nomaʼlum hisobot: ${report}` });
+      return;
+    }
+    const startedAt = new Date();
+    try {
+      const rows = Array.isArray(body.rows)
+        ? (body.rows as Record<string, string>[])
+        : parseFomXml(typeof body.xml === "string" ? body.xml : "");
+      if (rows.length === 0) {
+        res.json({ ok: true, report, filialId, rows: 0, imported: 0, message: "Boʻsh hisobot." });
+        return;
+      }
+      const result = await importAgentReport({ report, filialId, rows });
+      await db.insert(integrationImportsTable).values({
+        integration: "fom-agent",
+        status: "success",
+        startedAt,
+        completedAt: new Date(),
+        importedRecords: result.imported,
+        message: `Agent: ${FOM_REPORTS[report].label} · filial ${filialId} · ${rows.length} qator → ${result.imported} import.`,
+        details: JSON.stringify({ report, filialId, rows: rows.length, imported: result.imported }),
+      });
+      res.json({ ok: true, report, filialId, rows: rows.length, imported: result.imported });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await db.insert(integrationImportsTable).values({
+        integration: "fom-agent",
+        status: "error",
+        startedAt,
+        completedAt: new Date(),
+        message: `Agent: ${message}`.slice(0, 500),
+      });
+      res.status(400).json({ ok: false, error: message });
     }
   },
 );
