@@ -59,3 +59,5 @@ Thumbs.db
 # FOM Windows agent binary build
 artifacts/fom-agent/dist/
 artifacts/fom-agent/node_modules/
+
+artifacts/fom-agent/config.ini
