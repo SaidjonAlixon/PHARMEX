@@ -79,9 +79,10 @@ async function countWhere(query: Promise<Array<{ value: number }>>) {
 
 async function readStatus() {
   const config = fomConfig();
-  const [lastImport, siteImport, lastTestRow] = await Promise.all([
+  const [lastImport, siteImport, agentImport, lastTestRow] = await Promise.all([
     latestImport("fom"),
     latestImport("fom-site"),
+    latestImport("fom-agent"),
     db
       .select()
       .from(integrationSettingsTable)
@@ -108,11 +109,24 @@ async function readStatus() {
       (lastImport.status === "running" && Object.values(details?.reports ?? {}).some((r) => r && !r.error))
     : null;
   const siteAt = siteImport?.completedAt ?? siteImport?.startedAt ?? null;
+  const agentAt = agentImport?.completedAt ?? agentImport?.startedAt ?? null;
   const sitePushing =
     siteImport?.status === "success" && !!siteAt && Date.now() - siteAt.getTime() < 30 * 60_000;
+  const agentPushing =
+    agentImport?.status === "success" && !!agentAt && Date.now() - agentAt.getTime() < 30 * 60_000;
+  // Vercelda REPORT.exe ga ulanib bo'lmaydi — SITE.exe YOKI PHARMEX Agent orqali keladi
   const connected = !reportAvailable
-    ? sitePushing
+    ? sitePushing || agentPushing
     : lastTest && (!syncAt || new Date(lastTest.at) > syncAt) ? lastTest.ok : Boolean(syncOk);
+
+  const inboundAt = [siteAt, agentAt].filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0] ?? null;
+  const inboundImport =
+    inboundAt && agentAt && inboundAt.getTime() === agentAt.getTime()
+      ? agentImport
+      : inboundAt && siteAt && inboundAt.getTime() === siteAt.getTime()
+        ? siteImport
+        : siteImport ?? agentImport;
+  const inboundVia = inboundImport?.integration === "fom-agent" ? "agent" : inboundImport ? "site" : null;
 
   const [branches, products, counterparties, stockLines, purchases, sales, stockDocuments] =
     await Promise.all([
@@ -165,10 +179,12 @@ async function readStatus() {
     site: {
       configured: Boolean(token),
       path: token ? `/api/fom/site/${token.slice(0, 4)}…${token.slice(-4)}` : null,
-      lastAt: siteImport?.completedAt ?? siteImport?.startedAt ?? null,
-      lastStatus: siteImport?.status ?? null,
-      lastMessage: siteImport?.message ?? null,
-      lastRecords: siteImport?.importedRecords ?? 0,
+      lastAt: inboundAt,
+      lastStatus: inboundImport?.status ?? null,
+      lastMessage: inboundImport
+        ? `${inboundVia === "agent" ? "Agent" : "SITE.exe"}: ${inboundImport.message ?? ""}`.trim()
+        : null,
+      lastRecords: inboundImport?.importedRecords ?? 0,
     },
     totals: { branches, products, counterparties, stockLines, purchases, sales, stockDocuments },
   });
@@ -454,9 +470,15 @@ fomSiteRouter.post(
       filialId?: string;
       xml?: string;
       rows?: unknown;
+      fomId?: string;
+      ch?: string;
+      pharmacyName?: string;
     };
     const report = String(body.report ?? "").trim() as FomReportKey;
     const filialId = String(body.filialId ?? "1").trim() || "1";
+    const fomId = String(body.fomId ?? "").trim();
+    const ch = String(body.ch ?? "").trim();
+    const pharmacyName = String(body.pharmacyName ?? "").trim();
     if (!AGENT_REPORTS.has(report)) {
       res.status(400).json({ ok: false, error: `Nomaʼlum hisobot: ${report}` });
       return;
@@ -467,20 +489,41 @@ fomSiteRouter.post(
         ? (body.rows as Record<string, string>[])
         : parseFomXml(typeof body.xml === "string" ? body.xml : "");
       if (rows.length === 0) {
-        res.json({ ok: true, report, filialId, rows: 0, imported: 0, message: "Boʻsh hisobot." });
+        res.json({ ok: true, report, filialId, fomId: fomId || null, rows: 0, imported: 0, message: "Boʻsh hisobot." });
         return;
       }
-      const result = await importAgentReport({ report, filialId, rows });
+      const result = await importAgentReport({ report, filialId, rows, orgFomId: fomId || undefined });
+      const who = [fomId && `Fom_ID ${fomId}`, ch && `CH ${ch}`, pharmacyName].filter(Boolean).join(" · ");
+      const skipped = Math.max(0, rows.length - (result.imported || 0));
       await db.insert(integrationImportsTable).values({
         integration: "fom-agent",
         status: "success",
         startedAt,
         completedAt: new Date(),
         importedRecords: result.imported,
-        message: `Agent: ${FOM_REPORTS[report].label} · filial ${filialId} · ${rows.length} qator → ${result.imported} import.`,
-        details: JSON.stringify({ report, filialId, rows: rows.length, imported: result.imported }),
+        message: `Agent: ${FOM_REPORTS[report].label} · filial ${filialId}${who ? ` · ${who}` : ""} · ${rows.length} qator → ${result.imported} import.`,
+        details: JSON.stringify({
+          report,
+          filialId,
+          fomId: fomId || null,
+          ch: ch || null,
+          pharmacyName: pharmacyName || null,
+          rows: rows.length,
+          imported: result.imported,
+          skipped,
+          sampleKeys: rows.slice(0, 3).map((row) => Object.keys(row).sort().join(",")),
+        }),
       });
-      res.json({ ok: true, report, filialId, rows: rows.length, imported: result.imported });
+      res.json({
+        ok: true,
+        report,
+        filialId,
+        fomId: fomId || null,
+        rows: rows.length,
+        imported: result.imported,
+        skipped,
+        sampleKeys: rows.slice(0, 2).map((row) => Object.keys(row).sort()),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await db.insert(integrationImportsTable).values({

@@ -2,14 +2,17 @@
 // Compile: csc /nologo /target:winexe /out:PHARMEX-FOM-Agent.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll PHARMEX-FOM-Agent.cs
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace PharmexFomAgent
 {
@@ -18,6 +21,18 @@ namespace PharmexFomAgent
         [STAThread]
         static void Main()
         {
+            // .NET 4.0 defaults to old SSL; Vercel needs TLS 1.2
+            try
+            {
+                ServicePointManager.Expect100Continue = true;
+                ServicePointManager.SecurityProtocol =
+                    (SecurityProtocolType)0x00000C00 | // Tls12
+                    (SecurityProtocolType)0x00000300 | // Tls11
+                    (SecurityProtocolType)0x000000C0;  // Tls
+                ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
+            }
+            catch { }
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
@@ -65,7 +80,7 @@ namespace PharmexFomAgent
             };
             var hint = new Label
             {
-                Text = "Apteka kompyuterida ishlaydi: REPORT.exe (8084) → PHARMEX sayti",
+                Text = "Shu kompyuterdagi Fom_ID + CH ni o'zi topadi (ODJX marketplace emas)",
                 AutoSize = true,
                 Location = new Point(22, 50),
                 ForeColor = Color.FromArgb(90, 100, 120)
@@ -142,7 +157,7 @@ namespace PharmexFomAgent
 
             EnsureConfig();
             Log("config: " + ConfigPath());
-            Log("IFOR PHARMA · Agent tayyor. Avval REPORT.exe (8084) kerak.");
+            Log("Agent tayyor. Ishga tushganda shu kompyuterdagi FOM eshigini o'zi qidiradi.");
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -183,7 +198,7 @@ namespace PharmexFomAgent
             else
             {
                 File.WriteAllText(path,
-                    "[CLOUD]\r\nURL=https://pharmex-navy.vercel.app\r\nTOKEN=\r\n\r\n[FOM]\r\nREPORT_URL=http://127.0.0.1:8084\r\nFILIAL_IDS=1\r\nINITIAL_DAYS=90\r\nINTERVAL_MIN=5\r\nTIMEOUT_SEC=120\r\n",
+                    "[CLOUD]\r\nURL=https://pharmex-navy.vercel.app\r\n; PHARMEX FOM_SITE_TOKEN (ODJX_ marketplace EMAS)\r\nTOKEN=\r\n\r\n[PHARMACY]\r\n; Bo'sh qoldiring — agent F-Apteka dan o'zi topadi\r\nFOM_ID=\r\nCH=\r\nNAME=\r\n\r\n[FOM]\r\nREPORT_URL=auto\r\nFILIAL_IDS=1\r\nINITIAL_DAYS=90\r\nINTERVAL_MIN=5\r\nTIMEOUT_SEC=120\r\n",
                     Encoding.UTF8);
             }
         }
@@ -221,20 +236,33 @@ namespace PharmexFomAgent
                 {
                     var cfg = LoadConfig();
                     Log("Cloud: " + cfg.CloudUrl);
-                    Log("REPORT: " + cfg.ReportUrl);
                     SetStatus("Bulut tekshirilmoqda…", Color.DarkOrange);
                     PingCloud(cfg);
                     Log("Bulut OK.");
+
+                    SetStatus("Apteka identifikatori qidirilmoqda…", Color.DarkOrange);
+                    ResolvePharmacyIdentity(cfg);
+                    Log("Apteka: Fom_ID=" + (cfg.FomId ?? "?") + "  CH=" + (cfg.Ch ?? "?") +
+                        (string.IsNullOrEmpty(cfg.PharmacyName) ? "" : ("  " + cfg.PharmacyName)));
+                    if (!string.IsNullOrEmpty(cfg.FomId)) SaveIniValue("PHARMACY", "FOM_ID", cfg.FomId);
+                    if (!string.IsNullOrEmpty(cfg.Ch)) SaveIniValue("PHARMACY", "CH", cfg.Ch);
+                    if (!string.IsNullOrEmpty(cfg.PharmacyName)) SaveIniValue("PHARMACY", "NAME", cfg.PharmacyName);
+
+                    SetStatus("FOM eshigi qidirilmoqda…", Color.DarkOrange);
+                    cfg.ReportUrl = ResolveReportUrl(cfg);
+                    Log("REPORT: " + cfg.ReportUrl);
+                    SaveIniValue("FOM", "REPORT_URL", cfg.ReportUrl);
+
                     try
                     {
                         FetchReport(cfg, 189, cfg.FilialIds[0], DateTime.UtcNow.Date, DateTime.UtcNow.Date);
-                        Log("REPORT.exe OK.");
-                        SetStatus("Ulangan", Color.FromArgb(23, 154, 69));
+                        Log("FOM eshigi OK: " + cfg.ReportUrl);
+                        SetStatus(string.IsNullOrEmpty(cfg.FomId) ? "Ulangan" : ("Ulangan · Fom_ID " + cfg.FomId), Color.FromArgb(23, 154, 69));
                     }
                     catch (Exception ex)
                     {
                         Log(ex.Message);
-                        SetStatus("REPORT.exe yo'q — kutilyapti", Color.Firebrick);
+                        SetStatus("FOM eshigi topilmadi — kutilyapti", Color.Firebrick);
                         if (once) return;
                     }
 
@@ -289,6 +317,11 @@ namespace PharmexFomAgent
             public int InitialDays;
             public int IntervalMin;
             public int TimeoutSec;
+            /// <summary>Shu kompyuterdagi F-Apteka Fom_ID (masalan 16372). ODJX ro'yxatidagi 1-qator emas.</summary>
+            public string FomId;
+            /// <summary>Shu ulanishning CH kodi (masalan R5T5Q6H6E7T7Q).</summary>
+            public string Ch;
+            public string PharmacyName;
         }
 
         Config LoadConfig()
@@ -305,7 +338,12 @@ namespace PharmexFomAgent
             var url = get("CLOUD", "URL").TrimEnd('/');
             var token = get("CLOUD", "TOKEN");
             if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(token))
-                throw new Exception("config.ini: [CLOUD] URL va TOKEN ni to'ldiring.");
+                throw new Exception("config.ini: [CLOUD] URL va TOKEN ni to'ldiring (PHARMEX FOM_SITE_TOKEN — ODJX emas).");
+            if (token.StartsWith("ODJX_", StringComparison.OrdinalIgnoreCase))
+                throw new Exception(
+                    "ODJX_… — bu Fom_Connect marketplace tokeni (ro'yxatdan 1-aptekani oladi). " +
+                    "PHARMEX uchun Vercel dagi FOM_SITE_TOKEN ni yozing. " +
+                    "Shu aptekaning Fom_ID/CH ni agent o'zi topadi.");
             var filials = Regex.Split(get("FOM", "FILIAL_IDS"), @"[,;\s]+");
             var list = new List<string>();
             foreach (var f in filials) if (!string.IsNullOrWhiteSpace(f)) list.Add(f.Trim());
@@ -315,12 +353,318 @@ namespace PharmexFomAgent
             {
                 CloudUrl = url,
                 Token = token,
-                ReportUrl = string.IsNullOrWhiteSpace(get("FOM", "REPORT_URL")) ? "http://127.0.0.1:8084" : get("FOM", "REPORT_URL").TrimEnd('/'),
+                ReportUrl = string.IsNullOrWhiteSpace(get("FOM", "REPORT_URL")) ? "auto" : get("FOM", "REPORT_URL").TrimEnd('/'),
                 FilialIds = list.ToArray(),
                 InitialDays = int.TryParse(get("FOM", "INITIAL_DAYS"), out n) && n > 0 ? n : 90,
                 IntervalMin = int.TryParse(get("FOM", "INTERVAL_MIN"), out n) ? Math.Max(0, n) : 5,
-                TimeoutSec = int.TryParse(get("FOM", "TIMEOUT_SEC"), out n) && n > 0 ? n : 120
+                TimeoutSec = int.TryParse(get("FOM", "TIMEOUT_SEC"), out n) && n > 0 ? n : 120,
+                FomId = NullIfEmpty(get("PHARMACY", "FOM_ID")),
+                Ch = NullIfEmpty(get("PHARMACY", "CH")),
+                PharmacyName = NullIfEmpty(get("PHARMACY", "NAME"))
             };
+        }
+
+        static string NullIfEmpty(string s)
+        {
+            return string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        }
+
+        /// <summary>
+        /// Har apteka kompyuterida o'z Fom_ID + CH bor (F-Apteka oynasidagi).
+        /// ODJX tokenini tashlasang marketplace 1-qatorga yopishib qoladi — shuning uchun
+        /// identifikatorni shu PC dagi FAPTEKA sozlamalaridan o'qiymiz.
+        /// </summary>
+        void ResolvePharmacyIdentity(Config cfg)
+        {
+            if (!string.IsNullOrEmpty(cfg.FomId) && !string.IsNullOrEmpty(cfg.Ch))
+            {
+                Log("config.ini dagi apteka identifikatori ishlatiladi.");
+                return;
+            }
+            Log("FAPTEKA dan Fom_ID / CH qidiruv…");
+            string[] roots = {
+                @"C:\FAPTEKA", @"D:\FAPTEKA", @"E:\FAPTEKA",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "FAPTEKA"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "FAPTEKA"),
+                AppDir()
+            };
+            string[] names = {
+                "SETUP.ini", "SETUP", "NAPTEKA", "NGLOBAL", "CONFIG", "config.ini",
+                "SITE.ini", "CONNECT.ini", "Fom_Connect.ini", "GLOBAL.ini", "NGLOBAL.ini"
+            };
+            foreach (var root in roots)
+            {
+                if (!Directory.Exists(root)) continue;
+                foreach (var name in names)
+                {
+                    try
+                    {
+                        foreach (var file in Directory.GetFiles(root, name, SearchOption.TopDirectoryOnly))
+                            ExtractPharmacyFromFile(file, cfg);
+                    }
+                    catch { }
+                }
+                try
+                {
+                    foreach (var file in Directory.GetFiles(root, "SETUP.ini", SearchOption.AllDirectories))
+                    {
+                        ExtractPharmacyFromFile(file, cfg);
+                        if (!string.IsNullOrEmpty(cfg.FomId) && !string.IsNullOrEmpty(cfg.Ch)) break;
+                    }
+                }
+                catch { }
+                if (!string.IsNullOrEmpty(cfg.FomId) && !string.IsNullOrEmpty(cfg.Ch)) break;
+            }
+
+            // Registry (ba'zi o'rnatishlar)
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\FAPTEKA"))
+                {
+                    if (key != null)
+                    {
+                        if (string.IsNullOrEmpty(cfg.FomId))
+                            cfg.FomId = NullIfEmpty(Convert.ToString(key.GetValue("Fom_ID") ?? key.GetValue("FomId") ?? key.GetValue("FOM_ID")));
+                        if (string.IsNullOrEmpty(cfg.Ch))
+                            cfg.Ch = NullIfEmpty(Convert.ToString(key.GetValue("CH") ?? key.GetValue("Channel")));
+                    }
+                }
+            }
+            catch { }
+
+            if (string.IsNullOrEmpty(cfg.FomId) && string.IsNullOrEmpty(cfg.Ch))
+                Log("Ogohlantirish: Fom_ID/CH topilmadi — config.ini [PHARMACY] ga qo'lda yozing (F-Apteka oynasidagi).");
+        }
+
+        void ExtractPharmacyFromFile(string file, Config cfg)
+        {
+            string text;
+            try { text = File.ReadAllText(file, Encoding.Default); }
+            catch { return; }
+
+            if (string.IsNullOrEmpty(cfg.FomId))
+            {
+                var m = Regex.Match(text, @"(?im)^\s*(?:Fom[_\s]?[Ii][Dd]|FOM_ID|FomId)\s*[=:]\s*(\d{3,8})\s*$");
+                if (m.Success) { cfg.FomId = m.Groups[1].Value; Log("  Fom_ID=" + cfg.FomId + " ← " + file); }
+            }
+            if (string.IsNullOrEmpty(cfg.Ch))
+            {
+                // CH=R5T5Q6H6E7T7Q — ODJX_ va uzun marketplace tokenlardan farq qiladi
+                var m = Regex.Match(text, @"(?im)^\s*(?:CH|Channel|CHANNEL)\s*[=:]\s*([A-Z0-9]{8,20})\s*$");
+                if (m.Success && !m.Groups[1].Value.StartsWith("ODJX", StringComparison.OrdinalIgnoreCase))
+                {
+                    cfg.Ch = m.Groups[1].Value;
+                    Log("  CH=" + cfg.Ch + " ← " + file);
+                }
+            }
+            if (string.IsNullOrEmpty(cfg.PharmacyName))
+            {
+                var m = Regex.Match(text, @"(?im)^\s*(?:NAME|Наименование|Apteka|PHARMACY|ORG)\s*[=:]\s*(.+)\s*$");
+                if (m.Success)
+                {
+                    var n = m.Groups[1].Value.Trim();
+                    if (n.Length >= 3 && n.Length < 120 && n.IndexOf("http", StringComparison.OrdinalIgnoreCase) < 0)
+                        cfg.PharmacyName = n;
+                }
+            }
+        }
+
+        void SaveIniValue(string section, string key, string value)
+        {
+            try
+            {
+                var path = ConfigPath();
+                EnsureConfig();
+                var lines = new List<string>(File.ReadAllLines(path, Encoding.UTF8));
+                string cur = "";
+                bool replaced = false;
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    var t = lines[i].Trim();
+                    var sm = Regex.Match(t, @"^\[(.+)\]$");
+                    if (sm.Success) { cur = sm.Groups[1].Value.ToUpperInvariant(); continue; }
+                    if (cur == section.ToUpperInvariant() && t.StartsWith(key + "=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        lines[i] = key + "=" + value;
+                        replaced = true;
+                        break;
+                    }
+                }
+                if (!replaced)
+                {
+                    lines.Add("[" + section + "]");
+                    lines.Add(key + "=" + value);
+                }
+                File.WriteAllLines(path, lines.ToArray(), Encoding.UTF8);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Har aptekada REPORT.exe porti har xil bo'lishi mumkin.
+        /// config.ini, FAPTEKA sozlamalari va lokal portlarni tekshirib topadi.
+        /// </summary>
+        string ResolveReportUrl(Config cfg)
+        {
+            var candidates = new List<string>();
+            Action<string> add = delegate(string u)
+            {
+                if (string.IsNullOrWhiteSpace(u)) return;
+                u = u.Trim().TrimEnd('/');
+                if (!u.StartsWith("http", StringComparison.OrdinalIgnoreCase)) u = "http://" + u;
+                if (!candidates.Contains(u)) candidates.Add(u);
+            };
+
+            if (!string.IsNullOrWhiteSpace(cfg.ReportUrl) &&
+                !cfg.ReportUrl.Equals("auto", StringComparison.OrdinalIgnoreCase))
+                add(cfg.ReportUrl);
+
+            foreach (var u in ReadUrlsFromFaptekaConfigs()) add(u);
+
+            // Eng ko'p uchraydigan portlar (FOM hujjatidagi 8084 birinchilardan)
+            int[] ports = { 8084, 8080, 8085, 8081, 8082, 8083, 8090, 8888, 9000, 80 };
+            foreach (var p in ports) add("http://127.0.0.1:" + p);
+
+            Log("Qidiruv: " + candidates.Count + " ta mumkin bo'lgan manzil…");
+            foreach (var url in candidates)
+            {
+                Log("  tekshiruv: " + url);
+                if (ProbeReportUrl(url, cfg.FilialIds[0]))
+                {
+                    Log("  topildi: " + url);
+                    return url;
+                }
+            }
+            throw new Exception(
+                "Shu kompyuterda FOM hisobot eshigi (REPORT.exe / SERVICEREPORTS) topilmadi. " +
+                "FOM texnigi o'rnatishi yoki config.ini da REPORT_URL ni yozishi kerak.");
+        }
+
+        List<string> ReadUrlsFromFaptekaConfigs()
+        {
+            var found = new List<string>();
+            string[] roots = {
+                @"C:\FAPTEKA", @"D:\FAPTEKA", @"E:\FAPTEKA",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "FAPTEKA"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "FAPTEKA"),
+                AppDir()
+            };
+            string[] names = { "SETUP.ini", "SETUP", "NAPTEKA", "NGLOBAL", "CONFIG", "config.ini", "REPORT.ini", "SERVICEREPORTS.ini" };
+            foreach (var root in roots)
+            {
+                if (!Directory.Exists(root)) continue;
+                Log("FAPTEKA papka: " + root);
+                foreach (var name in names)
+                {
+                    try
+                    {
+                        foreach (var file in Directory.GetFiles(root, name, SearchOption.TopDirectoryOnly))
+                            ExtractUrlsFromFile(file, found);
+                    }
+                    catch { }
+                }
+                // ham SETUP.ini ni ichki papkalarda qidirish (chuqurlik cheklangan)
+                try
+                {
+                    foreach (var file in Directory.GetFiles(root, "SETUP.ini", SearchOption.AllDirectories))
+                    {
+                        ExtractUrlsFromFile(file, found);
+                        if (found.Count > 20) break;
+                    }
+                }
+                catch { }
+            }
+
+            // Ishlayotgan jarayonlar — faqat log uchun
+            try
+            {
+                foreach (var p in Process.GetProcesses())
+                {
+                    string n = "";
+                    try { n = p.ProcessName; } catch { continue; }
+                    if (Regex.IsMatch(n, "REPORT|SERVICEREPORT|NServis|FOM_SQL", RegexOptions.IgnoreCase))
+                        Log("Jarayon topildi: " + n + " (PID " + p.Id + ")");
+                }
+            }
+            catch { }
+
+            return found;
+        }
+
+        void ExtractUrlsFromFile(string file, List<string> found)
+        {
+            string text;
+            try { text = File.ReadAllText(file, Encoding.Default); }
+            catch { return; }
+            foreach (Match m in Regex.Matches(text, @"https?://[^\s""'<>]+", RegexOptions.IgnoreCase))
+            {
+                var u = m.Value.TrimEnd('/', '\\', ',', ';');
+                if (!found.Contains(u)) found.Add(u);
+            }
+            // PORT=8084 yoki pPort=8084
+            foreach (Match m in Regex.Matches(text, @"(?i)(?:REPORT_)?PORT\s*=\s*(\d{2,5})"))
+            {
+                var u = "http://127.0.0.1:" + m.Groups[1].Value;
+                if (!found.Contains(u)) found.Add(u);
+            }
+            // URL=... without scheme
+            foreach (Match m in Regex.Matches(text, @"(?im)^\s*URL\s*=\s*(.+)\s*$"))
+            {
+                var v = m.Groups[1].Value.Trim();
+                if (v.Length == 0 || v.IndexOf("pharmex", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                if (!v.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (Regex.IsMatch(v, @"^\d+\.\d+\.\d+\.\d+(:\d+)?")) v = "http://" + v;
+                    else if (Regex.IsMatch(v, @"^[\w\.-]+:\d+$")) v = "http://" + v;
+                    else continue;
+                }
+                if (!found.Contains(v)) found.Add(v);
+            }
+        }
+
+        bool ProbeReportUrl(string baseUrl, string filial)
+        {
+            // Avval port ochiqmi
+            try
+            {
+                var uri = new Uri(baseUrl);
+                var host = string.IsNullOrEmpty(uri.Host) ? "127.0.0.1" : uri.Host;
+                var port = uri.Port > 0 ? uri.Port : 80;
+                using (var c = new TcpClient())
+                {
+                    var ar = c.BeginConnect(host, port, null, null);
+                    if (!ar.AsyncWaitHandle.WaitOne(700)) return false;
+                    c.EndConnect(ar);
+                }
+            }
+            catch { return false; }
+
+            // REPORT.exe imzosi: P_GetReport_XML va haqiqiy FOM XML (HTML 404 emas)
+            try
+            {
+                var today = DateTime.UtcNow.Date;
+                var url = string.Format("{0}/P_GetReport_XML?pDateFrom={1}&pDateTo={2}&pFilial_id={3}&pReport_id=189",
+                    baseUrl.TrimEnd('/'), FomDate(today), FomDate(today), string.IsNullOrEmpty(filial) ? "1" : filial);
+                var req = (HttpWebRequest)WebRequest.Create(url);
+                req.Method = "GET";
+                req.Timeout = 4000;
+                req.ReadWriteTimeout = 4000;
+                using (var res = (HttpWebResponse)req.GetResponse())
+                {
+                    if ((int)res.StatusCode < 200 || (int)res.StatusCode >= 300) return false;
+                    using (var sr = new StreamReader(res.GetResponseStream(), Encoding.UTF8))
+                    {
+                        var body = sr.ReadToEnd();
+                        if (string.IsNullOrEmpty(body) || body.IndexOf('<') < 0) return false;
+                        // Oddiy HTML sahifa emas — FOM qatorlari (V yoki atributli yozuvlar)
+                        if (Regex.IsMatch(body, @"<\s*html\b", RegexOptions.IgnoreCase)) return false;
+                        return Regex.IsMatch(body, @"<\s*V\b", RegexOptions.IgnoreCase)
+                            || body.IndexOf("P_GetReport", StringComparison.OrdinalIgnoreCase) >= 0
+                            || Regex.IsMatch(body, @"\bI\s*=\s*""", RegexOptions.IgnoreCase);
+                    }
+                }
+            }
+            catch { return false; }
         }
 
         static Dictionary<string, Dictionary<string, string>> ParseIni(string text)
@@ -400,8 +744,8 @@ namespace PharmexFomAgent
             catch (WebException ex)
             {
                 if (ex.Status == WebExceptionStatus.ConnectFailure || ex.Status == WebExceptionStatus.NameResolutionFailure)
-                    throw new Exception("REPORT.exe topilmadi (" + cfg.ReportUrl + "). FOM texnigi 8084 ni ochishi kerak.");
-                throw new Exception("REPORT.exe: " + ex.Message);
+                    throw new Exception("FOM eshigiga ulanib bo'lmadi (" + cfg.ReportUrl + ").");
+                throw new Exception("FOM eshigi: " + ex.Message);
             }
         }
 
@@ -443,7 +787,7 @@ namespace PharmexFomAgent
                     {
                         errors++;
                         Log("  ✗ " + ex.Message);
-                        if (ex.Message.Contains("REPORT.exe topilmadi")) throw;
+                        if (ex.Message.IndexOf("eshig", StringComparison.OrdinalIgnoreCase) >= 0) throw;
                     }
                 }
             }
@@ -452,12 +796,16 @@ namespace PharmexFomAgent
 
         int Push(Config cfg, JavaScriptSerializer ser, string report, string filial, string xml)
         {
-            var payload = ser.Serialize(new Dictionary<string, object>
+            var payloadMap = new Dictionary<string, object>
             {
                 { "report", report },
                 { "filialId", filial },
                 { "xml", xml }
-            });
+            };
+            if (!string.IsNullOrEmpty(cfg.FomId)) payloadMap["fomId"] = cfg.FomId;
+            if (!string.IsNullOrEmpty(cfg.Ch)) payloadMap["ch"] = cfg.Ch;
+            if (!string.IsNullOrEmpty(cfg.PharmacyName)) payloadMap["pharmacyName"] = cfg.PharmacyName;
+            var payload = ser.Serialize(payloadMap);
             var url = cfg.CloudUrl + "/api/fom/agent/" + Uri.EscapeDataString(cfg.Token) + "/report";
             try
             {
@@ -470,6 +818,18 @@ namespace PharmexFomAgent
                     if (dict.ContainsKey("imported")) imp = Convert.ToInt32(dict["imported"]);
                 }
                 Log("  ✓ " + rows + " qator → " + imp + " import");
+                if (imp == 0 && rows > 0 && dict != null && dict.ContainsKey("sampleKeys"))
+                    Log("  (maydonlar: " + Convert.ToString(dict["sampleKeys"]) + ")");
+                if (imp == 0 && rows > 0)
+                {
+                    try
+                    {
+                        var samplePath = Path.Combine(AppDir(), "last-sample-" + report + ".xml");
+                        File.WriteAllText(samplePath, xml.Length > 8000 ? xml.Substring(0, 8000) : xml, Encoding.UTF8);
+                        Log("  namuna: " + samplePath);
+                    }
+                    catch { }
+                }
                 return imp;
             }
             catch (WebException ex)

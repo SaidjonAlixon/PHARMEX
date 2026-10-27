@@ -221,14 +221,18 @@ export function SettingsPage() {
         <StatusBadge tone={status.connected ? 'good' : status.configured ? 'bad' : 'warn'}>{status.connected ? 'Ulangan' : status.configured ? 'Javob yoʻq' : 'Sozlanmagan'}</StatusBadge>
       </div> : <div className={`integration-banner ${status.connected ? 'connected' : 'disconnected'}`} data-testid="status-fom-connection">
         <div className="integration-icon">{status.connected ? <Check size={20} /> : <AlertCircle size={20} />}</div>
-        <div><span className="eyebrow">SITE.EXE ORQALI QABUL</span><b>{status.site.lastAt ? `Oxirgi qabul: ${dateTime(status.site.lastAt)}` : 'Apteka kompyuteridan hali maʼlumot kelmagan'}</b>
-          <span>{status.site.configured ? 'Token sozlangan. SITE.exe apteka kompyuterida ishga tushgach, qoldiqlar, tovarlar va filiallar shu yerga oʻzi keladi.' : 'FOM_SITE_TOKEN sozlanmagan: Vercel → Settings → Environment Variables ga qoʻshing va Redeploy qiling.'}</span></div>
+        <div><span className="eyebrow">APTEKA → PHARMEX</span><b>{status.site.lastAt ? `Oxirgi qabul: ${dateTime(status.site.lastAt)}` : 'Apteka kompyuteridan hali maʼlumot kelmagan'}</b>
+          <span>{status.site.configured
+            ? (status.site.lastMessage
+              ? status.site.lastMessage
+              : 'Token sozlangan. PHARMEX-FOM-Agent.exe (tavsiya) yoki SITE.exe apteka kompyuterida ishlashi kerak.')
+            : 'FOM_SITE_TOKEN sozlanmagan: Vercel → Settings → Environment Variables ga qoʻshing va Redeploy qiling.'}</span></div>
         <StatusBadge tone={status.connected ? 'good' : status.site.configured ? 'warn' : 'bad'}>{status.connected ? 'Maʼlumot kelyapti' : status.site.configured ? 'Kutilmoqda' : 'Token yoʻq'}</StatusBadge>
       </div>}
       {message && <div className={`notice ${message.tone}`} data-testid="status-fom-message">{message.text}</div>}
 
       {isAdmin && pull && <FomConnectPanel onMessage={setMessage} />}
-      {!pull && <div className="notice info" data-testid="status-fom-site-mode">REPORT.exe (savdo, kirim, qaytarishlar) apteka tarmogʻidagi Radmin VPN ichida ishlaydi, unga bu saytdan ulanib boʻlmaydi. Bu yerda qoldiqlar SITE.exe orqali qabul qilinadi.</div>}
+      {!pull && <div className="notice info" data-testid="status-fom-site-mode">Vercel serveridan REPORT.exe ga ulanib boʻlmaydi. Maʼlumot apteka kompyuteridagi <b>PHARMEX-FOM-Agent.exe</b> orqali keladi (yoki FOM texnigi SITE.exe ni sozlaydi).</div>}
 
       <KpiStrip items={[
         { label: 'Filiallar', value: status.totals.branches, count: true, icon: Building2 },

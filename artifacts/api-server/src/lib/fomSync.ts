@@ -1055,12 +1055,36 @@ export async function importAgentReport(input: {
   report: FomReportKey;
   filialId: string;
   rows: FomRow[];
+  /** Apteka kompyuteridagi Fom_ID (ODJX marketplace roʻyxatidagi 1-qator EMAS) */
+  orgFomId?: string;
 }): Promise<{ imported: number }> {
   const lookups = await loadLookups();
-  const { report, filialId, rows } = input;
+  const { report, filialId, rows, orgFomId } = input;
   switch (report) {
-    case "organizations":
-      return { imported: await importOrganizations(lookups, rows) };
+    case "organizations": {
+      // Agent shu PCdagi Fom_ID ni yuborsa — APT flagsiz ham filial yaratamiz
+      let orgRows = rows;
+      if (orgFomId) {
+        const mine = rows.filter((row) => String(row.I ?? "").trim() === orgFomId);
+        const rest = rows.filter((row) => String(row.I ?? "").trim() !== orgFomId);
+        orgRows = mine.length ? [...mine, ...rest] : rows;
+        if (!lookups.branches.has(orgFomId)) {
+          const name =
+            mine[0]?.N?.trim() ||
+            rows.find((row) => String(row.I ?? "").trim() === orgFomId)?.N?.trim() ||
+            `Filial ${orgFomId}`;
+          await db
+            .insert(branchesTable)
+            .values({ name, fomId: orgFomId, source: SOURCE })
+            .onConflictDoUpdate({
+              target: [branchesTable.source, branchesTable.fomId],
+              set: { name: sql`excluded.name` },
+            });
+          await ensureBranches(lookups, [orgFomId]);
+        }
+      }
+      return { imported: await importOrganizations(lookups, orgRows) };
+    }
     case "catalog":
       return {
         imported: await importCatalog(
