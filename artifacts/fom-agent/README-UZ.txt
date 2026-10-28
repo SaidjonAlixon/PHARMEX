@@ -1,30 +1,23 @@
 PHARMEX FOM Agent — IFOR PHARMA
 ================================
 
-Muhim: ODJX_… tokenini BU yerga YOZMANG.
-Bu Fom_Connect marketplace tokeni — "Запрос" bosganda ko'p apteka
-chiqadi va agar tanlamasangiz 1-qatorga yopishib qoladi.
+Bu dastur apteka kompyuterida FOM ma'lumotini PHARMEX ga uzatadi.
 
-Har bir apteka kompyuterida o'z ulanishi bor (F-Apteka oynasi):
-  Fom id: 16372
-  CH:     R5T5Q6H6E7T7Q
-Agent shu qiymatlarni FAPTEKA sozlamalaridan O'ZI topadi.
+QANDAY ISHLAYDI (avtomatik)
+---------------------------
+1) REPORT.exe / SERVICEREPORTS topilsa — undan o'qiydi
+2) Topilmasa — REPORT.exe faylini o'zi ishga tushirib ko'radi
+3) Yana yo'q bo'lsa — FAPTEKA SQL bazasiga (NAPTSKLAD/NAPTEKA)
+   ulanadi va lokal "eshik" ochadi → PHARMEX ga yuboradi
+4) Fom_ID + CH ni shu PC dan o'zi topadi (ODJX emas)
 
-[CLOUD] TOKEN = faqat Vercel dagi FOM_SITE_TOKEN (PHARMEX).
-
-TALABLAR
---------
-1. Windows 10/11
-2. F-APTEKA + SERVICEREPORTS / REPORT.exe
-3. Internet
+ODJX_ marketplace tokenini YOZMANG.
 
 O'RNATISH
 ---------
-1. Zip ni APTEKA kompyuteriga olib boring (F-APTEKA bor joy)
+1. Zip ni F-APTEKA bor apteka kompyuteriga olib boring
 2. PHARMEX-FOM-Agent.exe ni oching
-3. config.ini da TOKEN = FOM_SITE_TOKEN
-4. [PHARMACY] bo'sh qoldiring — agent Fom_ID/CH ni o'zi topadi
-   (topmasa F-Apteka oynasidagi qiymatlarni qo'lda yozing)
-5. REPORT_URL=auto — eshik portini ham o'zi topadi
+3. config.ini da TOKEN = Vercel FOM_SITE_TOKEN
+4. "Ishga tushirish (avto)" ni bosing
 
-IFOR PHARMA · FOM_ID 16372 · INN 309431812
+IFOR PHARMA · FOM_ID 16372
