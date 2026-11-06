@@ -276,16 +276,22 @@ namespace PharmexFomAgent
                     if (!string.IsNullOrEmpty(cfg.PharmacyName)) SaveIniValue("PHARMACY", "NAME", cfg.PharmacyName);
 
                     SetStatus("FOM eshigi qidirilmoqda…", Color.DarkOrange);
-                    try
+                    // Faqat ServiceReports: SQL jadvallarini taxminiy o'qish noto'g'ri ma'lumot berardi
+                    string found = null;
+                    for (int attempt = 0; running && found == null; attempt++)
                     {
-                        cfg.ReportUrl = ResolveReportUrl(cfg);
+                        try { found = ResolveReportUrl(cfg); }
+                        catch (Exception ex)
+                        {
+                            Log(ex.Message);
+                            if (attempt == 0 && TryStartReportService()) { Thread.Sleep(5000); continue; }
+                            if (once) throw;
+                            SetStatus("ServiceReports topilmadi — 1 daqiqadan keyin qayta", Color.Firebrick);
+                            for (int i = 0; i < 60 && running; i++) Thread.Sleep(1000);
+                        }
                     }
-                    catch (Exception ex)
-                    {
-                        Log(ex.Message);
-                        Log("REPORT yo'q — o'zim bog'layman (avto-start + SQL bridge)…");
-                        cfg.ReportUrl = EnsureLocalDataBridge(cfg);
-                    }
+                    if (found == null) return;
+                    cfg.ReportUrl = found;
                     Log("REPORT: " + cfg.ReportUrl);
                     SaveIniValue("FOM", "REPORT_URL", cfg.ReportUrl);
                     WritePharmexSiteIni(cfg);
@@ -396,7 +402,9 @@ namespace PharmexFomAgent
             {
                 CloudUrl = url,
                 Token = token,
-                ReportUrl = string.IsNullOrWhiteSpace(get("FOM", "REPORT_URL")) ? "auto" : get("FOM", "REPORT_URL").TrimEnd('/'),
+                // 1878x — eski versiyalardagi SQL ko'prigi manzili, endi ishlatilmaydi
+                ReportUrl = string.IsNullOrWhiteSpace(get("FOM", "REPORT_URL")) || Regex.IsMatch(get("FOM", "REPORT_URL"), @":1878\d\b")
+                    ? "auto" : get("FOM", "REPORT_URL").TrimEnd('/'),
                 FilialIds = list.ToArray(),
                 InitialDays = int.TryParse(get("FOM", "INITIAL_DAYS"), out n) && n > 0 ? n : 90,
                 IntervalMin = int.TryParse(get("FOM", "INTERVAL_MIN"), out n) ? Math.Max(0, n) : 5,
@@ -732,10 +740,9 @@ namespace PharmexFomAgent
             string[] roots = {
                 @"C:\FAPTEKA", @"D:\FAPTEKA", @"E:\FAPTEKA",
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "FAPTEKA"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "FAPTEKA"),
-                AppDir()
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "FAPTEKA")
             };
-            string[] names = { "SETUP.ini", "SETUP", "NAPTEKA", "NGLOBAL", "CONFIG", "config.ini", "REPORT.ini", "SERVICEREPORTS.ini" };
+            string[] names = { "SETUP.ini", "SETUP", "NAPTEKA", "NGLOBAL", "CONFIG", "REPORT.ini", "SERVICEREPORTS.ini" };
             foreach (var root in roots)
             {
                 if (!Directory.Exists(root)) continue;
@@ -1706,24 +1713,82 @@ ORDER BY rowcnt DESC", conn))
                 using (var c = new TcpClient())
                 {
                     var ar = c.BeginConnect(host, port, null, null);
-                    if (!ar.AsyncWaitHandle.WaitOne(700)) return false;
+                    if (!ar.AsyncWaitHandle.WaitOne(700)) { Log("    port yopiq"); return false; }
                     c.EndConnect(ar);
                 }
             }
-            catch { return false; }
+            catch (Exception ex) { Log("    port yopiq: " + ex.Message); return false; }
 
             // REPORT.exe imzosi: P_GetReport_XML va haqiqiy FOM XML (HTML 404 emas)
+            string probeUrl = null;
             try
             {
-                var today = DateTime.UtcNow.Date;
-                var url = string.Format("{0}/P_GetReport_XML?pDateFrom={1}&pDateTo={2}&pFilial_id={3}&pReport_id=189",
+                var today = DateTime.Now.Date;
+                probeUrl = string.Format("{0}/P_GetReport_XML?pDateFrom={1}&pDateTo={2}&pFilial_id={3}&pReport_id=189",
                     baseUrl.TrimEnd('/'), FomDate(today), FomDate(today), string.IsNullOrEmpty(filial) ? "1" : filial);
-                var body = HttpGetXml(url, 20);
-                if (string.IsNullOrEmpty(body) || body.IndexOf('<') < 0) return false;
-                // Boshqa dasturning HTML sahifasi emas
-                return !Regex.IsMatch(body, @"<\s*html\b", RegexOptions.IgnoreCase);
+                // NGLOBAL bazasida tashkilotlar hisoboti sekin bo'lishi mumkin
+                var body = HttpGetXml(probeUrl, 90);
+                var snippet = Regex.Replace(body ?? "", @"\s+", " ");
+                snippet = snippet.Substring(0, Math.Min(160, snippet.Length));
+                if (string.IsNullOrEmpty(body) || body.IndexOf('<') < 0) { Log("    XML emas: " + snippet); return false; }
+                if (Regex.IsMatch(body, @"<\s*html\b", RegexOptions.IgnoreCase)) { Log("    HTML sahifa (boshqa dastur): " + snippet); return false; }
+                Log("    javob: " + CountRows(body) + " qator — " + snippet);
+                return true;
             }
-            catch { return false; }
+            catch (WebException ex)
+            {
+                string detail = ex.Message;
+                try
+                {
+                    if (ex.Response != null)
+                        using (var sr = new StreamReader(ex.Response.GetResponseStream()))
+                        {
+                            var text = Regex.Replace(sr.ReadToEnd(), @"\s+", " ");
+                            detail += " — " + text.Substring(0, Math.Min(200, text.Length));
+                        }
+                }
+                catch { }
+                Log("    xato: " + detail + " (" + probeUrl + ")");
+                return false;
+            }
+            catch (Exception ex) { Log("    xato: " + ex.Message); return false; }
+        }
+
+        /// <summary>ServiceReports Windows xizmati to'xtagan bo'lsa ishga tushiradi (administrator huquqi kerak).</summary>
+        bool TryStartReportService()
+        {
+            bool tried = false;
+            try
+            {
+                using (var services = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services"))
+                {
+                    if (services == null) return false;
+                    foreach (var name in services.GetSubKeyNames())
+                    {
+                        if (name.IndexOf("report", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        Log("Xizmatni ishga tushirish: " + name);
+                        try
+                        {
+                            var psi = new ProcessStartInfo("sc.exe", "start \"" + name + "\"")
+                            {
+                                UseShellExecute = false,
+                                CreateNoWindow = true,
+                                RedirectStandardOutput = true
+                            };
+                            using (var p = Process.Start(psi))
+                            {
+                                var output = p.StandardOutput.ReadToEnd();
+                                p.WaitForExit(10000);
+                                Log("  " + Regex.Replace(output, @"\s+", " ").Trim());
+                            }
+                            tried = true;
+                        }
+                        catch (Exception ex) { Log("  " + ex.Message); }
+                    }
+                }
+            }
+            catch { }
+            return tried;
         }
 
         /// <summary>REPORT.exe ko'pincha windows-1251 qaytaradi — kirillcha buzilmasligi uchun.</summary>
