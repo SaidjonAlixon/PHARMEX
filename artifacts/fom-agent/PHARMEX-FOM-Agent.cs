@@ -284,16 +284,25 @@ namespace PharmexFomAgent
                         catch (Exception ex)
                         {
                             Log(ex.Message);
+                            LogServiceReportsLogTail();
+                            // ServiceReports ishlamasa — FOM ning o'z P_GetReport_XML protsedurasini to'g'ridan chaqiramiz
+                            var proc = DiscoverReportProc();
+                            if (proc != null)
+                            {
+                                cfg.SqlConn = proc.Item1;
+                                found = "sql:" + proc.Item2;
+                                break;
+                            }
                             if (attempt == 0 && TryStartReportService()) { Thread.Sleep(5000); continue; }
                             if (once) throw;
-                            SetStatus("ServiceReports topilmadi — 1 daqiqadan keyin qayta", Color.Firebrick);
+                            SetStatus("FOM manbasi topilmadi — 1 daqiqadan keyin qayta", Color.Firebrick);
                             for (int i = 0; i < 60 && running; i++) Thread.Sleep(1000);
                         }
                     }
                     if (found == null) return;
                     cfg.ReportUrl = found;
                     Log("REPORT: " + cfg.ReportUrl);
-                    SaveIniValue("FOM", "REPORT_URL", cfg.ReportUrl);
+                    if (cfg.SqlConn == null) SaveIniValue("FOM", "REPORT_URL", cfg.ReportUrl);
                     WritePharmexSiteIni(cfg);
 
                     try
@@ -371,6 +380,10 @@ namespace PharmexFomAgent
             /// <summary>Shu ulanishning CH kodi (masalan R5T5Q6H6E7T7Q).</summary>
             public string Ch;
             public string PharmacyName;
+            /// <summary>ServiceReports o'rniga P_GetReport_XML ni to'g'ridan chaqirish uchun SQL ulanish.</summary>
+            public string SqlConn;
+            /// <summary>[FOM] FROM_DATE — to'liq tortish shu kundan boshlanadi (INITIAL_DAYS o'rniga).</summary>
+            public DateTime? FromDate;
         }
 
         Config LoadConfig()
@@ -411,8 +424,19 @@ namespace PharmexFomAgent
                 TimeoutSec = int.TryParse(get("FOM", "TIMEOUT_SEC"), out n) && n > 0 ? n : 120,
                 FomId = NullIfEmpty(get("PHARMACY", "FOM_ID")),
                 Ch = NullIfEmpty(get("PHARMACY", "CH")),
-                PharmacyName = NullIfEmpty(get("PHARMACY", "NAME"))
+                PharmacyName = NullIfEmpty(get("PHARMACY", "NAME")),
+                FromDate = ParseConfigDate(get("FOM", "FROM_DATE"))
             };
+        }
+
+        static DateTime? ParseConfigDate(string s)
+        {
+            DateTime d;
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            if (DateTime.TryParseExact(s.Trim(), new[] { "dd.MM.yyyy", "yyyy-MM-dd" },
+                    System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out d))
+                return d.Date;
+            return null;
         }
 
         static string NullIfEmpty(string s)
@@ -1887,8 +1911,235 @@ ORDER BY rowcnt DESC", conn))
             }
         }
 
+        // ---------------------------------------------------------------- P_GetReport_XML via SQL
+
+        void LogServiceReportsLogTail()
+        {
+            foreach (var dir in FindServiceReportsDirs())
+            {
+                try
+                {
+                    FileInfo newest = null;
+                    var files = new List<FileInfo>(new DirectoryInfo(dir).GetFiles("*.log", SearchOption.AllDirectories));
+                    foreach (var sub in new DirectoryInfo(dir).GetDirectories("*Log*"))
+                        files.AddRange(sub.GetFiles("*.txt", SearchOption.AllDirectories));
+                    foreach (var f in files)
+                        if (newest == null || f.LastWriteTime > newest.LastWriteTime) newest = f;
+                    if (newest == null) continue;
+                    var lines = File.ReadAllLines(newest.FullName, Encoding.Default);
+                    Log("ServiceReports log (" + newest.FullName + "), oxirgi qatorlar:");
+                    for (int i = Math.Max(0, lines.Length - 12); i < lines.Length; i++)
+                        Log("  | " + lines[i].Substring(0, Math.Min(220, lines[i].Length)));
+                }
+                catch (Exception ex) { Log("ServiceReports log o'qilmadi: " + ex.Message); }
+            }
+        }
+
+        /// <summary>ServiceReports.ini [Connect]: SERVER, BASE, User, Password.</summary>
+        Dictionary<string, string> ReadServiceReportsConnect()
+        {
+            foreach (var dir in FindServiceReportsDirs())
+            {
+                try
+                {
+                    foreach (var file in Directory.GetFiles(dir, "*.ini", SearchOption.TopDirectoryOnly))
+                    {
+                        var ini = ParseIni(File.ReadAllText(file, Encoding.Default));
+                        Dictionary<string, string> connect;
+                        if (ini.TryGetValue("CONNECT", out connect) && connect.ContainsKey("SERVER"))
+                        {
+                            Log("ServiceReports [Connect] ← " + file + ": SERVER=" + connect["SERVER"] +
+                                " BASE=" + (connect.ContainsKey("BASE") ? connect["BASE"] : "?"));
+                            return connect;
+                        }
+                    }
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// FOM ning P_GetReport_XML protsedurasi bor bazani topadi (ServiceReports shuni chaqiradi).
+        /// Qaytaradi: (ulanish satri, "server/baza").
+        /// </summary>
+        Tuple<string, string> DiscoverReportProc()
+        {
+            Log("P_GetReport_XML protsedurasini SQL bazalaridan qidiruv…");
+            var connect = ReadServiceReportsConnect();
+            var servers = new List<string>();
+            if (connect != null) servers.Add(connect["SERVER"]);
+            foreach (var s in ListSqlInstances()) if (!servers.Contains(s)) servers.Add(s);
+
+            var creds = new List<string>();
+            if (connect != null && connect.ContainsKey("User"))
+                creds.Add("User ID=" + connect["User"] + ";Password=" + (connect.ContainsKey("Password") ? connect["Password"] : ""));
+            creds.Add("Integrated Security=True");
+            foreach (var c in new[] { "User ID=sa;Password=", "User ID=sa;Password=1", "User ID=sa;Password=sa" })
+                if (!creds.Contains(c)) creds.Add(c);
+
+            string iniBase = connect != null && connect.ContainsKey("BASE") ? connect["BASE"] : null;
+            foreach (var srv in servers)
+            {
+                foreach (var cred in creds)
+                {
+                    var masterCs = "Data Source=" + srv + ";Initial Catalog=master;" + cred + ";Connect Timeout=5";
+                    List<string> withProc = new List<string>();
+                    try
+                    {
+                        using (var master = new SqlConnection(masterCs))
+                        {
+                            master.Open();
+                            var dbs = new List<string>();
+                            using (var cmd = new SqlCommand("SELECT name FROM sys.databases WHERE state_desc='ONLINE' AND database_id > 4", master))
+                            using (var r = cmd.ExecuteReader())
+                                while (r.Read()) dbs.Add(r.GetString(0));
+                            Log("SQL " + srv + ": bazalar — " + string.Join(", ", dbs.ToArray()));
+                            foreach (var db in dbs)
+                            {
+                                using (var cmd = new SqlCommand("SELECT OBJECT_ID(@n)", master))
+                                {
+                                    cmd.Parameters.AddWithValue("@n", "[" + db.Replace("]", "]]") + "].dbo.P_GetReport_XML");
+                                    var id = cmd.ExecuteScalar();
+                                    if (id != null && id != DBNull.Value) withProc.Add(db);
+                                }
+                            }
+                        }
+                    }
+                    catch (SqlException ex)
+                    {
+                        // 18456 = login rad etildi (boshqa loginni sinaymiz); qolgani — server yo'q
+                        Log("SQL " + srv + " (" + Regex.Replace(cred, @"Password=[^;]*", "Password=***") + "): " +
+                            ex.Message.Substring(0, Math.Min(160, ex.Message.Length)));
+                        if (ex.Number == 18456 || ex.Number == 4060) continue;
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("SQL " + srv + ": " + ex.Message);
+                        break;
+                    }
+                    if (withProc.Count == 0)
+                    {
+                        Log("SQL " + srv + ": P_GetReport_XML hech bir bazada yo'q.");
+                        break;
+                    }
+                    Log("P_GetReport_XML bor bazalar: " + string.Join(", ", withProc.ToArray()));
+                    // Ombor bazasi birinchi; ServiceReports.ini dagi BASE ham sinab ko'riladi
+                    withProc.Sort((a, b) => Rank(a, iniBase).CompareTo(Rank(b, iniBase)));
+                    foreach (var db in withProc)
+                    {
+                        var cs = "Data Source=" + srv + ";Initial Catalog=" + db + ";" + cred + ";Connect Timeout=10";
+                        try
+                        {
+                            var xml = ExecReportProc(cs, 189, "1", DateTime.Now.Date, DateTime.Now.Date, 120);
+                            int rows = CountRows(xml);
+                            Log("  " + db + ": tashkilotlar hisoboti → " + rows + " qator");
+                            if (rows > 0) return Tuple.Create(cs, srv + "/" + db);
+                        }
+                        catch (Exception ex) { Log("  " + db + ": " + ex.Message); }
+                    }
+                }
+            }
+            return null;
+        }
+
+        static int Rank(string db, string iniBase)
+        {
+            var u = db.ToUpperInvariant();
+            if (u == "NAPTSKLAD") return 0;
+            if (u.StartsWith("NAPT")) return 1;
+            if (iniBase != null && string.Equals(db, iniBase, StringComparison.OrdinalIgnoreCase)) return 2;
+            return 3;
+        }
+
+        /// <summary>
+        /// exec P_GetReport_XML — parametrlarni protsedura ta'rifidan oladi; natija FOR XML (bo'laklarda)
+        /// yoki oddiy jadval bo'lishi mumkin, jadval bo'lsa ustun nomlari o'zgarishsiz atribut bo'ladi.
+        /// </summary>
+        string ExecReportProc(string cs, int reportId, string filial, DateTime from, DateTime to, int timeoutSec)
+        {
+            using (var conn = new SqlConnection(cs))
+            {
+                conn.Open();
+                var prms = new List<Tuple<string, string>>();
+                using (var cmd = new SqlCommand(
+                    "SELECT p.name, t.name FROM sys.parameters p JOIN sys.types t ON t.user_type_id = p.user_type_id " +
+                    "WHERE p.object_id = OBJECT_ID('dbo.P_GetReport_XML') ORDER BY p.parameter_id", conn))
+                using (var r = cmd.ExecuteReader())
+                    while (r.Read()) prms.Add(Tuple.Create(r.GetString(0), r.GetString(1)));
+
+                using (var cmd = new SqlCommand("dbo.P_GetReport_XML", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.CommandTimeout = timeoutSec;
+                    foreach (var p in prms)
+                    {
+                        var n = p.Item1.ToLowerInvariant();
+                        var t = p.Item2.ToLowerInvariant();
+                        bool isDate = t.Contains("date") || t.Contains("time");
+                        bool isNum = t.Contains("int") || t == "numeric" || t == "decimal";
+                        object value;
+                        if (n.Contains("from") || n.Contains("begin") || n.Contains("start"))
+                            value = isDate ? (object)from : FomDate(from);
+                        else if (n.EndsWith("to") || n.Contains("dateto") || n.Contains("end"))
+                            value = isDate ? (object)to : FomDate(to);
+                        else if (n.Contains("filial") || n.Contains("branch") || n.Contains("apt"))
+                            value = isNum ? (object)int.Parse(filial) : filial;
+                        else if (n.Contains("report"))
+                            value = isNum ? (object)reportId : reportId.ToString();
+                        else
+                            value = DBNull.Value;
+                        cmd.Parameters.AddWithValue(p.Item1, value);
+                    }
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        var xml = new StringBuilder();
+                        var table = new StringBuilder();
+                        do
+                        {
+                            if (r.FieldCount == 0) continue;
+                            bool forXml = r.FieldCount == 1 && (r.GetName(0).StartsWith("XML_", StringComparison.OrdinalIgnoreCase) || r.GetFieldType(0) == typeof(string));
+                            while (r.Read())
+                            {
+                                if (forXml)
+                                {
+                                    var part = r.IsDBNull(0) ? "" : Convert.ToString(r.GetValue(0));
+                                    if (xml.Length == 0 && part.TrimStart().Length > 0 && part.TrimStart()[0] != '<') { forXml = false; }
+                                    else { xml.Append(part); continue; }
+                                }
+                                table.Append("<V");
+                                for (int i = 0; i < r.FieldCount; i++)
+                                {
+                                    if (r.IsDBNull(i)) continue;
+                                    var v = r.GetValue(i);
+                                    string s;
+                                    if (v is DateTime) s = ((DateTime)v).ToString("yyyy-MM-ddTHH:mm:ss");
+                                    else if (v is IFormattable) s = ((IFormattable)v).ToString(null, System.Globalization.CultureInfo.InvariantCulture);
+                                    else s = Convert.ToString(v);
+                                    table.Append(' ').Append(r.GetName(i)).Append("=\"").Append(Esc(s)).Append('"');
+                                }
+                                table.Append(" />");
+                            }
+                        } while (r.NextResult());
+                        if (xml.Length > 0) return xml.ToString().TrimStart().StartsWith("<R", StringComparison.OrdinalIgnoreCase) ? xml.ToString() : "<R>" + xml + "</R>";
+                        return "<R>" + table + "</R>";
+                    }
+                }
+            }
+        }
+
         string FetchReport(Config cfg, int reportId, string filial, DateTime from, DateTime to)
         {
+            if (cfg.SqlConn != null)
+            {
+                try { return ExecReportProc(cfg.SqlConn, reportId, filial, from, to, Math.Max(cfg.TimeoutSec, 300)); }
+                catch (SqlException ex)
+                {
+                    if (ex.Number == -2 || ex.Number == 53 || ex.Number == 2) throw new Exception("FOM bazasiga ulanib bo'lmadi: " + ex.Message);
+                    throw new Exception("P_GetReport_XML (" + reportId + "): " + ex.Message);
+                }
+            }
             var url = string.Format("{0}/P_GetReport_XML?pDateFrom={1}&pDateTo={2}&pFilial_id={3}&pReport_id={4}",
                 cfg.ReportUrl, FomDate(from), FomDate(to), filial, reportId);
             try
@@ -1916,14 +2167,17 @@ ORDER BY rowcnt DESC", conn))
         Tuple<int, int> SyncOnce(Config cfg)
         {
             var to = DateTime.Now.Date;
-            bool full = !File.Exists(FullSyncMarker());
-            // Birinchi marta INITIAL_DAYS kun, keyin faqat oxirgi 3 kun (tuzatilgan hujjatlar ham yangilanadi)
-            var from = to.AddDays(full ? -cfg.InitialDays : -3);
+            var fullFrom = cfg.FromDate ?? to.AddDays(-cfg.InitialDays);
+            // Belgi qaysi sanadan tortilganini saqlaydi: FROM_DATE o'zgarsa qayta to'liq tortiladi
+            string marker = File.Exists(FullSyncMarker()) ? File.ReadAllText(FullSyncMarker(), Encoding.UTF8).Trim() : null;
+            bool full = marker == null || (cfg.FromDate.HasValue && marker != FomDate(fullFrom));
+            // Birinchi marta to'liq davr, keyin faqat oxirgi 3 kun (tuzatilgan hujjatlar ham yangilanadi)
+            var from = full ? fullFrom : to.AddDays(-3);
             bool refs = full || (DateTime.Now - lastRefsAt).TotalMinutes >= 60;
             int imported = 0, errors = 0;
             var ser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             Log(full
-                ? "TO'LIQ sinxron: " + FomDate(from) + " – " + FomDate(to) + " (" + cfg.InitialDays + " kun)"
+                ? "TO'LIQ sinxron: " + FomDate(from) + " – " + FomDate(to) + " (" + (int)(to - from).TotalDays + " kun)"
                 : "Yangilash: " + FomDate(from) + " – " + FomDate(to));
 
             var filials = new List<string>(cfg.FilialIds);
@@ -2019,7 +2273,7 @@ ORDER BY rowcnt DESC", conn))
             // Ulanish uzilsa yuqorida to'xtaydi; bu yerga yetgan bo'lsa tarix tortib bo'lingan
             if (full)
             {
-                File.WriteAllText(FullSyncMarker(), DateTime.Now.ToString("o"), Encoding.UTF8);
+                File.WriteAllText(FullSyncMarker(), FomDate(fullFrom), Encoding.UTF8);
                 Log("To'liq sinxron yakunlandi" + (errors > 0 ? " (" + errors + " ta hisobot FOM tomonidan rad etildi)" : "") +
                     " — endi har siklda oxirgi 3 kun yangilanadi. Qayta to'liq tortish: full-sync-done.txt ni o'chiring.");
             }
