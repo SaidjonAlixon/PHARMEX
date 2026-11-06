@@ -81,16 +81,24 @@ router.get("/product-detail", async (req, res): Promise<void> => {
   const branchBalances = (await loadInventory({ mode })).filter(
     (item) => item.productId === product.id,
   );
-  if (branchBalances.length === 0) {
-    res.status(404).json({ error: "Mahsulot qoldig‘i topilmadi." });
-    return;
-  }
-  res.json(
-    GetProductResponse.parse({
-      product: branchBalances[0],
-      branchBalances,
-    }),
-  );
+  // FOM versions without the stock report (6) send products with no balances; the card still opens.
+  const summary = branchBalances[0] ?? {
+    productId: product.id,
+    productName: product.name,
+    barcode: product.barcode,
+    group: product.groupName,
+    manufacturer: product.manufacturer,
+    ikpu: product.ikpu,
+    branchId: 0,
+    branchName: "Qoldiq maʼlumoti yoʻq",
+    quantity: 0,
+    costPrice: product.costPrice,
+    retailPrice: product.retailPrice,
+    value: null,
+    expiryDate: product.expiryDate,
+    source: product.source,
+  };
+  res.json(GetProductResponse.parse({ product: summary, branchBalances }));
 });
 
 export default router;
