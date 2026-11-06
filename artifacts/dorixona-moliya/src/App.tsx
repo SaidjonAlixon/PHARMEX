@@ -20,7 +20,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
-  DataMode, DataState, Metric, PageHeading, Panel, StatusBadge, TableWrap, date, money, monthStart, sourceText, today, type Filters,
+  DataMode, DataState, Metric, PageHeading, Panel, StatusBadge, TableWrap, date, localDay, money, monthStart, sourceText, today, type Filters,
 } from '@/components/kit';
 import NotFound from '@/pages/not-found';
 import { SalesPage } from '@/pages/sales';
@@ -90,6 +90,7 @@ const periodOptions: MenuOption[] = [
   { value: 'this-month', label: 'Joriy oy', hint: 'Oy boshidan bugungacha', icon: CalendarDays, color: '#0fb3c7' },
   { value: 'last-month', label: 'Oʻtgan oy', hint: 'Toʻliq oldingi oy', icon: CalendarClock, color: '#1f5fd0' },
   { value: '7-days', label: 'Soʻnggi 7 kun', hint: 'Bugun bilan birga', icon: CalendarRange, color: '#1fb84f' },
+  { value: 'range', label: 'Sana oraligʻi', hint: 'Boshlanish va tugash sanasini tanlang', icon: CalendarDays, color: '#f0a020' },
   { value: 'custom', label: 'Barcha davr', hint: 'Sana cheklovisiz', icon: InfinityIcon, color: '#6d4fd8' },
 ];
 
@@ -112,9 +113,13 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const choosePeriod = (value: string) => {
     setPeriod(value);
     const now = new Date();
-    const end = now.toISOString().slice(0, 10);
-    const start = value === 'this-month' ? `${end.slice(0, 8)}01` : value === 'last-month' ? new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10) : value === '7-days' ? new Date(now.getTime() - 6 * 86400000).toISOString().slice(0, 10) : '';
-    const rangeEnd = value === 'last-month' ? new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10) : end;
+    const end = localDay(now);
+    if (value === 'range') {
+      setFilters({ ...filters, dateFrom: filters.dateFrom || `${end.slice(0, 8)}01`, dateTo: filters.dateTo || end });
+      return;
+    }
+    const start = value === 'this-month' ? `${end.slice(0, 8)}01` : value === 'last-month' ? localDay(new Date(now.getFullYear(), now.getMonth() - 1, 1)) : value === '7-days' ? localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)) : '';
+    const rangeEnd = value === 'last-month' ? localDay(new Date(now.getFullYear(), now.getMonth(), 0)) : end;
     setFilters({ ...filters, dateFrom: start, dateTo: rangeEnd });
   };
   return <div className="app-shell">
@@ -132,6 +137,11 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
     {menuOpen && <button className="mobile-shade" onClick={() => setMenuOpen(false)} aria-label="Menyuni yopish" />}
     <main className="main-area">
       <header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(!menuOpen)} data-testid="button-menu"><Menu size={20} /></button><div className="crumb"><span>Hisob markazi</span><ArrowRight size={13} /><strong>{items.find(n => n.href === location || (n.href !== '/' && location.startsWith(n.href)))?.label || 'Filial maʼlumoti'}</strong></div><div className="top-actions"><ThemeToggle /><FomLive /><SelectMenu caption="DAVR" ariaLabel="Davr" value={period} onChange={choosePeriod} options={periodOptions} align="right" testId="select-global-period" /><SelectMenu caption="FILIAL" ariaLabel="Filial" className="branch-menu" value={filters.branchId} onChange={branchId => setFilters({ ...filters, branchId })} options={branchOptions} align="right" testId="select-global-branch" /><span className="header-avatar">{(user?.firstName || 'M').slice(0, 1).toUpperCase()}</span></div></header>
+    {period === 'range' && <div className="active-scope date-range-bar" data-testid="bar-date-range"><CalendarDays size={14} /> Davr:
+      <input type="date" value={filters.dateFrom} max={filters.dateTo || undefined} onChange={e => setFilters({ ...filters, dateFrom: e.target.value })} aria-label="Boshlanish sanasi" data-testid="input-global-from" />
+      <span>—</span>
+      <input type="date" value={filters.dateTo} min={filters.dateFrom || undefined} max={today} onChange={e => setFilters({ ...filters, dateTo: e.target.value })} aria-label="Tugash sanasi" data-testid="input-global-to" />
+    </div>}
     {selectedLabel && <div className="active-scope"><Filter size={13} /> Koʻrinish: <b>{selectedLabel}</b><button onClick={() => setFilters({ ...filters, branchId: '' })} data-testid="button-clear-branch">Filialni tozalash</button></div>}
       <div className="content-area">{branches.some(b => b.source === 'demo') && location !== '/' && location !== '/profit' && location !== '/reports' && (!location.startsWith('/branches/') || location === '/branches') && <DataMode mode="demo" />}{children}</div>
       <footer className="app-footer"><span>PHARMEX <span className="footer-dot">/</span> Moliyaviy boshqaruv</span><span>Maʼlumotlar manbasi va yangilanish vaqti har bir boʻlimda koʻrsatiladi</span></footer>

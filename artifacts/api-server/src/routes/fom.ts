@@ -38,6 +38,8 @@ import {
   fomSyncRunning,
   importAgentReport,
   importSitePush,
+  requestFomBackfill,
+  runFomStep,
   startFomSync,
   testFomConnection,
   type SyncDetails,
@@ -45,9 +47,8 @@ import {
 
 const router: IRouter = Router();
 const LAST_TEST_KEY = "fom_last_test";
-const reportAvailable = !process.env.VERCEL;
-const REPORT_UNAVAILABLE =
-  "REPORT.exe Radmin VPN ichida: unga Vercel serveridan ulanib boʻlmaydi. Bu saytda maʼlumot SITE.exe orqali keladi.";
+// Vercel has no long-running process: there the sync runs as bounded steps (button or /fom/tick cron).
+const serverless = Boolean(process.env.VERCEL);
 
 async function latestImport(integration: string, statusFilter?: string) {
   const [row] = await db
@@ -91,7 +92,10 @@ async function readStatus() {
       .limit(1)
       .then((rows) => rows[0]),
   ]);
-  if (lastImport?.status === "running" && !fomSyncRunning()) {
+  // A serverless step lives in another invocation for up to 60 s; only an older "running" row is dead.
+  const stepAlive =
+    serverless && lastImport?.startedAt != null && Date.now() - lastImport.startedAt.getTime() < 90_000;
+  if (lastImport?.status === "running" && !fomSyncRunning() && !stepAlive) {
     lastImport.status = "error";
     lastImport.message = "Sinxronlash yakunlanmadi (server qayta ishga tushgan). Qayta boshlang.";
   }
@@ -115,10 +119,8 @@ async function readStatus() {
     siteImport?.status === "success" && !!siteAt && Date.now() - siteAt.getTime() < 30 * 60_000;
   const agentPushing =
     agentImport?.status === "success" && !!agentAt && Date.now() - agentAt.getTime() < 30 * 60_000;
-  // Vercelda REPORT.exe ga ulanib bo'lmaydi — SITE.exe YOKI PHARMEX Agent orqali keladi
-  const connected = !reportAvailable
-    ? sitePushing || agentPushing
-    : lastTest && (!syncAt || new Date(lastTest.at) > syncAt) ? lastTest.ok : Boolean(syncOk);
+  const pulling = lastTest && (!syncAt || new Date(lastTest.at) > syncAt) ? lastTest.ok : Boolean(syncOk);
+  const connected = pulling || sitePushing || agentPushing;
 
   const inboundAt = [siteAt, agentAt].filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0] ?? null;
   const inboundImport =
@@ -156,7 +158,7 @@ async function readStatus() {
     lastMessage: lastImport?.message || (config.reportUrl ? null : "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)."),
     importedRecords: lastImport?.importedRecords ?? 0,
     running: fomSyncRunning(),
-    reportAvailable,
+    reportAvailable: true,
     filialIds: details?.filials?.length ? details.filials : config.filialIds,
     intervalMinutes: config.intervalMinutes,
     refsIntervalMinutes: config.refsIntervalMinutes,
@@ -252,7 +254,13 @@ router.put("/fom/settings", requireRole("admin"), async (req, res): Promise<void
   const input = parsed.data;
   const host = input.host.trim();
   if (!HOST_PATTERN.test(host)) {
-    res.status(400).json({ error: "Server manzili notoʻgʻri. Faqat IP yoki domen kiriting (masalan 26.66.205.88)." });
+    res.status(400).json({ error: "Server manzili notoʻgʻri. Faqat IP yoki domen kiriting (masalan 84.54.70.12)." });
+    return;
+  }
+  if (serverless && /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|localhost$)/i.test(host)) {
+    res.status(400).json({
+      error: `${host} — apteka ichidagi manzil, internetdagi serverdan koʻrinmaydi. Routerning tashqi (WAN) IP sini kiriting va portni ServiceReports kompyuteriga yoʻnaltiring.`,
+    });
     return;
   }
   const filialIds = parseFilialIds(input.filialIds);
@@ -283,10 +291,6 @@ router.post(
   "/fom/test",
   requireRole("admin", "finance"),
   async (_req, res): Promise<void> => {
-    if (!reportAvailable) {
-      res.json(TestFomConnectionResponse.parse({ status: "error", message: REPORT_UNAVAILABLE, checkedAt: new Date() }));
-      return;
-    }
     const result = await testFomConnection();
     const value = JSON.stringify({ ok: result.ok, at: new Date().toISOString() });
     await db
@@ -307,10 +311,6 @@ router.post(
   "/fom/sync",
   requireRole("admin", "finance"),
   async (req, res): Promise<void> => {
-    if (!reportAvailable) {
-      res.json(SyncFomResponse.parse({ status: "error", message: REPORT_UNAVAILABLE, checkedAt: new Date() }));
-      return;
-    }
     const parsed = SyncFomBody.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
@@ -319,6 +319,19 @@ router.post(
     const { dateFrom, dateTo } = parsed.data;
     if (dateFrom && dateTo && dateFrom > dateTo) {
       res.status(400).json({ error: "Boshlanish sanasi tugash sanasidan keyin boʻlishi mumkin emas." });
+      return;
+    }
+    if (serverless) {
+      if (dateFrom && dateTo) await requestFomBackfill(new Date(dateFrom), new Date(dateTo));
+      const step = await runFomStep({ trigger: "manual", budgetMs: 50_000 });
+      await db.insert(auditLogTable).values({
+        actorId: String(res.locals.userId),
+        action: "fom.sync.started",
+        entityType: "integration",
+        entityId: "fom",
+        summary: step.message.slice(0, 300),
+      });
+      res.json(SyncFomResponse.parse({ status: step.ok ? "success" : "error", message: step.message, checkedAt: new Date() }));
       return;
     }
     const result = await startFomSync({
@@ -436,6 +449,22 @@ fomSiteRouter.post(
 // ---------------------------------------------------------------- On-prem Windows agent (pulls REPORT.exe locally, pushes here)
 
 const AGENT_REPORTS = new Set(Object.keys(FOM_REPORTS));
+
+// ---------------------------------------------------------------- Scheduled pull step (external cron / Vercel Cron)
+
+fomSiteRouter.all(["/fom/tick", "/fom/tick/:token"], async (req, res): Promise<void> => {
+  const siteToken = fomConfig().siteToken;
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  const given = tokenFrom(req);
+  const allowed =
+    (siteToken && given && sameToken(given, siteToken)) || (cronSecret && given && sameToken(given, cronSecret));
+  if (!allowed) {
+    res.status(401).json({ ok: false, error: "Invalid token" });
+    return;
+  }
+  const step = await runFomStep({ trigger: "auto", budgetMs: 50_000 });
+  res.status(step.ok ? 200 : 502).json(step);
+});
 
 fomSiteRouter.get(["/fom/agent/ping", "/fom/agent/:token/ping"], async (req, res): Promise<void> => {
   const expected = fomConfig().siteToken;

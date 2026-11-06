@@ -136,11 +136,11 @@ function FomConnectPanel({ onMessage }: { onMessage: (m: { tone: 'success' | 'er
   };
 
   const sourceBadge = s.source === 'saved' ? <StatusBadge tone="good">Saqlangan{s.updatedAt ? ` · ${dateTime(s.updatedAt)}` : ''}</StatusBadge> : s.source === 'env' ? <StatusBadge tone="info">Server .env dan</StatusBadge> : <StatusBadge tone="warn">Kiritilmagan</StatusBadge>;
-  return <Panel title="FOM ulanishi (REPORT.exe)" subtitle="FOM texnigi bergan server IP manzili, port va filial ID larini kiriting, soʻng «Saqlash va ulash» ni bosing" action={sourceBadge} className="fom-connect">
+  return <Panel title="FOM ulanishi (ServiceReports)" subtitle="Aptekaning tashqi (ochiq) IP manzili va routerda ochilgan portni kiriting, soʻng «Saqlash va ulash» ni bosing" action={sourceBadge} className="fom-connect">
     <form className="form-stack" onSubmit={e => submit(e, true)}>
       <div className="form-grid four">
         <label className="f-proto">Protokol<select value={form.protocol} onChange={e => set({ protocol: e.target.value as 'http' | 'https' })} data-testid="select-fom-protocol"><option value="http">http://</option><option value="https">https://</option></select></label>
-        <label className="span-2">Server IP manzili<input required value={form.host} onChange={e => onHost(e.target.value)} placeholder="masalan 26.66.205.88" autoComplete="off" spellCheck={false} data-testid="input-fom-host" /></label>
+        <label className="span-2">Server IP manzili<input required value={form.host} onChange={e => onHost(e.target.value)} placeholder="aptekaning ochiq IP si, masalan 84.54.70.12" autoComplete="off" spellCheck={false} data-testid="input-fom-host" /></label>
         <label className="f-port">Port<input type="number" min={1} max={65535} value={form.port} onChange={e => set({ port: e.target.value })} placeholder="8084" data-testid="input-fom-port" /></label>
         <label className="span-2">Filial ID lari (pFilial_id)<input value={form.filialIds} onChange={e => set({ filialIds: e.target.value })} placeholder="1, 2, 3 — boʻsh qolsa avtomatik aniqlanadi" data-testid="input-fom-filials" /></label>
         <label>Avto-yangilash (daqiqa)<input type="number" min={0} max={1440} required value={form.intervalMinutes} onChange={e => set({ intervalMinutes: e.target.value })} data-testid="input-fom-interval" /></label>
@@ -159,7 +159,7 @@ function FomConnectPanel({ onMessage }: { onMessage: (m: { tone: 'success' | 'er
         <span className={steps.sync}>{stepIcon(steps.sync)} Maʼlumot tortish</span>
       </div>}
       <div className="connect-actions">
-        <p className="field-hint"><ShieldCheck size={14} /> Maʼlumotlar serverda saqlanadi; token brauzerga qaytarilmaydi. Radmin VPN orqali boʻlsa, apteka kompyuterining 26.x.x.x IP sini kiriting.</p>
+        <p className="field-hint"><ShieldCheck size={14} /> Maʼlumotlar serverda saqlanadi; token brauzerga qaytarilmaydi. 192.168.x.x kabi ichki IP internetdan koʻrinmaydi — routerdagi tashqi (WAN) IP ni kiriting.</p>
         <button type="button" className="button secondary" disabled={busy || !form.host} onClick={e => submit(e, false)} data-testid="button-fom-save"><Save size={15} />Saqlash</button>
         <button className="button primary" disabled={busy || !form.host} data-testid="button-fom-connect"><PlugZap size={15} />{busy ? 'Ulanmoqda…' : 'Saqlash va ulash'}</button>
       </div>

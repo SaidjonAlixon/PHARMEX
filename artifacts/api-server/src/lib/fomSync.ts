@@ -4,6 +4,7 @@ import {
   counterpartiesTable,
   db,
   integrationImportsTable,
+  integrationSettingsTable,
   inventoryBalancesTable,
   inventoryMovementsTable,
   productsTable,
@@ -996,6 +997,218 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     .set({ status, message, importedRecords: total, completedAt: new Date(), details: JSON.stringify(details) })
     .where(eq(integrationImportsTable.id, importId));
   return details;
+}
+
+// ---------------------------------------------------------------- budgeted step (serverless)
+
+const STEP_STATE_KEY = "fom_step_state";
+const STEP_WINDOW_DAYS = 7;
+const RECENT_DAYS = 3;
+
+interface StepState {
+  filials: string[];
+  refsAt: string | null;
+  /** Newest day still to backfill (YYYY-MM-DD); null once history is complete. */
+  backfillNext: string | null;
+  /** Oldest day the backfill goes back to. */
+  backfillUntil: string;
+  /** Last day covered by the "recent" pass; a gap since then is pulled on the next step. */
+  recentTo?: string;
+}
+
+const isoDay = (date: Date) => date.toISOString().slice(0, 10);
+
+async function loadStepState(config: FomConfig, today: Date): Promise<StepState> {
+  const [row] = await db
+    .select()
+    .from(integrationSettingsTable)
+    .where(eq(integrationSettingsTable.key, STEP_STATE_KEY))
+    .limit(1);
+  const until = isoDay(new Date(today.getTime() - config.initialDays * DAY_MS));
+  try {
+    if (row) {
+      const state = JSON.parse(row.value) as StepState;
+      // A longer INITIAL_DAYS setting extends the history that is still to be pulled.
+      if (until < state.backfillUntil) {
+        state.backfillNext ??= isoDay(new Date(new Date(state.backfillUntil).getTime() - DAY_MS));
+        state.backfillUntil = until;
+      }
+      return state;
+    }
+  } catch {
+    // corrupt state: start over
+  }
+  return {
+    filials: [],
+    refsAt: null,
+    backfillNext: isoDay(new Date(today.getTime() - (RECENT_DAYS + 1) * DAY_MS)),
+    backfillUntil: until,
+  };
+}
+
+async function saveStepState(state: StepState) {
+  const value = JSON.stringify(state);
+  await db
+    .insert(integrationSettingsTable)
+    .values({ key: STEP_STATE_KEY, value })
+    .onConflictDoUpdate({ target: integrationSettingsTable.key, set: { value, updatedAt: new Date() } });
+}
+
+/** Makes the next steps (re)pull an explicit period, newest day first. */
+export async function requestFomBackfill(from: Date, to: Date): Promise<void> {
+  const config = fomConfig();
+  const state = await loadStepState(config, utcDay(new Date()));
+  state.backfillNext = isoDay(utcDay(to));
+  state.backfillUntil = isoDay(utcDay(from));
+  await saveStepState(state);
+}
+
+/**
+ * One bounded sync pass for hosts without a long-running process (Vercel: 60 s per call).
+ * Each call refreshes references (hourly), stock and the last days, then spends the remaining
+ * budget pulling older history one week at a time; progress is kept in integration settings.
+ */
+export async function runFomStep(options: { trigger: string; budgetMs?: number }): Promise<{ ok: boolean; message: string }> {
+  const config = fomConfig();
+  if (!config.reportUrl) return { ok: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
+  const startedAt = Date.now();
+  const budget = options.budgetMs ?? 45_000;
+  const left = () => budget - (Date.now() - startedAt);
+  const stepConfig: FomConfig = { ...config, timeoutMs: Math.min(config.timeoutMs, 40_000) };
+  const today = utcDay(new Date());
+  const state = await loadStepState(config, today);
+  const lookups = await loadLookups();
+
+  const [row] = await db
+    .insert(integrationImportsTable)
+    .values({ integration: "fom", status: "running", message: "Sinxronlash qadami…" })
+    .returning({ id: integrationImportsTable.id });
+  const details: SyncDetails = { trigger: options.trigger, from: null, to: isoDay(today), filials: state.filials, refsAt: state.refsAt, reports: {} };
+  const tally = (key: FomReportKey, rows: number, imported: number, warning?: string) => {
+    const prev = details.reports[key];
+    details.reports[key] = {
+      rows: (prev?.rows ?? 0) + rows,
+      imported: (prev?.imported ?? 0) + imported,
+      error: null,
+      warning: [prev?.warning, warning].filter(Boolean).join("; ").slice(0, 400) || null,
+    };
+  };
+  const fail = (key: FomReportKey, message: string) => {
+    details.reports[key] = { rows: details.reports[key]?.rows ?? 0, imported: details.reports[key]?.imported ?? 0, error: message, warning: null };
+  };
+  const isConnectionError = (error: unknown) =>
+    error instanceof FomError && /ulanib boʻlmadi|soniyada kelmadi/.test(error.message);
+  const fetchReport = (key: FomReportKey, filial: string, from: Date, to: Date) =>
+    fetchFomReport(stepConfig, FOM_REPORTS[key].id, filial, from, to);
+
+  const dated: Array<{ key: FomReportKey; prefix: string; keyOf: (row: FomRow) => string; save: (docs: Doc[]) => Promise<number> }> = [
+    { key: "purchases", prefix: "p", keyOf: docKey, save: (docs) => importPurchases(lookups, docs) },
+    { key: "supplierReturns", prefix: "sr", keyOf: docKey, save: (docs) => importStockDocuments(lookups, docs, "supplier_return") },
+    { key: "writeOffs", prefix: "wo", keyOf: (r) => fomDay(r.D) ?? r.D ?? "", save: (docs) => importStockDocuments(lookups, docs, "write_off") },
+    { key: "retailSales", prefix: "rs", keyOf: docKey, save: (docs) => importSales(lookups, docs, "retail") },
+    { key: "insuranceSales", prefix: "is", keyOf: docKey, save: (docs) => importSales(lookups, docs, "insurance") },
+  ];
+  const pullDated = async (from: Date, to: Date) => {
+    for (const report of dated) {
+      for (const filial of state.filials) {
+        try {
+          const data = await fetchReport(report.key, filial, from, to);
+          tally(report.key, data.length, await report.save(groupDocs(data, report.prefix, filial, report.keyOf)));
+        } catch (error) {
+          if (isConnectionError(error)) throw error;
+          tally(report.key, 0, 0, `filial ${filial}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  };
+
+  let fatal: string | null = null;
+  let weeks = 0;
+  try {
+    const refsDue = !state.refsAt || Date.now() - new Date(state.refsAt).getTime() >= config.refsIntervalMinutes * 60_000;
+    let orgRows: FomRow[] = [];
+    if (refsDue) {
+      const first = config.filialIds[0] ?? state.filials[0] ?? "1";
+      try {
+        orgRows = await fetchReport("organizations", first, today, today);
+        tally("organizations", orgRows.length, await importOrganizations(lookups, orgRows));
+        const rows = await fetchReport("catalog", first, today, today);
+        tally("catalog", rows.length, await importCatalog(lookups, rows.map((r) => ({ fomId: r.I, name: r.N ?? "", manufacturer: r.P, unit: r.E, ikpu: r.C }))));
+        state.refsAt = new Date().toISOString();
+      } catch (error) {
+        if (isConnectionError(error)) throw error;
+        fail(orgRows.length ? "catalog" : "organizations", error instanceof Error ? error.message : String(error));
+      }
+    }
+    state.filials = sortIds([
+      ...config.filialIds,
+      ...state.filials,
+      ...orgRows.filter((r) => flag(r.APT)).map((r) => r.I),
+      ...lookups.branches.keys(),
+    ]);
+    if (state.filials.length === 0) state.filials = ["1"];
+
+    const stockResponses: StockBatch[][] = [];
+    let stockRows = 0;
+    for (const filial of state.filials) {
+      try {
+        const data = await fetchReport("stock", filial, today, today);
+        stockRows += data.length;
+        stockResponses.push(
+          data.filter((r) => r.G).map((r) => ({ branchFomId: r.O?.trim() || filial, productFomId: r.G, quantity: r.Q, retailPrice: r.P, expiry: fomDay(r.E) })),
+        );
+      } catch (error) {
+        if (isConnectionError(error)) throw error;
+        tally("stock", 0, 0, `filial ${filial}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    tally("stock", stockRows, await importStockSnapshot(lookups, stockResponses));
+    state.filials = sortIds([...state.filials, ...stockResponses.flat().map((r) => r.branchFomId)]);
+    details.filials = state.filials;
+
+    // Last days always; if steps did not run for a while, everything since the last pass (max 30 days)
+    let recentFrom = new Date(today.getTime() - RECENT_DAYS * DAY_MS);
+    if (state.recentTo) {
+      const resume = new Date(Math.max(new Date(state.recentTo).getTime(), today.getTime() - 30 * DAY_MS));
+      if (resume < recentFrom) recentFrom = resume;
+    }
+    for (let start = recentFrom; start <= today; start = new Date(start.getTime() + STEP_WINDOW_DAYS * DAY_MS)) {
+      const end = new Date(Math.min(today.getTime(), start.getTime() + (STEP_WINDOW_DAYS - 1) * DAY_MS));
+      await pullDated(start, end);
+    }
+    state.recentTo = isoDay(today);
+    details.from = isoDay(recentFrom);
+
+    while (state.backfillNext && state.backfillNext >= state.backfillUntil && left() > 15_000) {
+      const end = new Date(state.backfillNext);
+      const start = new Date(Math.max(new Date(state.backfillUntil).getTime(), end.getTime() - (STEP_WINDOW_DAYS - 1) * DAY_MS));
+      await pullDated(start, end);
+      weeks++;
+      details.from = isoDay(start);
+      const next = new Date(start.getTime() - DAY_MS);
+      state.backfillNext = isoDay(next) >= state.backfillUntil ? isoDay(next) : null;
+      await saveStepState(state);
+    }
+  } catch (error) {
+    fatal = error instanceof Error ? error.message : String(error);
+    logger.warn({ err: error }, "FOM step failed");
+  }
+
+  details.refsAt = state.refsAt;
+  await saveStepState(state);
+  const outcomes = Object.values(details.reports);
+  const total = outcomes.reduce((sum, o) => sum + (o?.imported ?? 0), 0);
+  const history = state.backfillNext
+    ? `tarix: ${state.backfillNext} gacha qoldi (${state.backfillUntil} gacha tortiladi)`
+    : "tarix toʻliq tortilgan";
+  const message = fatal
+    ? fatal
+    : `${total.toLocaleString("ru-RU")} yozuv yangilandi${weeks ? `, ${weeks} hafta tarix` : ""}; ${history}.`;
+  await db
+    .update(integrationImportsTable)
+    .set({ status: fatal ? "error" : "success", message, importedRecords: total, completedAt: new Date(), details: JSON.stringify(details) })
+    .where(eq(integrationImportsTable.id, row.id));
+  return { ok: !fatal, message };
 }
 
 /** Test call: reads the organisations reference (small, undated). */

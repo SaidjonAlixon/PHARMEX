@@ -7,7 +7,10 @@ import {
 import type { Product } from '@workspace/api-client-react';
 
 export type Filters = { dateFrom: string; dateTo: string; branchId: string };
-export const today = new Date().toISOString().slice(0, 10);
+/** YYYY-MM-DD in the browser's time zone (toISOString would shift to the UTC day). */
+export const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+export const today = localDay(new Date());
 export const monthStart = `${today.slice(0, 8)}01`;
 
 export function money(value: string | number | null | undefined) {
