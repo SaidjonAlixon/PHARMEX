@@ -280,16 +280,22 @@ namespace PharmexFomAgent
                     string found = null;
                     for (int attempt = 0; running && found == null; attempt++)
                     {
-                        try { found = ResolveReportUrl(cfg); }
+                        try
+                        {
+                            if (string.Equals(cfg.ReportUrl, "sql", StringComparison.OrdinalIgnoreCase))
+                                throw new Exception("REPORT_URL=sql — to'g'ridan P_GetReport_XML ishlatiladi.");
+                            found = ResolveReportUrl(cfg);
+                        }
                         catch (Exception ex)
                         {
                             Log(ex.Message);
-                            LogServiceReportsLogTail();
+                            if (!string.Equals(cfg.ReportUrl, "sql", StringComparison.OrdinalIgnoreCase)) LogServiceReportsLogTail();
                             // ServiceReports ishlamasa — FOM ning o'z P_GetReport_XML protsedurasini to'g'ridan chaqiramiz
                             var proc = DiscoverReportProc();
                             if (proc != null)
                             {
                                 cfg.SqlConn = proc.Item1;
+                                cfg.SupportedReports = discoveredReports;
                                 found = "sql:" + proc.Item2;
                                 break;
                             }
@@ -302,7 +308,7 @@ namespace PharmexFomAgent
                     if (found == null) return;
                     cfg.ReportUrl = found;
                     Log("REPORT: " + cfg.ReportUrl);
-                    if (cfg.SqlConn == null) SaveIniValue("FOM", "REPORT_URL", cfg.ReportUrl);
+                    SaveIniValue("FOM", "REPORT_URL", cfg.SqlConn == null ? cfg.ReportUrl : "sql");
                     WritePharmexSiteIni(cfg);
 
                     try
@@ -384,6 +390,8 @@ namespace PharmexFomAgent
             public string SqlConn;
             /// <summary>[FOM] FROM_DATE — to'liq tortish shu kundan boshlanadi (INITIAL_DAYS o'rniga).</summary>
             public DateTime? FromDate;
+            /// <summary>P_GetReport_XML ichida mavjud @pReport_id lar (SQL rejimi); null = ServiceReports, hammasi bor deb olinadi.</summary>
+            public HashSet<int> SupportedReports;
         }
 
         Config LoadConfig()
@@ -1994,6 +2002,22 @@ ORDER BY rowcnt DESC", conn))
                             using (var cmd = new SqlCommand("SELECT name FROM sys.databases WHERE state_desc='ONLINE' AND database_id > 4", master))
                             using (var r = cmd.ExecuteReader())
                                 while (r.Read()) dbs.Add(r.GetString(0));
+                            // Eski agent versiyasi .mdf larni "PX_" nomi bilan ulagan edi — ularni ajratamiz
+                            foreach (var db in dbs.ToArray())
+                            {
+                                if (!db.StartsWith("PX_", StringComparison.OrdinalIgnoreCase)) continue;
+                                try
+                                {
+                                    using (var cmd = new SqlCommand("EXEC master.dbo.sp_detach_db @dbname = @n", master))
+                                    {
+                                        cmd.Parameters.AddWithValue("@n", db);
+                                        cmd.ExecuteNonQuery();
+                                    }
+                                    dbs.Remove(db);
+                                    Log("Eski agent ulagan baza ajratildi: " + db);
+                                }
+                                catch (Exception ex) { Log("Ajratib bo'lmadi " + db + ": " + ex.Message); }
+                            }
                             Log("SQL " + srv + ": bazalar — " + string.Join(", ", dbs.ToArray()));
                             foreach (var db in dbs)
                             {
@@ -2032,16 +2056,43 @@ ORDER BY rowcnt DESC", conn))
                         var cs = "Data Source=" + srv + ";Initial Catalog=" + db + ";" + cred + ";Connect Timeout=10";
                         try
                         {
-                            var xml = ExecReportProc(cs, 189, "1", DateTime.Now.Date, DateTime.Now.Date, 120);
+                            var supported = ReadSupportedReports(cs);
+                            Log("  " + db + ": protsedurada hisobotlar — " +
+                                (supported.Count > 0 ? string.Join(", ", new List<int>(supported).ConvertAll(i => i.ToString()).ToArray()) : "?"));
+                            // 188 (tovarlar) sanaga bog'liq emas — bazada ma'lumot borligini tekshirish uchun
+                            var xml = ExecReportProc(cs, 188, "0", DateTime.Now.Date, DateTime.Now.Date, 180);
                             int rows = CountRows(xml);
-                            Log("  " + db + ": tashkilotlar hisoboti → " + rows + " qator");
-                            if (rows > 0) return Tuple.Create(cs, srv + "/" + db);
+                            Log("  " + db + ": tovarlar hisoboti → " + rows + " qator");
+                            if (rows > 0)
+                            {
+                                discoveredReports = supported.Count > 0 ? supported : null;
+                                return Tuple.Create(cs, srv + "/" + db);
+                            }
                         }
                         catch (Exception ex) { Log("  " + db + ": " + ex.Message); }
                     }
                 }
             }
             return null;
+        }
+
+        HashSet<int> discoveredReports;
+
+        /// <summary>Protsedura matnidagi "@pReport_id = N" lar — bu FOM versiyasida qaysi hisobotlar borligi.</summary>
+        HashSet<int> ReadSupportedReports(string cs)
+        {
+            var ids = new HashSet<int>();
+            using (var conn = new SqlConnection(cs))
+            {
+                conn.Open();
+                using (var cmd = new SqlCommand("SELECT OBJECT_DEFINITION(OBJECT_ID('dbo.P_GetReport_XML'))", conn))
+                {
+                    var text = Convert.ToString(cmd.ExecuteScalar());
+                    foreach (Match m in Regex.Matches(text ?? "", @"@pReport_id\s*=\s*(\d+)", RegexOptions.IgnoreCase))
+                        ids.Add(int.Parse(m.Groups[1].Value));
+                }
+            }
+            return ids;
         }
 
         static int Rank(string db, string iniBase)
@@ -2099,6 +2150,12 @@ ORDER BY rowcnt DESC", conn))
                         do
                         {
                             if (r.FieldCount == 0) continue;
+                            // Protsedura xatoni "SELECT ERROR_MESSAGE() AS ErrorMessage" bilan qaytaradi
+                            if (r.FieldCount == 1 && string.Equals(r.GetName(0), "ErrorMessage", StringComparison.OrdinalIgnoreCase))
+                            {
+                                string msg = r.Read() && !r.IsDBNull(0) ? Convert.ToString(r.GetValue(0)) : "nomaʼlum xato";
+                                throw new Exception("P_GetReport_XML xatosi: " + msg);
+                            }
                             bool forXml = r.FieldCount == 1 && (r.GetName(0).StartsWith("XML_", StringComparison.OrdinalIgnoreCase) || r.GetFieldType(0) == typeof(string));
                             while (r.Read())
                             {
@@ -2180,7 +2237,18 @@ ORDER BY rowcnt DESC", conn))
                 ? "TO'LIQ sinxron: " + FomDate(from) + " – " + FomDate(to) + " (" + (int)(to - from).TotalDays + " kun)"
                 : "Yangilash: " + FomDate(from) + " – " + FomDate(to));
 
-            var filials = new List<string>(cfg.FilialIds);
+            // SQL rejimi: @pFilial_id = 0 — protsedura barcha bo'limlarni qaytaradi
+            var filials = cfg.SqlConn != null ? new List<string> { "0" } : new List<string>(cfg.FilialIds);
+            Func<int, bool> has = id => cfg.SupportedReports == null || cfg.SupportedReports.Contains(id);
+            // Har bo'lim uchun mavjud versiya: v2 bo'lmasa v1 (eski P_GetReport_XML faqat 1–5 va 188 ni biladi)
+            var reportIds = new Dictionary<string, int>
+            {
+                { "purchases", has(11) ? 11 : has(1) ? 1 : -1 },
+                { "supplierReturns", has(12) ? 12 : has(2) ? 2 : -1 },
+                { "writeOffs", has(3) ? 3 : -1 },
+                { "retailSales", has(14) ? 14 : has(4) ? 4 : -1 },
+                { "insuranceSales", has(15) ? 15 : has(5) ? 5 : -1 },
+            };
             Action<string, Action> step = delegate(string label, Action work)
             {
                 try { work(); }
@@ -2198,9 +2266,20 @@ ORDER BY rowcnt DESC", conn))
                 step("Tashkilotlar", delegate
                 {
                     Log("→ Tashkilotlar…");
-                    var xml = FetchReport(cfg, 189, filials[0], to, to);
-                    foreach (var id in AptFilialIds(xml))
-                        if (!filials.Contains(id)) filials.Add(id);
+                    string xml;
+                    if (has(189))
+                    {
+                        xml = FetchReport(cfg, 189, filials[0], to, to);
+                        if (cfg.SqlConn == null)
+                            foreach (var id in AptFilialIds(xml))
+                                if (!filials.Contains(id)) filials.Add(id);
+                    }
+                    else
+                    {
+                        // 189 yo'q: bitta filial — config.ini dagi apteka nomi bilan
+                        Log("  (189 bu FOM versiyasida yo'q — filial nomi config.ini dan: " + (cfg.PharmacyName ?? "Filial 0") + ")");
+                        xml = "<R><V I=\"" + filials[0] + "\" N=\"" + Esc(cfg.PharmacyName ?? "Filial " + filials[0]) + "\" APT=\"1\" /></R>";
+                    }
                     imported += PushChunked(cfg, ser, "organizations", filials[0], xml, null);
                 });
                 Log("Filiallar (pFilial_id): " + string.Join(", ", filials.ToArray()));
@@ -2216,7 +2295,8 @@ ORDER BY rowcnt DESC", conn))
             // 2) Qoldiqlar — har filial bitta so'rovda (snapshot, bo'linmaydi)
             var seen = new HashSet<string>();
             var stockBranches = new List<string>();
-            foreach (var filial in filials)
+            if (!has(6)) Log("Qoldiqlar (6) bu FOM versiyasidagi P_GetReport_XML da yo'q — o'tkazildi.");
+            foreach (var filial in has(6) ? filials : new List<string>())
             {
                 var f = filial;
                 step("Qoldiqlar " + f, delegate
@@ -2242,6 +2322,8 @@ ORDER BY rowcnt DESC", conn))
                 var key = kv.Key;
                 var def = kv.Value;
                 if (!def.Dated) continue;
+                int reportId = reportIds[key];
+                if (reportId < 0) { Log(def.Label + ": bu FOM versiyasida hisobot yo'q — o'tkazildi."); continue; }
                 foreach (var filial in filials)
                 {
                     for (var cursor = from; cursor <= to; cursor = cursor.AddDays(WindowDays))
@@ -2252,14 +2334,14 @@ ORDER BY rowcnt DESC", conn))
                         var f = filial;
                         step(def.Label, delegate
                         {
-                            Log("→ " + def.Label + " (filial " + f + ", " + FomDate(start) + "–" + FomDate(end) + ")…");
-                            var xml = FetchReport(cfg, def.Id, f, start, end);
+                            Log("→ " + def.Label + " [" + reportId + "] (filial " + f + ", " + FomDate(start) + "–" + FomDate(end) + ")…");
+                            var xml = FetchReport(cfg, reportId, f, start, end);
                             if (!seen.Add(key + ":" + FomDate(start) + ":" + Hash(xml))) { Log("  (takror — o'tkazildi)"); return; }
                             if (CountRows(xml) > MaxRowsPerPush && end > start)
                             {
                                 for (var day = start; day <= end; day = day.AddDays(1))
                                 {
-                                    var dayXml = FetchReport(cfg, def.Id, f, day, day);
+                                    var dayXml = FetchReport(cfg, reportId, f, day, day);
                                     imported += PushChunked(cfg, ser, key, f, dayXml, key == "writeOffs" ? "D" : "DOC");
                                 }
                             }
@@ -2280,11 +2362,12 @@ ORDER BY rowcnt DESC", conn))
             return Tuple.Create(imported, errors);
         }
 
-        static readonly Regex RowRegex = new Regex(@"<V\b[^>]*?(?:/>|>.*?</V>)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        // Bitta qator = atributli o'z-o'zini yopuvchi element: ServiceReports <V .../>, FOR XML AUTO <B .../> yoki <G .../>
+        static readonly Regex RowRegex = new Regex(@"<(?![/?!])(?!(?:xmldata|R|ROOT)\b)[A-Za-z_][\w.-]*\s[^<>]*?/>", RegexOptions.IgnoreCase);
 
         static int CountRows(string xml)
         {
-            return string.IsNullOrEmpty(xml) ? 0 : Regex.Matches(xml, @"<V\b", RegexOptions.IgnoreCase).Count;
+            return string.IsNullOrEmpty(xml) ? 0 : RowRegex.Matches(xml).Count;
         }
 
         static string Attr(string element, string name)

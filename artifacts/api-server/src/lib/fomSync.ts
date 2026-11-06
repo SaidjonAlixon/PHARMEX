@@ -631,7 +631,8 @@ export async function importSales(
         const insurer = lookups.orgNames.get(doc.orgId) ?? "";
         return {
           branchId: lookups.branches.get(doc.branchFomId)!,
-          receiptNo: `FOM-${doc.number || doc.sourceId.split(":").pop()}`,
+          // Old P_GetReport_XML (report 4) aggregates per day without a receipt number
+          receiptNo: `FOM-${doc.number || doc.date.toISOString().slice(0, 10)}`,
           soldAt: doc.date,
           cashier: "FOM",
           customerName: kind === "insurance" ? [doc.person, insurer].filter(Boolean).join(" · ") : "",
