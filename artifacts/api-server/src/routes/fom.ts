@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { and, count, desc, eq, isNotNull, ne } from "drizzle-orm";
 import express, { Router, type IRouter, type Request } from "express";
 import {
@@ -469,6 +470,8 @@ fomSiteRouter.post(
       report?: string;
       filialId?: string;
       xml?: string;
+      /** gzip + base64 XML: Vercel caps request bodies at 4.5 MB */
+      xmlGz?: string;
       rows?: unknown;
       fomId?: string;
       ch?: string;
@@ -485,14 +488,18 @@ fomSiteRouter.post(
     }
     const startedAt = new Date();
     try {
-      const rows = Array.isArray(body.rows)
-        ? (body.rows as Record<string, string>[])
-        : parseFomXml(typeof body.xml === "string" ? body.xml : "");
+      const xml =
+        typeof body.xmlGz === "string" && body.xmlGz
+          ? gunzipSync(Buffer.from(body.xmlGz, "base64")).toString("utf8")
+          : typeof body.xml === "string"
+            ? body.xml
+            : "";
+      const rows = Array.isArray(body.rows) ? (body.rows as Record<string, string>[]) : parseFomXml(xml);
       if (rows.length === 0) {
         res.json({ ok: true, report, filialId, fomId: fomId || null, rows: 0, imported: 0, message: "Boʻsh hisobot." });
         return;
       }
-      const result = await importAgentReport({ report, filialId, rows, orgFomId: fomId || undefined });
+      const result = await importAgentReport({ report, filialId, rows });
       const who = [fomId && `Fom_ID ${fomId}`, ch && `CH ${ch}`, pharmacyName].filter(Boolean).join(" · ");
       const skipped = Math.max(0, rows.length - (result.imported || 0));
       await db.insert(integrationImportsTable).values({

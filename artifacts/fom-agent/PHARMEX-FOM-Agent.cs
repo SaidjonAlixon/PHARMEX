@@ -20,9 +20,19 @@ namespace PharmexFomAgent
 {
     static class Program
     {
+        /// <summary>--once: bir marta tortib yopiladi (Windows rejalashtiruvchisi uchun).</summary>
+        public static bool Once;
+        /// <summary>--hidden: oynasiz, faqat trayda ishlaydi (avto-start uchun).</summary>
+        public static bool Hidden;
+
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
+            foreach (var a in args)
+            {
+                if (string.Equals(a, "--once", StringComparison.OrdinalIgnoreCase)) Once = true;
+                if (string.Equals(a, "--hidden", StringComparison.OrdinalIgnoreCase)) Hidden = true;
+            }
             // .NET 4.0 defaults to old SSL; Vercel needs TLS 1.2
             try
             {
@@ -162,7 +172,13 @@ namespace PharmexFomAgent
 
             EnsureConfig();
             Log("config: " + ConfigPath());
-            Log("Agent tayyor. Ishga tushganda shu kompyuterdagi FOM eshigini o'zi qidiradi.");
+            Log("Agent ochildi — FOM ga o'zi ulanib, ma'lumotni tortishni boshlaydi.");
+            // Tugma bosish shart emas: dastur ochilishi bilan avto-rejim boshlanadi
+            Shown += delegate
+            {
+                if (Program.Hidden) Hide();
+                StartLoop(Program.Once);
+            };
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -305,12 +321,18 @@ namespace PharmexFomAgent
                 {
                     Log("To'xtadi: " + ex.Message);
                     SetStatus("To'xtadi", Color.Firebrick);
-                    MessageBox.Show(ex.Message, "PHARMEX Agent", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    if (!Program.Once && !Program.Hidden)
+                        MessageBox.Show(ex.Message, "PHARMEX Agent", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
                 finally
                 {
                     running = false;
-                    BeginInvoke((Action)(() => { startBtn.Enabled = true; onceBtn.Enabled = true; }));
+                    BeginInvoke((Action)(() =>
+                    {
+                        startBtn.Enabled = true;
+                        onceBtn.Enabled = true;
+                        if (Program.Once) Application.Exit();
+                    }));
                 }
             });
             worker.IsBackground = true;
@@ -459,13 +481,13 @@ namespace PharmexFomAgent
 
             if (string.IsNullOrEmpty(cfg.FomId))
             {
-                var m = Regex.Match(text, @"(?im)^\s*(?:Fom[_\s]?[Ii][Dd]|FOM_ID|FomId)\s*[=:]\s*(\d{3,8})\s*$");
+                var m = Regex.Match(text, @"(?im)^[ \t]*(?:Fom[_ ]?[Ii][Dd]|FOM_ID|FomId)[ \t]*[=:][ \t]*(\d{3,8})[ \t]*\r?$");
                 if (m.Success) { cfg.FomId = m.Groups[1].Value; Log("  Fom_ID=" + cfg.FomId + " ← " + file); }
             }
             if (string.IsNullOrEmpty(cfg.Ch))
             {
                 // CH=R5T5Q6H6E7T7Q — ODJX_ va uzun marketplace tokenlardan farq qiladi
-                var m = Regex.Match(text, @"(?im)^\s*(?:CH|Channel|CHANNEL)\s*[=:]\s*([A-Z0-9]{8,20})\s*$");
+                var m = Regex.Match(text, @"(?im)^[ \t]*(?:CH|Channel|CHANNEL)[ \t]*[=:][ \t]*([A-Z0-9]{8,20})[ \t]*\r?$");
                 if (m.Success && !m.Groups[1].Value.StartsWith("ODJX", StringComparison.OrdinalIgnoreCase))
                 {
                     cfg.Ch = m.Groups[1].Value;
@@ -474,7 +496,7 @@ namespace PharmexFomAgent
             }
             if (string.IsNullOrEmpty(cfg.PharmacyName))
             {
-                var m = Regex.Match(text, @"(?im)^\s*(?:NAME|Наименование|Apteka|PHARMACY|ORG)\s*[=:]\s*(.+)\s*$");
+                var m = Regex.Match(text, @"(?im)^[ \t]*(?:NAME|Наименование|Apteka|PHARMACY|ORG)[ \t]*[=:][ \t]*([^\r\n]+?)[ \t]*\r?$");
                 if (m.Success)
                 {
                     var n = m.Groups[1].Value.Trim();
@@ -647,9 +669,60 @@ namespace PharmexFomAgent
             }
         }
 
+        /// <summary>ServiceReports o'rnatilgan papkalar: odatiy joylar + Windows xizmati yo'li.</summary>
+        List<string> FindServiceReportsDirs()
+        {
+            var dirs = new List<string>();
+            Action<string> add = delegate(string d)
+            {
+                if (!string.IsNullOrEmpty(d) && Directory.Exists(d) && !dirs.Contains(d)) dirs.Add(d);
+            };
+            foreach (var drive in new[] { "C", "D", "E", "F" })
+            {
+                add(drive + @":\ServiceReports");
+                add(drive + @":\FAPTEKA\ServiceReports");
+                add(drive + @":\SERVICEREPORTS");
+            }
+            try
+            {
+                using (var services = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services"))
+                {
+                    if (services != null)
+                        foreach (var name in services.GetSubKeyNames())
+                        {
+                            if (name.IndexOf("report", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                            using (var svc = services.OpenSubKey(name))
+                            {
+                                var image = Convert.ToString(svc == null ? null : svc.GetValue("ImagePath"));
+                                if (string.IsNullOrEmpty(image)) continue;
+                                var m = Regex.Match(image, "^\\s*\"?([^\"]+?\\.exe)", RegexOptions.IgnoreCase);
+                                if (m.Success)
+                                {
+                                    Log("Xizmat: " + name + " → " + m.Groups[1].Value);
+                                    add(Path.GetDirectoryName(m.Groups[1].Value));
+                                }
+                            }
+                        }
+                }
+            }
+            catch { }
+            return dirs;
+        }
+
         List<string> ReadUrlsFromFaptekaConfigs()
         {
             var found = new List<string>();
+            // ServiceReports.ini: [Server] Host=http://127.0.0.1:8084
+            foreach (var dir in FindServiceReportsDirs())
+            {
+                Log("ServiceReports papka: " + dir);
+                try
+                {
+                    foreach (var file in Directory.GetFiles(dir, "*.ini", SearchOption.TopDirectoryOnly))
+                        ExtractUrlsFromFile(file, found);
+                }
+                catch { }
+            }
             string[] roots = {
                 @"C:\FAPTEKA", @"D:\FAPTEKA", @"E:\FAPTEKA",
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "FAPTEKA"),
@@ -1639,26 +1712,43 @@ ORDER BY rowcnt DESC", conn))
                 var today = DateTime.UtcNow.Date;
                 var url = string.Format("{0}/P_GetReport_XML?pDateFrom={1}&pDateTo={2}&pFilial_id={3}&pReport_id=189",
                     baseUrl.TrimEnd('/'), FomDate(today), FomDate(today), string.IsNullOrEmpty(filial) ? "1" : filial);
-                var req = (HttpWebRequest)WebRequest.Create(url);
-                req.Method = "GET";
-                req.Timeout = 4000;
-                req.ReadWriteTimeout = 4000;
-                using (var res = (HttpWebResponse)req.GetResponse())
-                {
-                    if ((int)res.StatusCode < 200 || (int)res.StatusCode >= 300) return false;
-                    using (var sr = new StreamReader(res.GetResponseStream(), Encoding.UTF8))
-                    {
-                        var body = sr.ReadToEnd();
-                        if (string.IsNullOrEmpty(body) || body.IndexOf('<') < 0) return false;
-                        // Oddiy HTML sahifa emas — FOM qatorlari (V yoki atributli yozuvlar)
-                        if (Regex.IsMatch(body, @"<\s*html\b", RegexOptions.IgnoreCase)) return false;
-                        return Regex.IsMatch(body, @"<\s*V\b", RegexOptions.IgnoreCase)
-                            || body.IndexOf("P_GetReport", StringComparison.OrdinalIgnoreCase) >= 0
-                            || Regex.IsMatch(body, @"\bI\s*=\s*""", RegexOptions.IgnoreCase);
-                    }
-                }
+                var body = HttpGetXml(url, 20);
+                if (string.IsNullOrEmpty(body) || body.IndexOf('<') < 0) return false;
+                // Boshqa dasturning HTML sahifasi emas
+                return !Regex.IsMatch(body, @"<\s*html\b", RegexOptions.IgnoreCase);
             }
             catch { return false; }
+        }
+
+        /// <summary>REPORT.exe ko'pincha windows-1251 qaytaradi — kirillcha buzilmasligi uchun.</summary>
+        static string DecodeXmlBytes(byte[] bytes, string contentType)
+        {
+            if (bytes == null || bytes.Length == 0) return "";
+            var head = Encoding.ASCII.GetString(bytes, 0, Math.Min(200, bytes.Length));
+            var m = Regex.Match(head, "encoding\\s*=\\s*[\"']([\\w-]+)[\"']", RegexOptions.IgnoreCase);
+            if (!m.Success) m = Regex.Match(contentType ?? "", @"charset=([\w-]+)", RegexOptions.IgnoreCase);
+            if (m.Success)
+            {
+                try { return Encoding.GetEncoding(m.Groups[1].Value).GetString(bytes); }
+                catch { }
+            }
+            try { return new UTF8Encoding(false, true).GetString(bytes); }
+            catch (DecoderFallbackException) { return Encoding.GetEncoding(1251).GetString(bytes); }
+        }
+
+        string HttpGetXml(string url, int timeoutSec)
+        {
+            var req = (HttpWebRequest)WebRequest.Create(url);
+            req.Method = "GET";
+            req.Timeout = timeoutSec * 1000;
+            req.ReadWriteTimeout = timeoutSec * 1000;
+            req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            using (var res = (HttpWebResponse)req.GetResponse())
+            using (var ms = new MemoryStream())
+            {
+                res.GetResponseStream().CopyTo(ms);
+                return DecodeXmlBytes(ms.ToArray(), res.ContentType);
+            }
         }
 
         static Dictionary<string, Dictionary<string, string>> ParseIni(string text)
@@ -1678,9 +1768,10 @@ ORDER BY rowcnt DESC", conn))
             return map;
         }
 
+        // Sana apteka kompyuterining mahalliy kuni: UTC ga o'girilsa bir kun orqaga siljiydi
         static string FomDate(DateTime d)
         {
-            return d.ToUniversalTime().ToString("dd.MM.yyyy");
+            return d.ToString("dd.MM.yyyy");
         }
 
         string HttpGet(string url, int timeoutSec)
@@ -1731,8 +1822,8 @@ ORDER BY rowcnt DESC", conn))
                 cfg.ReportUrl, FomDate(from), FomDate(to), filial, reportId);
             try
             {
-                var xml = HttpGet(url, cfg.TimeoutSec);
-                if (xml.IndexOf('<') < 0) throw new Exception("REPORT.exe XML emas.");
+                var xml = HttpGetXml(url, cfg.TimeoutSec);
+                if (xml.IndexOf('<') < 0) throw new Exception("REPORT.exe XML emas: " + xml.Substring(0, Math.Min(120, xml.Length)));
                 return xml;
             }
             catch (WebException ex)
@@ -1743,49 +1834,219 @@ ORDER BY rowcnt DESC", conn))
             }
         }
 
+        // Bitta so'rovda shuncha qatordan ko'p yubormaymiz: Vercel funksiyasi 60 soniyada tugashi kerak
+        const int MaxRowsPerPush = 3000;
+        // Hujjatlar shu kunlik oynalarda tortiladi
+        const int WindowDays = 7;
+        DateTime lastRefsAt = DateTime.MinValue;
+
+        string FullSyncMarker() { return Path.Combine(AppDir(), "full-sync-done.txt"); }
+
         Tuple<int, int> SyncOnce(Config cfg)
         {
-            var to = DateTime.UtcNow.Date;
-            var from = to.AddDays(-cfg.InitialDays);
+            var to = DateTime.Now.Date;
+            bool full = !File.Exists(FullSyncMarker());
+            // Birinchi marta INITIAL_DAYS kun, keyin faqat oxirgi 3 kun (tuzatilgan hujjatlar ham yangilanadi)
+            var from = to.AddDays(full ? -cfg.InitialDays : -3);
+            bool refs = full || (DateTime.Now - lastRefsAt).TotalMinutes >= 60;
             int imported = 0, errors = 0;
             var ser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            Log(full
+                ? "TO'LIQ sinxron: " + FomDate(from) + " – " + FomDate(to) + " (" + cfg.InitialDays + " kun)"
+                : "Yangilash: " + FomDate(from) + " – " + FomDate(to));
 
+            var filials = new List<string>(cfg.FilialIds);
+            Action<string, Action> step = delegate(string label, Action work)
+            {
+                try { work(); }
+                catch (Exception ex)
+                {
+                    errors++;
+                    Log("  ✗ " + label + ": " + ex.Message);
+                    if (ex.Message.IndexOf("ulanib bo'lmadi", StringComparison.OrdinalIgnoreCase) >= 0) throw ex;
+                }
+            };
+
+            // 1) Ma'lumotnomalar: tashkilotlar (filiallarni ham shundan topamiz) va tovarlar
+            if (refs)
+            {
+                step("Tashkilotlar", delegate
+                {
+                    Log("→ Tashkilotlar…");
+                    var xml = FetchReport(cfg, 189, filials[0], to, to);
+                    foreach (var id in AptFilialIds(xml))
+                        if (!filials.Contains(id)) filials.Add(id);
+                    imported += PushChunked(cfg, ser, "organizations", filials[0], xml, null);
+                });
+                Log("Filiallar (pFilial_id): " + string.Join(", ", filials.ToArray()));
+                step("Tovarlar", delegate
+                {
+                    Log("→ Tovarlar…");
+                    var xml = FetchReport(cfg, 188, filials[0], to, to);
+                    imported += PushChunked(cfg, ser, "catalog", filials[0], xml, null);
+                });
+                lastRefsAt = DateTime.Now;
+            }
+
+            // 2) Qoldiqlar — har filial bitta so'rovda (snapshot, bo'linmaydi)
+            var seen = new HashSet<string>();
+            var stockBranches = new List<string>();
+            foreach (var filial in filials)
+            {
+                var f = filial;
+                step("Qoldiqlar " + f, delegate
+                {
+                    Log("→ Qoldiqlar (filial " + f + ")…");
+                    var xml = FetchReport(cfg, 6, f, to, to);
+                    foreach (Match m in RowRegex.Matches(xml))
+                    {
+                        var o = Attr(m.Value, "O").Trim();
+                        if (o.Length > 0 && !stockBranches.Contains(o)) stockBranches.Add(o);
+                    }
+                    if (!seen.Add("stock:" + Hash(xml))) { Log("  (boshqa filial bilan bir xil — o'tkazildi)"); return; }
+                    imported += Push(cfg, ser, "stock", f, xml);
+                });
+            }
+            // Faqat qoldiqlarda (O) ko'ringan filiallar ham hujjatlar uchun qo'shiladi
+            foreach (var o in stockBranches)
+                if (!filials.Contains(o)) { filials.Add(o); Log("Qo'shimcha filial (qoldiqdan): " + o); }
+
+            // 3) Hujjatlar — kichik oynalarda, katta bo'lsa kunma-kun
             foreach (var kv in Reports)
             {
                 var key = kv.Key;
                 var def = kv.Value;
-                foreach (var filial in cfg.FilialIds)
+                if (!def.Dated) continue;
+                foreach (var filial in filials)
                 {
-                    try
+                    for (var cursor = from; cursor <= to; cursor = cursor.AddDays(WindowDays))
                     {
-                        if (!def.Dated)
+                        var start = cursor;
+                        var end = cursor.AddDays(WindowDays - 1);
+                        if (end > to) end = to;
+                        var f = filial;
+                        step(def.Label, delegate
                         {
-                            Log("→ " + def.Label + " (filial " + filial + ")…");
-                            var xml = FetchReport(cfg, def.Id, filial, to, to);
-                            var result = Push(cfg, ser, key, filial, xml);
-                            imported += result;
-                        }
-                        else
-                        {
-                            for (var cursor = from; cursor <= to; cursor = cursor.AddDays(31))
+                            Log("→ " + def.Label + " (filial " + f + ", " + FomDate(start) + "–" + FomDate(end) + ")…");
+                            var xml = FetchReport(cfg, def.Id, f, start, end);
+                            if (!seen.Add(key + ":" + FomDate(start) + ":" + Hash(xml))) { Log("  (takror — o'tkazildi)"); return; }
+                            if (CountRows(xml) > MaxRowsPerPush && end > start)
                             {
-                                var end = cursor.AddDays(30);
-                                if (end > to) end = to;
-                                Log("→ " + def.Label + " (" + FomDate(cursor) + "–" + FomDate(end) + ")…");
-                                var xml = FetchReport(cfg, def.Id, filial, cursor, end);
-                                imported += Push(cfg, ser, key, filial, xml);
+                                for (var day = start; day <= end; day = day.AddDays(1))
+                                {
+                                    var dayXml = FetchReport(cfg, def.Id, f, day, day);
+                                    imported += PushChunked(cfg, ser, key, f, dayXml, key == "writeOffs" ? "D" : "DOC");
+                                }
                             }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        errors++;
-                        Log("  ✗ " + ex.Message);
-                        if (ex.Message.IndexOf("eshig", StringComparison.OrdinalIgnoreCase) >= 0) throw;
+                            else
+                                imported += PushChunked(cfg, ser, key, f, xml, key == "writeOffs" ? "D" : "DOC");
+                        });
                     }
                 }
             }
+
+            // Ulanish uzilsa yuqorida to'xtaydi; bu yerga yetgan bo'lsa tarix tortib bo'lingan
+            if (full)
+            {
+                File.WriteAllText(FullSyncMarker(), DateTime.Now.ToString("o"), Encoding.UTF8);
+                Log("To'liq sinxron yakunlandi" + (errors > 0 ? " (" + errors + " ta hisobot FOM tomonidan rad etildi)" : "") +
+                    " — endi har siklda oxirgi 3 kun yangilanadi. Qayta to'liq tortish: full-sync-done.txt ni o'chiring.");
+            }
             return Tuple.Create(imported, errors);
+        }
+
+        static readonly Regex RowRegex = new Regex(@"<V\b[^>]*?(?:/>|>.*?</V>)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        static int CountRows(string xml)
+        {
+            return string.IsNullOrEmpty(xml) ? 0 : Regex.Matches(xml, @"<V\b", RegexOptions.IgnoreCase).Count;
+        }
+
+        static string Attr(string element, string name)
+        {
+            var m = Regex.Match(element, "\\b" + name + "\\s*=\\s*\"([^\"]*)\"", RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value : "";
+        }
+
+        static string Hash(string s)
+        {
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+                return BitConverter.ToString(md5.ComputeHash(Encoding.UTF8.GetBytes(s ?? "")));
+        }
+
+        /// <summary>189-hisobotda APT=1 bo'lgan tashkilotlar — bu aptekaning filiallari.</summary>
+        static List<string> AptFilialIds(string xml)
+        {
+            var ids = new List<string>();
+            foreach (Match m in RowRegex.Matches(xml ?? ""))
+            {
+                var apt = Attr(m.Value, "APT").Trim().ToLowerInvariant();
+                if (apt != "1" && apt != "true") continue;
+                var id = Attr(m.Value, "I").Trim();
+                if (id.Length > 0 && !ids.Contains(id)) ids.Add(id);
+            }
+            return ids;
+        }
+
+        /// <summary>
+        /// Katta hisobotni bo'laklab yuboradi. groupBy: null = istalgan joyda bo'linadi,
+        /// "DOC" = bitta hujjat (ID yoki N|D) qatorlari bir bo'lakda, "D" = bitta sana bir bo'lakda.
+        /// </summary>
+        int PushChunked(Config cfg, JavaScriptSerializer ser, string report, string filial, string xml, string groupBy)
+        {
+            var rows = RowRegex.Matches(xml ?? "");
+            if (rows.Count <= MaxRowsPerPush) return Push(cfg, ser, report, filial, xml);
+
+            var groups = new List<List<string>>();
+            var index = new Dictionary<string, List<string>>();
+            int n = 0;
+            foreach (Match m in rows)
+            {
+                string key;
+                if (groupBy == "D") key = Attr(m.Value, "D");
+                else if (groupBy == "DOC")
+                {
+                    key = Attr(m.Value, "ID");
+                    if (key.Length == 0) key = Attr(m.Value, "N") + "|" + Attr(m.Value, "D");
+                }
+                else key = (n++ / MaxRowsPerPush).ToString();
+                List<string> g;
+                if (!index.TryGetValue(key, out g)) { g = new List<string>(); index[key] = g; groups.Add(g); }
+                g.Add(m.Value);
+            }
+
+            int imported = 0, parts = 0;
+            var chunk = new StringBuilder("<R>");
+            int chunkRows = 0;
+            Action flush = delegate
+            {
+                if (chunkRows == 0) return;
+                chunk.Append("</R>");
+                parts++;
+                imported += Push(cfg, ser, report, filial, chunk.ToString());
+                chunk = new StringBuilder("<R>");
+                chunkRows = 0;
+            };
+            foreach (var g in groups)
+            {
+                if (chunkRows > 0 && chunkRows + g.Count > MaxRowsPerPush) flush();
+                foreach (var row in g) chunk.Append(row);
+                chunkRows += g.Count;
+            }
+            flush();
+            Log("  (" + rows.Count + " qator " + parts + " bo'lakda yuborildi)");
+            return imported;
+        }
+
+        static string GzipBase64(string text)
+        {
+            var bytes = Encoding.UTF8.GetBytes(text ?? "");
+            using (var ms = new MemoryStream())
+            {
+                using (var gz = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionMode.Compress, true))
+                    gz.Write(bytes, 0, bytes.Length);
+                return Convert.ToBase64String(ms.ToArray());
+            }
         }
 
         int Push(Config cfg, JavaScriptSerializer ser, string report, string filial, string xml)
@@ -1794,7 +2055,7 @@ ORDER BY rowcnt DESC", conn))
             {
                 { "report", report },
                 { "filialId", filial },
-                { "xml", xml }
+                { "xmlGz", GzipBase64(xml) }
             };
             if (!string.IsNullOrEmpty(cfg.FomId)) payloadMap["fomId"] = cfg.FomId;
             if (!string.IsNullOrEmpty(cfg.Ch)) payloadMap["ch"] = cfg.Ch;
