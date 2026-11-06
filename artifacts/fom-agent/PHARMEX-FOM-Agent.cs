@@ -51,6 +51,12 @@ namespace PharmexFomAgent
         }
     }
 
+    /// <summary>Sinxronni to'xtatadi va to'liq tortish belgisini qo'ymaydi.</summary>
+    sealed class AbortSyncException : Exception
+    {
+        public AbortSyncException(string message) : base(message) { }
+    }
+
     sealed class MainForm : Form
     {
         readonly TextBox logBox;
@@ -1863,7 +1869,7 @@ ORDER BY rowcnt DESC", conn))
                 {
                     errors++;
                     Log("  ✗ " + label + ": " + ex.Message);
-                    if (ex.Message.IndexOf("ulanib bo'lmadi", StringComparison.OrdinalIgnoreCase) >= 0) throw ex;
+                    if (ex is AbortSyncException || ex.Message.IndexOf("ulanib bo'lmadi", StringComparison.OrdinalIgnoreCase) >= 0) throw ex;
                 }
             };
 
@@ -2072,6 +2078,10 @@ ORDER BY rowcnt DESC", conn))
                     if (dict.ContainsKey("rows")) rows = Convert.ToInt32(dict["rows"]);
                     if (dict.ContainsKey("imported")) imp = Convert.ToInt32(dict["imported"]);
                 }
+                int sent = CountRows(xml);
+                if (sent > 0 && rows == 0)
+                    throw new AbortSyncException(
+                        "PHARMEX serveri " + sent + " qatorni o'qimadi — sayt hali yangilanmagan bo'lishi mumkin, keyingi siklda qayta uriniladi.");
                 Log("  ✓ " + rows + " qator → " + imp + " import");
                 if (imp == 0 && rows > 0 && dict != null && dict.ContainsKey("sampleKeys"))
                     Log("  (maydonlar: " + Convert.ToString(dict["sampleKeys"]) + ")");
