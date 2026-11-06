@@ -405,6 +405,22 @@ interface Doc {
   lines: Line[];
 }
 
+/** Why document rows would be dropped by `groupDocs`, plus raw samples, for checking a FOM server's real format. */
+export function fomRowDiagnostics(rows: FomRow[]) {
+  let noProduct = 0;
+  let zeroQty = 0;
+  let noDate = 0;
+  for (const row of rows) {
+    if (!row.G) noProduct++;
+    else if (qtyMilli(row.Q) === 0n) zeroQty++;
+    if (!fomDateValue(row.D)) noDate++;
+  }
+  const sample = rows.slice(0, 2).map((row) =>
+    Object.fromEntries(Object.entries(row).map(([key, value]) => [key, String(value).slice(0, 60)])),
+  );
+  return { noProduct, zeroQty, noDate, sample };
+}
+
 function toLine(row: FomRow): Line | null {
   if (!row.G) return null;
   const qty = qtyMilli(row.Q);

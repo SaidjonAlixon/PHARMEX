@@ -38,6 +38,7 @@ import {
   fomSyncRunning,
   importAgentReport,
   importSitePush,
+  fomRowDiagnostics,
   requestFomBackfill,
   runFomStep,
   startFomSync,
@@ -531,6 +532,7 @@ fomSiteRouter.post(
       const result = await importAgentReport({ report, filialId, rows });
       const who = [fomId && `Fom_ID ${fomId}`, ch && `CH ${ch}`, pharmacyName].filter(Boolean).join(" · ");
       const skipped = Math.max(0, rows.length - (result.imported || 0));
+      const diagnostics = fomRowDiagnostics(rows);
       await db.insert(integrationImportsTable).values({
         integration: "fom-agent",
         status: "success",
@@ -548,6 +550,7 @@ fomSiteRouter.post(
           imported: result.imported,
           skipped,
           sampleKeys: rows.slice(0, 3).map((row) => Object.keys(row).sort().join(",")),
+          diagnostics,
         }),
       });
       res.json({
