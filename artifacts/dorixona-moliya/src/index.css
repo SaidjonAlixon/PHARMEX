@@ -830,6 +830,26 @@ body { background: var(--wash); }
 .kpi.bad > b { color: #c62f3a; }
 .kpi.warn > b { color: #a8670a; }
 .kpi > small { color: var(--t3); font-size: 11.5px; }
+/* Settings: F-APTEKA sources as compact rows (name + purpose, last-run count, status). */
+.source-list { display: grid; gap: 6px; }
+.source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); }
+.source-row:hover { border-color: #c9d8ee; }
+.source-name { display: grid; gap: 2px; min-width: 0; }
+.source-name b { font-size: 13px; color: var(--px-navy, #0b1e4a); }
+.source-name small { font-size: 11.5px; color: var(--muted-ink, #5c6b86); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-name small.error-line { white-space: normal; }
+.source-count { display: grid; justify-items: end; gap: 1px; min-width: 64px; }
+.source-count b { font: 700 14px var(--app-font-mono); color: var(--px-navy, #0b1e4a); }
+.source-count small { font-size: 10.5px; color: var(--muted-ink, #5c6b86); }
+.dark .source-row { background: var(--surface-2); border-color: #263759; }
+.dark .source-name b, .dark .source-count b { color: var(--ink); }
+/* Long figures shrink to stay on one line inside the card (see fitFigure). */
+.kpi > b, .metric-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.kpi > b.fit-md { font-size: 20px; letter-spacing: -.4px; }
+.kpi > b.fit-sm { font-size: 17px; letter-spacing: -.3px; }
+.metric-value.fit-md { font-size: 22px; letter-spacing: -.5px; }
+.metric-value.fit-sm { font-size: 18px; letter-spacing: -.4px; }
+.kpi, .metric-card { min-width: 0; }
 
 /* Dashboard metric cards */
 .metric-grid { gap: 14px; margin-bottom: 18px; }
@@ -1076,9 +1096,13 @@ td.muted { font-size: 12px; }
   .fom-live { height: 34px; padding: 0 9px; }
   .page-heading h1 { font-size: 25px; }
   .kpi > b { font-size: 19px; }
+  .kpi > b.fit-md { font-size: 16px; }
+  .kpi > b.fit-sm { font-size: 14px; }
   .kpi-label svg { width: 28px; height: 28px; padding: 6px; }
   .metric-card { padding: 13px; }
   .metric-value { font-size: 20px; }
+  .metric-value.fit-md { font-size: 17px; }
+  .metric-value.fit-sm { font-size: 15px; }
   .panel { padding: 16px 14px; border-radius: 16px; }
   .panel-head h2 { font-size: 15px; }
   .search-field input { width: 100%; }

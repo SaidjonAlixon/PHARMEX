@@ -7,7 +7,7 @@ import {
 import { useGetFomStatus, getGetFomStatusQueryKey, useTestFomConnection, useSyncFom } from '@workspace/api-client-react';
 import type { FomReportState } from '@workspace/api-client-react';
 import {
-  DataState, KpiStrip, PageHeading, Panel, StatusBadge, TableWrap, addDaysTo, apiErrorMessage, clockTime, dateTime, todayDay,
+  DataState, KpiStrip, PageHeading, Panel, StatusBadge, addDaysTo, apiErrorMessage, clockTime, dateTime, todayDay,
 } from '@/components/kit';
 import { useAccess } from '@/lib/access';
 import { toast } from '@/hooks/use-toast';
@@ -181,17 +181,13 @@ export function SettingsPage() {
       ]} />
 
       <div className={pull ? 'split-grid' : undefined}>
-        {pull && <Panel title="Manbalar (F-APTEKA bazasi)" subtitle={status.lastSyncAt ? `Oxirgi yangilanish: ${dateTime(status.lastSyncAt)} (Toshkent). Har safar faqat yangi va oʻzgargan hujjatlar olinadi; “Qator / Import” — shu yangilanishda.` : 'Hali sinxronlanmagan'}>
-          <TableWrap><thead><tr><th>ID</th><th>Manba</th><th>Platformada</th><th className="num">Qator</th><th className="num">Import</th><th>Holat</th></tr></thead>
-            <tbody>{status.reports.map(report => <tr key={report.key} data-testid={`row-fom-report-${report.key}`}>
-              <td><code>{report.reportId || 'SQL'}</code></td>
-              <td><b>{report.label}</b>{report.dated && <small className="muted-line">davr boʻyicha</small>}{report.error && <small className="error-line">{report.error}</small>}{report.warning && <small className="error-line warn">{report.warning}</small>}</td>
-              <td className="muted">{report.target}</td>
-              <td className="num">{report.rows?.toLocaleString('uz-UZ') ?? '—'}</td>
-              <td className="num">{report.imported?.toLocaleString('uz-UZ') ?? '—'}</td>
-              <td><ReportStatus report={report} running={status.running} /></td>
-            </tr>)}</tbody>
-          </TableWrap>
+        {pull && <Panel title="Manbalar (F-APTEKA bazasi)" subtitle={status.lastSyncAt ? `Oxirgi yangilanish: ${dateTime(status.lastSyncAt)} (Toshkent) · raqam — shu yangilanishda qoʻshilgan yozuvlar` : 'Hali sinxronlanmagan'}>
+          <div className="source-list">{status.reports.map(report => <div className="source-row" key={report.key} data-testid={`row-fom-report-${report.key}`}>
+            <div className="source-name"><b>{report.label}</b><small>{report.target}</small>
+              {report.error && <small className="error-line">{report.error}</small>}{report.warning && <small className="error-line warn">{report.warning}</small>}</div>
+            <div className="source-count" title="Oxirgi yangilanishda: oʻqilgan qatorlar / bazaga yozilganlar"><b>{report.imported?.toLocaleString('uz-UZ') ?? '—'}</b><small>{report.rows != null && report.rows !== report.imported ? `${report.rows.toLocaleString('uz-UZ')} qatordan` : 'yozuv'}</small></div>
+            <ReportStatus report={report} running={status.running} />
+          </div>)}</div>
         </Panel>}
 
         <div className="form-stack">

@@ -126,8 +126,21 @@ export function PageHeading({ eyebrow, title, subtitle, actions }: { eyebrow?: s
 export function Panel({ title, subtitle, action, children, className = '' }: { title: string; subtitle?: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return <section className={`panel ${className}`}><div className="panel-head"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action}</div>{children}</section>;
 }
+/**
+ * Card figure that fits its card: sums of a million and more drop the tiyin, and long figures get
+ * a smaller size class. The exact amount stays in `title`.
+ */
+export function fitFigure(value: string | number | null | undefined, count = false) {
+  if (value === null || value === undefined || value === '') return { text: '—', title: undefined, cls: '' };
+  const n = Number(value);
+  const text = count || !Number.isFinite(n) ? String(value) : Math.abs(n) >= 1_000_000 ? money(Math.round(n)) : money(n);
+  const title = count || !Number.isFinite(n) ? undefined : `${money(n)} soʻm`;
+  return { text, title, cls: text.length > 14 ? 'fit-sm' : text.length > 10 ? 'fit-md' : '' };
+}
+
 export function Metric({ label, value, unit = 'soʻm', trend, icon: Icon }: { label: string; value: string | null | undefined; unit?: string; trend?: string; icon: LucideIcon }) {
-  return <div className="metric-card"><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={17} /></span></div><div className="metric-value">{value == null ? '—' : money(value)}</div><div className="metric-foot"><span>{value == null ? 'Maʼlumot yetarli emas' : unit}</span>{trend && <span className="positive">{trend}</span>}</div></div>;
+  const f = fitFigure(value);
+  return <div className="metric-card"><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={17} /></span></div><div className={`metric-value ${f.cls}`} title={f.title}>{f.text}</div><div className="metric-foot"><span>{value == null ? 'Maʼlumot yetarli emas' : unit}</span>{trend && <span className="positive">{trend}</span>}</div></div>;
 }
 export function TableWrap({ children }: { children: ReactNode }) { return <div className="table-scroll"><table>{children}</table></div>; }
 
@@ -135,9 +148,10 @@ export type Kpi = { label: string; value: string | number | null | undefined; hi
 export function KpiStrip({ items }: { items: Kpi[] }) {
   return <div className="kpi-strip">{items.map(item => {
     const Icon = item.icon;
+    const f = fitFigure(item.value, item.count);
     return <div className={`kpi ${item.tone || ''}`} key={item.label}>
       <div className="kpi-label">{Icon && <Icon size={14} />}<span>{item.label}</span></div>
-      <b>{item.count ? (item.value ?? '—') : money(item.value)}</b>
+      <b className={f.cls} title={f.title}>{f.text}</b>
       <small>{item.hint ?? (item.count ? 'ta' : 'soʻm')}</small>
     </div>;
   })}</div>;
