@@ -1,11 +1,13 @@
 import { and, desc, eq, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
 import {
   branchesTable,
+  cashAccountsTable,
   counterpartiesTable,
   db,
   integrationImportsTable,
   inventoryBalancesTable,
   inventoryMovementsTable,
+  moneyTransactionsTable,
   productsTable,
   purchaseItemsTable,
   purchasesTable,
@@ -17,6 +19,7 @@ import {
   FOM_REPORTS,
   FomError,
   fetchFomOrganizationsDirect,
+  fetchFomPaymentsDirect,
   fetchFomReport,
   fetchFomStockDirect,
   fetchFomTransfersDirect,
@@ -892,6 +895,86 @@ export async function importTransfers(lookups: Lookups, rows: FomRow[]): Promise
   return list.length;
 }
 
+const paymentKinds: Record<string, { account: string; kind: "cash" | "bank"; type: string; category: string; note: string }> = {
+  "in:20": { account: "Humo terminal", kind: "bank", type: "sale", category: "card", note: "Humo orqali tushum" },
+  "in:21": { account: "Naqd kassa", kind: "cash", type: "sale", category: "cash", note: "Naqd tushum" },
+  "in:22": { account: "Onlayn toʻlovlar", kind: "bank", type: "sale", category: "transfer", note: "Onlayn tushum" },
+  "in:23": { account: "Boshqa toʻlovlar", kind: "bank", type: "sale", category: "other", note: "Boshqa usulda tushum" },
+  "in:24": { account: "Boshqa toʻlovlar", kind: "bank", type: "sale", category: "other", note: "Jamgʻarma kartasi orqali" },
+  "out:40": { account: "Naqd kassa", kind: "cash", type: "encashment", category: "", note: "Inkassatsiya" },
+  "out:52": { account: "Naqd kassa", kind: "cash", type: "supplier_payment", category: "", note: "Yetkazib beruvchiga toʻlov" },
+  "out:56": { account: "Naqd kassa", kind: "cash", type: "cash_out", category: "", note: "Kassadan chiqim" },
+};
+
+/** Rows from fomSqlPayments: one money transaction per day, department and payment type. */
+export async function importPayments(lookups: Lookups, rows: FomRow[]): Promise<number> {
+  const usable = rows.filter((row) => row.F && paymentKinds[`${row.DIR}:${row.DT}`] && fomDateValue(row.D));
+  await ensureBranches(lookups, usable.map((row) => row.F));
+  const accounts = new Map<string, number>();
+  const accountFor = async (branchFomId: string, spec: (typeof paymentKinds)[string]) => {
+    const branchId = lookups.branches.get(branchFomId)!;
+    const key = `${branchId}:${spec.account}`;
+    let id = accounts.get(key);
+    if (id == null) {
+      const [row] = await db
+        .insert(cashAccountsTable)
+        .values({ name: spec.account, kind: spec.kind, branchId, source: SOURCE })
+        .onConflictDoUpdate({
+          target: [cashAccountsTable.source, cashAccountsTable.branchId, cashAccountsTable.name],
+          set: { kind: sql`excluded.kind` },
+        })
+        .returning({ id: cashAccountsTable.id });
+      id = row.id;
+      accounts.set(key, id);
+    }
+    return id;
+  };
+
+  const values: (typeof moneyTransactionsTable.$inferInsert)[] = [];
+  for (const row of usable) {
+    const spec = paymentKinds[`${row.DIR}:${row.DT}`]!;
+    let cents = moneyCents(fomNumber(row.S));
+    if (cents === 0n) continue;
+    let direction = row.DIR === "out" ? "out" : "in";
+    // A day where refunds outweigh receipts nets to a negative sum.
+    if (cents < 0n) {
+      cents = -cents;
+      direction = direction === "in" ? "out" : "in";
+    }
+    values.push({
+      date: fomDateValue(row.D)!,
+      type: spec.type,
+      category: spec.category,
+      amount: centsMoney(cents),
+      direction,
+      accountId: await accountFor(row.F, spec),
+      branchId: lookups.branches.get(row.F)!,
+      documentNo: `FOM-${row.D}`,
+      note: `${spec.note} (FOM, ${row.C} ta)`,
+      createdBy: "FOM",
+      source: SOURCE,
+      sourceId: `pay:${row.DIR}:${row.DT}:${row.F}:${row.D}`,
+    });
+  }
+  for (const part of chunks(values)) {
+    await db
+      .insert(moneyTransactionsTable)
+      .values(part)
+      .onConflictDoUpdate({
+        target: [moneyTransactionsTable.source, moneyTransactionsTable.sourceId],
+        set: {
+          date: sql`excluded.date`,
+          amount: sql`excluded.amount`,
+          direction: sql`excluded.direction`,
+          accountId: sql`excluded.account_id`,
+          branchId: sql`excluded.branch_id`,
+          note: sql`excluded.note`,
+        },
+      });
+  }
+  return values.length;
+}
+
 // ---------------------------------------------------------------- orchestration
 
 let running: Promise<SyncDetails> | null = null;
@@ -1148,6 +1231,16 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
         const data = await fetchFomTransfersDirect(config, start, end);
         rows += data.length;
         imported += await importTransfers(lookups, data);
+      }
+      return { rows, imported };
+    });
+    await run("payments", async () => {
+      let rows = 0;
+      let imported = 0;
+      for (const [start, end] of windows(from, to)) {
+        const data = await fetchFomPaymentsDirect(config, start, end);
+        rows += data.length;
+        imported += await importPayments(lookups, data);
       }
       return { rows, imported };
     });

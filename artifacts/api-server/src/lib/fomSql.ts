@@ -195,6 +195,24 @@ export function fomSqlTransfers(cfg: FomSqlConfig, from: Date, to: Date, timeout
   });
 }
 
+/**
+ * Money per day, department and payment type. PAYIN: 20 Humo, 21 cash, 22 online, 23 other,
+ * 24 bonus (retail receipts); PAYOUT: 40 encashment, 52 supplier payment, 56 other spending.
+ * Columns: DIR in/out, DT doc type, F department, D day, C row count, S sum.
+ */
+export function fomSqlPayments(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+  const part = (table: string, dir: string, types: string) => `
+    SELECT '${dir}' AS DIR, P.DOCTYPE AS DT, P.OTDEL AS F, CONVERT(varchar(10), P.DATA, 120) AS D,
+           COUNT(*) AS C, CONVERT(varchar(40), SUM(P.SUMMA)) AS S
+    FROM dbo.${table} P
+    WHERE P.DOCTYPE IN (${types}) AND P.DATA >= @from AND P.DATA < DATEADD(day, 1, @to)
+    GROUP BY P.DOCTYPE, P.OTDEL, CONVERT(varchar(10), P.DATA, 120)`;
+  return queryRows(cfg, timeoutMs, `${part("PAYIN", "in", "20, 21, 22, 23, 24")} UNION ALL ${part("PAYOUT", "out", "40, 52, 56")}`, (request) => {
+    request.input("from", sql.DateTime, from);
+    request.input("to", sql.DateTime, to);
+  });
+}
+
 async function queryRows(
   cfg: FomSqlConfig,
   timeoutMs: number,

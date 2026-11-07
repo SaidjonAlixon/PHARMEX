@@ -3,6 +3,7 @@ import {
   execFomSqlReport,
   fomSqlConfig,
   fomSqlOrganizations,
+  fomSqlPayments,
   fomSqlProcInfo,
   fomSqlStock,
   fomSqlTransfers,
@@ -32,6 +33,7 @@ export const FOM_REPORTS = {
   insuranceSales: { id: 15, key: "insuranceSales", label: "Sugʻurta savdosi (v2)", target: "Savdolar (sugʻurta orqali)", dated: true },
   // Not a P_GetReport_XML report: read from F-APTEKA's INVOICE tables in SQL mode only (id 0).
   transfers: { id: 0, key: "transfers", label: "Ichki koʻchirishlar", target: "Tovar harakati: ombor ↔ dorixona oʻtkazmalari", dated: true },
+  payments: { id: 0, key: "payments", label: "Kassa tushumlari", target: "Pul operatsiyalari: naqd, Humo, onlayn, boshqa", dated: true },
 } satisfies Record<string, FomReportDef>;
 
 export type FomReportKey = keyof typeof FOM_REPORTS;
@@ -129,6 +131,7 @@ const REPORT_FALLBACKS: Record<FomReportKey, number[]> = {
   retailSales: [14, 4],
   insuranceSales: [15, 5],
   transfers: [],
+  payments: [],
 };
 
 export function fomSqlMode(config: FomConfig): boolean {
@@ -156,6 +159,10 @@ export const fetchFomOrganizationsDirect = (config: FomConfig) => fetchDirect(co
 
 /** Current stock per department and good (see fomSqlStock). */
 export const fetchFomStockDirect = (config: FomConfig) => fetchDirect(config, fomSqlStock);
+
+/** Daily money totals per department and payment type (see fomSqlPayments). */
+export const fetchFomPaymentsDirect = (config: FomConfig, from: Date, to: Date) =>
+  fetchDirect(config, (cfg, timeoutMs) => fomSqlPayments(cfg, from, to, timeoutMs));
 
 /** Warehouse ↔ pharmacy moves, one row per line (see fomSqlTransfers). */
 export const fetchFomTransfersDirect = (config: FomConfig, from: Date, to: Date) =>
