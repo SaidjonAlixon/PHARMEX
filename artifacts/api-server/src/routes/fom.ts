@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
-import { and, count, desc, eq, isNotNull, ne } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
+import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import express, { Router, type IRouter, type Request } from "express";
 import {
   auditLogTable,
@@ -9,6 +10,7 @@ import {
   integrationImportsTable,
   integrationSettingsTable,
   inventoryBalancesTable,
+  moneyTransactionsTable,
   productsTable,
   purchasesTable,
   salesTable,
@@ -172,7 +174,29 @@ async function readStatus() {
       lastRecords: siteImport?.importedRecords ?? 0,
     },
     totals: { branches, products, counterparties, stockLines, purchases, sales, stockDocuments },
+    dataRanges: await dataRanges(),
   });
+}
+
+/** First / last FOM record per section in the PHARMEX database (cached briefly; polled often). */
+let rangesCache: { at: number; value: Array<{ key: string; label: string; from: Date | null; to: Date | null; count: number }> } | null = null;
+async function dataRanges() {
+  if (rangesCache && Date.now() - rangesCache.at < 10_000) return rangesCache.value;
+  const span = async (key: string, label: string, table: PgTable, column: AnyPgColumn, source: AnyPgColumn) => {
+    const [row] = await db
+      .select({ from: sql<string | null>`min(${column})`, to: sql<string | null>`max(${column})`, count: count() })
+      .from(table)
+      .where(eq(source, "fom"));
+    return { key, label, from: row?.from ? new Date(row.from) : null, to: row?.to ? new Date(row.to) : null, count: Number(row?.count ?? 0) };
+  };
+  const value = await Promise.all([
+    span("sales", "Cheklar", salesTable, salesTable.soldAt, salesTable.source),
+    span("purchases", "Kirim hujjatlari", purchasesTable, purchasesTable.receivedAt, purchasesTable.source),
+    span("stock", "Tovar harakati hujjatlari", stockDocumentsTable, stockDocumentsTable.occurredAt, stockDocumentsTable.source),
+    span("money", "Kassa tushumlari (kunlik)", moneyTransactionsTable, moneyTransactionsTable.date, moneyTransactionsTable.source),
+  ]);
+  rangesCache = { at: Date.now(), value };
+  return value;
 }
 
 router.get("/fom/status", async (_req, res): Promise<void> => {

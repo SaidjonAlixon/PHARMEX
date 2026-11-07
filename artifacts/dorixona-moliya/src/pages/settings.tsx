@@ -191,7 +191,15 @@ export function SettingsPage() {
         </Panel>}
 
         <div className="form-stack">
-          {pull && <Panel title="Sinxronlash" subtitle="Maʼlumotnomalar va qoldiqlar har safar toʻliq yangilanadi; hujjatlar tanlangan davr boʻyicha">
+          {pull && <Panel title="Sinxronlash" subtitle="Yangi va oʻzgargan hujjatlar avtomatik qoʻshiladi; davr boʻyicha tortish faqat zarur boʻlsa">
+            <div className="data-range" data-testid="fom-data-range">
+              <span className="eyebrow">PHARMEX BAZASIDA</span>
+              {status.dataRanges.map(range => <div className="data-range-row" key={range.key}>
+                <span>{range.label}</span>
+                <b>{range.from ? `${dateTime(range.from)} — ${dateTime(range.to)}` : 'hali yoʻq'}</b>
+                <small>{range.count.toLocaleString('ru-RU').replace(/\u00a0/g, ' ')} ta</small>
+              </div>)}
+            </div>
             <div className="sync-status"><div className={`sync-orb ${status.running ? 'running' : status.lastSyncStatus}`}><RefreshCw size={19} className={status.running ? 'spin' : ''} /></div>
               <div className="sync-text"><span>Oxirgi sinxronlash</span><b>{status.lastSyncAt ? dateTime(status.lastSyncAt) : 'Hali bajarilmagan'}</b><small>{status.lastMessage ?? '—'}</small></div>
               {syncState && <StatusBadge tone={syncState.tone}>{syncState.label}</StatusBadge>}</div>

@@ -7,6 +7,7 @@
  */
 import type { FomReportState } from './fomReportState';
 import type { FomSiteState } from './fomSiteState';
+import type { FomStatusDataRangesItem } from './fomStatusDataRangesItem';
 import type { FomStatusLastSyncStatus } from './fomStatusLastSyncStatus';
 import type { FomTotals } from './fomTotals';
 
@@ -37,4 +38,6 @@ export interface FomStatus {
   reports: FomReportState[];
   site: FomSiteState;
   totals: FomTotals;
+  /** First and last FOM record held in the PHARMEX database, per section */
+  dataRanges: FomStatusDataRangesItem[];
 }

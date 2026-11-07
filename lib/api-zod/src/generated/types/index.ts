@@ -68,6 +68,7 @@ export * from './fomSettingsProtocol';
 export * from './fomSettingsSource';
 export * from './fomSiteState';
 export * from './fomStatus';
+export * from './fomStatusDataRangesItem';
 export * from './fomStatusLastSyncStatus';
 export * from './fomSyncInput';
 export * from './fomTotals';

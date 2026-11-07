@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -30,8 +31,21 @@ if (!basePath) {
   );
 }
 
+// Shown in the sidebar: when this bundle was built (deployed) and from which commit.
+const buildCommit = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD', { cwd: repoRoot }).toString().trim();
+  } catch {
+    return '';
+  }
+})();
+
 export default defineConfig({
   base: basePath,
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __BUILD_COMMIT__: JSON.stringify(buildCommit),
+  },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

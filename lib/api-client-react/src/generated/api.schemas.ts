@@ -1253,6 +1253,16 @@ export const FomStatusLastSyncStatus = {
   waiting: 'waiting',
 } as const;
 
+export type FomStatusDataRangesItem = {
+  key: string;
+  label: string;
+  /** @nullable */
+  from: string | null;
+  /** @nullable */
+  to: string | null;
+  count: number;
+};
+
 export interface FomReportState {
   key: string;
   reportId: number;
@@ -1319,6 +1329,8 @@ export interface FomStatus {
   reports: FomReportState[];
   site: FomSiteState;
   totals: FomTotals;
+  /** First and last FOM record held in the PHARMEX database, per section */
+  dataRanges: FomStatusDataRangesItem[];
 }
 
 export type FomSettingsSource = typeof FomSettingsSource[keyof typeof FomSettingsSource];
