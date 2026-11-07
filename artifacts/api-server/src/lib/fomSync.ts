@@ -952,8 +952,9 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
   const receipts = new Map<string, { head: FomRow; at: Date; lines: ReceiptLine[] }>();
   for (const row of lines) {
     const at = localTime(row.T, row.D);
-    let qty = qtyMilli(row.Q);
-    if (qty < 0n) qty = -qty;
+    // Return receipts (4) carry negative KOL; older sale receipts also hold refunded lines as
+    // negative KOL, which stay negative so the receipt total matches F-APTEKA.
+    const qty = row.DT === "4" ? -qtyMilli(row.Q) : qtyMilli(row.Q);
     if (!row.ID || !row.G || !row.F || !at || qty === 0n) continue;
     const net = moneyCents(fomNumber(row.P));
     const before = moneyCents(fomNumber(row.P1));
@@ -1044,7 +1045,7 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
             productId,
             quantity: milliQuantity(line.qty),
             unitPrice: centsMoney(line.unit),
-            discount: centsMoney(discount > 0n ? discount : 0n),
+            discount: centsMoney(discount),
             vatRate: String(netExVat > 0n ? Math.round(Number((line.vat * 10000n) / netExVat) / 100) : 0),
             costPrice: centsMoney(line.cost),
           });
@@ -1370,11 +1371,16 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   };
 
   // Progress: refs and stock count as one unit each; dated work is planned once filials are known.
-  details.progress = { done: 0, total: (skipRefs ? 0 : 2) + 1 };
+  // Until filials are known the dated work is estimated from the branches already imported.
+  let estimated =
+    windows(from, to).length *
+    (fomSqlMode(config) ? 2 * Math.max(1, lookups.branches.size) + 4 : 5 * Math.max(1, lookups.branches.size));
+  details.progress = { done: 0, total: (skipRefs ? 0 : 2) + 1 + estimated };
   let lastWrite = 0;
   const percent = () => Math.min(99, Math.floor((details.progress!.done * 100) / Math.max(1, details.progress!.total)));
   const plan = (units: number) => {
-    details.progress!.total += units;
+    details.progress!.total += units - estimated;
+    estimated = 0;
   };
   const tick = async (label: string) => {
     details.progress!.done += 1;
