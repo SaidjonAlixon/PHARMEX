@@ -90,7 +90,6 @@ const usersNavItem = { href: '/users', label: 'Foydalanuvchilar', icon: UserCog 
 const periodOptions: MenuOption[] = [
   { value: 'today', label: 'Bugun', hint: 'Faqat bugungi kun (Toshkent vaqti)', icon: CalendarCheck, color: '#0fb3c7' },
   { value: 'this-week', label: 'Shu hafta', hint: 'Dushanbadan bugungacha', icon: CalendarRange, color: '#1fb84f' },
-  { value: '7-days', label: 'Soʻnggi 7 kun', hint: 'Bugun bilan birga', icon: CalendarRange, color: '#16a37a' },
   { value: 'this-month', label: 'Joriy oy', hint: 'Oy boshidan bugungacha', icon: CalendarDays, color: '#1f8fd0' },
   { value: 'last-month', label: 'Oʻtgan oy', hint: 'Toʻliq oldingi oy', icon: CalendarClock, color: '#1f5fd0' },
   { value: 'range', label: 'Sanadan sanagacha', hint: 'Sanalarni tanlab “Tasdiqlash” ni bosing', icon: CalendarDays, color: '#f0a020' },
@@ -107,7 +106,6 @@ function periodRange(period: string): { dateFrom: string; dateTo: string } {
   switch (period) {
     case 'today': return { dateFrom: end, dateTo: end };
     case 'this-week': return { dateFrom: addDaysTo(end, -weekday), dateTo: end };
-    case '7-days': return { dateFrom: addDaysTo(end, -6), dateTo: end };
     case 'last-month': {
       const lastDay = addDaysTo(firstOfMonth, -1);
       return { dateFrom: `${lastDay.slice(0, 8)}01`, dateTo: lastDay };
@@ -123,7 +121,7 @@ const defaultFilters = (): Filters => ({ ...periodRange(DEFAULT_PERIOD), branchI
 function loadFilters(): Filters {
   try {
     const saved = JSON.parse(localStorage.getItem(FILTERS_KEY) || 'null') as Filters | null;
-    if (!saved?.period) return defaultFilters();
+    if (!saved?.period || !periodOptions.some(option => option.value === saved.period)) return { ...defaultFilters(), branchId: saved?.branchId || '' };
     const dates = saved.period === 'range' ? { dateFrom: saved.dateFrom, dateTo: saved.dateTo } : periodRange(saved.period);
     return { ...dates, branchId: saved.branchId || '', period: saved.period };
   } catch {
