@@ -1836,8 +1836,9 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   details.progress.done = details.progress.total;
   const errors = fetched.filter((outcome) => outcome?.error);
   // In change mode reference books and stock are snapshots, not new records.
+  const snapshots = new Set<string>(since ? ["organizations", "catalog", "stock"] : []);
   const total = Object.entries(details.reports)
-    .filter(([key]) => (since ? !["organizations", "catalog", "stock"].includes(key) : fetched.includes(details.reports[key as FomReportKey])))
+    .filter(([key, outcome]) => !snapshots.has(key) && fetched.includes(outcome))
     .reduce((sum, [, outcome]) => sum + (outcome?.imported ?? 0), 0);
   const status = errors.length === fetched.length ? "error" : "success";
   const scope = since
