@@ -759,6 +759,29 @@ export interface ReceiptLine {
   returnedQuantity: number;
 }
 
+export type ReceiptSummaryChannelsItem = {
+  name: string;
+  method: string;
+  amount: string;
+  count: number;
+};
+
+export interface ReceiptSummary {
+  count: number;
+  voided: number;
+  returnCount: number;
+  gross: string;
+  net: string;
+  returns: string;
+  discount: string;
+  vat: string;
+  /** @nullable */
+  cost: string | null;
+  /** @nullable */
+  profit: string | null;
+  channels: ReceiptSummaryChannelsItem[];
+}
+
 export interface ReceiptDetail {
   receipt: Receipt;
   lines: ReceiptLine[];
@@ -1628,6 +1651,15 @@ export const ListReceiptsStatus = {
   completed: 'completed',
   voided: 'voided',
 } as const;
+
+export type GetReceiptSummaryParams = {
+dateFrom?: DateFromParameter;
+dateTo?: DateToParameter;
+/**
+ * @minimum 1
+ */
+branchId?: BranchIdParameter;
+};
 
 export type GetReceiptParams = {
 /**

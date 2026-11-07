@@ -19,6 +19,8 @@ import {
   CreateReceiptResponse,
   GetReceiptQueryParams,
   GetReceiptResponse,
+  GetReceiptSummaryQueryParams,
+  GetReceiptSummaryResponse,
   ListReceiptsQueryParams,
   ListReceiptsResponse,
   ReturnReceiptBody,
@@ -304,6 +306,98 @@ router.get("/receipts", async (req, res): Promise<void> => {
     limit: parsed.data.limit,
   });
   res.json(ListReceiptsResponse.parse(rows));
+});
+
+/** Totals over every receipt in the period; the list endpoint is capped, so pages must not sum it. */
+router.get("/receipts/summary", async (req, res): Promise<void> => {
+  const parsed = GetReceiptSummaryQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const where = and(
+    sourceCondition(salesTable.source, await getDataMode()),
+    dateConditions(salesTable.soldAt, parsed.data.dateFrom, parsed.data.dateTo),
+    parsed.data.branchId ? eq(salesTable.branchId, parsed.data.branchId) : undefined,
+  );
+  // Same arithmetic as lineFigures: gross = quantity × price (to tiyin), total = gross − discount,
+  // VAT included in total at the line rate.
+  const gross = sql`round(${saleItemsTable.quantity} * ${saleItemsTable.unitPrice}, 2)`;
+  const [groups, channels, unpaid] = await Promise.all([
+    db
+      .select({
+        kind: salesTable.kind,
+        status: salesTable.status,
+        receipts: sql<number>`count(distinct ${salesTable.id})::int`,
+        gross: sql<string>`coalesce(sum(${gross}), 0)::text`,
+        discount: sql<string>`coalesce(sum(${saleItemsTable.discount}), 0)::text`,
+        vat: sql<string>`coalesce(sum(case when ${saleItemsTable.vatRate} > 0 then round((${gross} - ${saleItemsTable.discount}) * ${saleItemsTable.vatRate} / (100 + ${saleItemsTable.vatRate}), 2) else 0 end), 0)::text`,
+        cost: sql<string>`coalesce(sum(round(${saleItemsTable.quantity} * ${saleItemsTable.costPrice}, 2)), 0)::text`,
+        noCost: sql<number>`count(${saleItemsTable.id}) filter (where ${saleItemsTable.costPrice} is null)::int`,
+      })
+      .from(salesTable)
+      .leftJoin(saleItemsTable, eq(saleItemsTable.saleId, salesTable.id))
+      .where(where)
+      .groupBy(salesTable.kind, salesTable.status),
+    db
+      .select({
+        name: sql<string>`coalesce(${cashAccountsTable.name}, '')`,
+        method: salePaymentsTable.method,
+        amount: sql<string>`sum(case when ${salesTable.kind} = 'return' then -${salePaymentsTable.amount} else ${salePaymentsTable.amount} end)::text`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(salePaymentsTable)
+      .innerJoin(salesTable, eq(salesTable.id, salePaymentsTable.saleId))
+      .leftJoin(cashAccountsTable, eq(cashAccountsTable.id, salePaymentsTable.accountId))
+      .where(and(where, eq(salesTable.status, "completed")))
+      .groupBy(sql`1`, salePaymentsTable.method),
+    // Receipts without payment rows count under their header payment type (as in the list).
+    db
+      .select({
+        method: salesTable.paymentType,
+        amount: sql<string>`coalesce(sum(case when ${salesTable.kind} = 'return' then -1 else 1 end * (${gross} - ${saleItemsTable.discount})), 0)::text`,
+        count: sql<number>`count(distinct ${salesTable.id})::int`,
+      })
+      .from(salesTable)
+      .innerJoin(saleItemsTable, eq(saleItemsTable.saleId, salesTable.id))
+      .where(
+        and(
+          where,
+          eq(salesTable.status, "completed"),
+          sql`not exists (select 1 from ${salePaymentsTable} where ${salePaymentsTable.saleId} = ${salesTable.id})`,
+        ),
+      )
+      .groupBy(salesTable.paymentType),
+  ]);
+
+  const pick = (kind: string, status: string) => groups.find((g) => g.kind === kind && g.status === status);
+  const sale = pick("sale", "completed");
+  const ret = pick("return", "completed");
+  const cents = (value: string | undefined) => moneyCents(value ?? "0");
+  const total = (g: typeof sale) => cents(g?.gross) - cents(g?.discount);
+  const costKnown = !groups.some((g) => g.status === "completed" && g.noCost > 0);
+  const net = total(sale) - total(ret);
+  const cost = cents(sale?.cost) - cents(ret?.cost);
+  res.json(
+    GetReceiptSummaryResponse.parse({
+      count: sale?.receipts ?? 0,
+      voided: groups.filter((g) => g.status === "voided").reduce((sum, g) => sum + g.receipts, 0),
+      returnCount: ret?.receipts ?? 0,
+      gross: centsMoney(cents(sale?.gross)),
+      net: centsMoney(net),
+      returns: centsMoney(total(ret)),
+      discount: centsMoney(cents(sale?.discount) - cents(ret?.discount)),
+      vat: centsMoney(cents(sale?.vat) - cents(ret?.vat)),
+      cost: costKnown ? centsMoney(cost) : null,
+      profit: costKnown ? centsMoney(net - cost) : null,
+      channels: [
+        ...channels,
+        ...unpaid.filter((row) => moneyCents(row.amount) !== 0n).map((row) => ({ name: "", method: row.method, amount: row.amount, count: row.count })),
+      ]
+        .map((row) => ({ ...row, amount: centsMoney(moneyCents(row.amount)) }))
+        .sort((a, b) => Number(moneyCents(b.amount) - moneyCents(a.amount))),
+    }),
+  );
 });
 
 router.get("/receipt-detail", async (req, res): Promise<void> => {

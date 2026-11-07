@@ -625,6 +625,22 @@ paths:
                 $ref: "#/components/schemas/ReceiptDetail"
         "400":
           $ref: "#/components/responses/BadRequest"
+  /receipts/summary:
+    get:
+      operationId: getReceiptSummary
+      tags: [trade]
+      summary: Totals over every receipt in the period, with payments per cash box / account
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/BranchId"
+      responses:
+        "200":
+          description: Receipt totals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptSummary"
   /receipt-detail:
     get:
       operationId: getReceipt
@@ -1377,6 +1393,30 @@ components:
         grossProfit: { type: ["string", "null"] }
         returnedQuantity: { type: number }
       required: [id, productId, productName, productCode, unit, quantity, unitPrice, discount, total, vatRate, vatAmount, costPrice, cost, grossProfit, returnedQuantity]
+    ReceiptSummary:
+      type: object
+      properties:
+        count: { type: integer }
+        voided: { type: integer }
+        returnCount: { type: integer }
+        gross: { type: string }
+        net: { type: string }
+        returns: { type: string }
+        discount: { type: string }
+        vat: { type: string }
+        cost: { type: ["string", "null"] }
+        profit: { type: ["string", "null"] }
+        channels:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              method: { type: string }
+              amount: { type: string }
+              count: { type: integer }
+            required: [name, method, amount, count]
+      required: [count, voided, returnCount, gross, net, returns, discount, vat, cost, profit, channels]
     ReceiptDetail:
       type: object
       properties:

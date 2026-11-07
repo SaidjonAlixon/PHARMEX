@@ -3,7 +3,8 @@ import {
   Ban, Banknote, CreditCard, HandCoins, Percent, Plus, Receipt as ReceiptIcon, RotateCcw, ShoppingCart, Trash2, TrendingUp, Undo2,
 } from 'lucide-react';
 import {
-  getGetReceiptQueryKey, useCreateReceipt, useGetReceipt, useListReceipts, useListSales, useReturnReceipt, useVoidReceipt,
+  getGetReceiptQueryKey, getGetReceiptSummaryQueryKey, useCreateReceipt, useGetReceipt, useGetReceiptSummary, useListReceipts, useListSales,
+  useReturnReceipt, useVoidReceipt,
 } from '@workspace/api-client-react';
 import type { PaymentMethod, Receipt, ReceiptDetail } from '@workspace/api-client-react';
 import {
@@ -17,9 +18,10 @@ import { SelectMenu } from '@/components/select-menu';
 import { useAccess } from '@/lib/access';
 
 type Tab = 'sales' | 'returns' | 'voided' | 'lines';
+const LIST_LIMIT = 500;
 
 function PaymentChips({ receipt }: { receipt: Receipt }) {
-  return <div className="pay-chips">{receipt.payments.map((p, i) => <span key={i} className={`pay-chip ${p.method}`}>{paymentLabels[p.method] ?? p.method} {money(p.amount)}</span>)}</div>;
+  return <div className="pay-chips">{receipt.payments.map((p, i) => <span key={i} className={`pay-chip ${p.method}`}>{p.accountName || paymentLabels[p.method] || p.method} {money(p.amount)}</span>)}</div>;
 }
 
 function ReceiptStatus({ receipt }: { receipt: Receipt }) {
@@ -37,35 +39,30 @@ export function SalesPage({ filters }: { filters: Filters }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const base = filterParams(filters);
-  const receiptsQ = useListReceipts({ ...base, search: search || undefined, paymentMethod: method || undefined, limit: 500 });
+  const receiptsQ = useListReceipts({ ...base, search: search || undefined, paymentMethod: method || undefined, limit: LIST_LIMIT });
   const linesQ = useListSales({ ...base, search: search || undefined, limit: 300 }, { query: { enabled: tab === 'lines', queryKey: ['sales-lines', base, search] } });
+  const summaryParams = { dateFrom: base.dateFrom, dateTo: base.dateTo, branchId: base.branchId };
+  const summaryQ = useGetReceiptSummary(summaryParams, { query: { queryKey: getGetReceiptSummaryQueryKey(summaryParams) } });
   const all = receiptsQ.data || [];
+  const s = summaryQ.data;
 
-  const stats = useMemo(() => {
-    const sales = all.filter(r => r.kind === 'sale' && r.status === 'completed');
-    const returns = all.filter(r => r.kind === 'return' && r.status === 'completed');
-    const sum = (rows: Receipt[], pick: (r: Receipt) => string | null) => rows.reduce((s, r) => s + num(pick(r)), 0);
-    const byMethod: Record<string, number> = {};
-    for (const r of sales) for (const p of r.payments) byMethod[p.method] = (byMethod[p.method] || 0) + num(p.amount);
-    for (const r of returns) for (const p of r.payments) byMethod[p.method] = (byMethod[p.method] || 0) - num(p.amount);
-    const costKnown = [...sales, ...returns].every(r => r.cost != null);
-    return {
-      count: sales.length,
-      gross: sum(sales, r => r.grossAmount),
-      net: sum(sales, r => r.total) - sum(returns, r => r.total),
-      returns: sum(returns, r => r.total),
-      discount: sum(sales, r => r.discount) - sum(returns, r => r.discount),
-      vat: sum(sales, r => r.vatAmount) - sum(returns, r => r.vatAmount),
-      cost: costKnown ? sum(sales, r => r.cost) - sum(returns, r => r.cost) : null,
-      profit: costKnown ? sum(sales, r => r.grossProfit) - sum(returns, r => r.grossProfit) : null,
-      voided: all.filter(r => r.status === 'voided').length,
-      returnCount: returns.length,
-      byMethod,
-    };
-  }, [all]);
+  // KPIs come from the server-side summary over every receipt in the period; the list is capped.
+  const stats = useMemo(() => ({
+    count: s?.count ?? 0,
+    gross: num(s?.gross),
+    net: num(s?.net),
+    returns: num(s?.returns),
+    discount: num(s?.discount),
+    vat: num(s?.vat),
+    cost: s?.cost == null ? null : num(s.cost),
+    profit: s?.profit == null ? null : num(s.profit),
+    voided: s?.voided ?? 0,
+    returnCount: s?.returnCount ?? 0,
+  }), [s]);
+  const channels = (s?.channels ?? []).filter(c => num(c.amount));
+  const channelMax = Math.max(1, ...channels.map(c => Math.abs(num(c.amount))));
 
   const rows = all.filter(r => tab === 'sales' ? r.kind === 'sale' && r.status === 'completed' : tab === 'returns' ? r.kind === 'return' : tab === 'voided' ? r.status === 'voided' : false);
-  const methodTotal = Object.values(stats.byMethod).reduce((s, v) => s + v, 0);
 
   return <>
     <PageHeading eyebrow="SAVDO · ПРОДАЖА" title="Savdolar" subtitle="Cheklar, toʻlov turlari, chegirma, QQS, tannarx va yalpi foyda; bekor qilish va qaytarishlar" actions={canEdit && <button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-receipt"><Plus size={16} /> Yangi chek</button>} />
@@ -79,8 +76,8 @@ export function SalesPage({ filters }: { filters: Filters }) {
       { label: 'Yalpi foyda', value: stats.profit == null ? null : round2(stats.profit), icon: TrendingUp, tone: 'good', hint: stats.profit == null ? 'Tannarx toʻliq emas' : stats.net ? `Marja ${Math.round((stats.profit / stats.net) * 1000) / 10}%` : 'soʻm' },
     ]} />
     <div className="split-grid">
-      <Panel title="Toʻlov turlari" subtitle="Sof tushum (qaytarishlar ayirilgan)">
-        {methodTotal ? <div className="breakdown-list">{Object.entries(stats.byMethod).filter(([, v]) => v).map(([m, v]) => <div className="breakdown-row" key={m}><div><span className="pay-label">{m === 'card' ? <CreditCard size={13} /> : <Banknote size={13} />} {paymentLabels[m] ?? m}</span><b>{money(round2(v))} soʻm</b></div><div className="bar-track"><i style={{ width: `${Math.max(3, Math.abs(v) / Math.max(1, ...Object.values(stats.byMethod).map(Math.abs)) * 100)}%` }} /></div></div>)}</div> : <div className="inline-empty">Toʻlovlar yoʻq</div>}
+      <Panel title="Toʻlov turlari" subtitle="Kassa va toʻlov tizimi boʻyicha sof tushum (qaytarishlar ayirilgan)">
+        {channels.length ? <div className="breakdown-list">{channels.map(c => <div className="breakdown-row" key={`${c.name}|${c.method}`}><div><span className="pay-label">{c.method === 'card' ? <CreditCard size={13} /> : <Banknote size={13} />} {c.name || paymentLabels[c.method] || c.method}<small> · {paymentLabels[c.method] ?? c.method} · {c.count.toLocaleString('ru-RU')} ta</small></span><b>{money(c.amount)} soʻm</b></div><div className="bar-track"><i style={{ width: `${Math.max(3, Math.abs(num(c.amount)) / channelMax * 100)}%` }} /></div></div>)}</div> : <div className="inline-empty">{summaryQ.isLoading ? 'Yuklanmoqda…' : 'Toʻlovlar yoʻq'}</div>}
       </Panel>
       <Panel title="Qanday ishlaydi" subtitle="Hujjatlar zanjiri">
         <ul className="hint-list">
@@ -96,7 +93,7 @@ export function SalesPage({ filters }: { filters: Filters }) {
       <button className={tab === 'voided' ? 'selected' : ''} onClick={() => setTab('voided')} data-testid="tab-voided"><Ban size={15} /> Bekor qilinganlar</button>
       <button className={tab === 'lines' ? 'selected' : ''} onClick={() => setTab('lines')} data-testid="tab-lines"><ShoppingCart size={15} /> Mahsulot qatorlari</button>
     </div>
-    <Panel title={tab === 'sales' ? 'Sotuv cheklari' : tab === 'returns' ? 'Mijozdan qaytarishlar' : tab === 'voided' ? 'Bekor qilingan cheklar' : 'Sotilgan mahsulotlar'} subtitle={tab === 'lines' ? 'Har bir chek qatori: miqdor, narx, foyda' : 'Qatorni bosib chek tafsilotini oching'} action={<div className="toolbar"><SearchBox value={search} onChange={setSearch} placeholder="Chek, kassir, mijoz, mahsulot" />{tab !== 'lines' && <SelectMenu ariaLabel="Toʻlov turi" value={method} onChange={setMethod} options={paymentMenu} align="right" />}</div>}>
+    <Panel title={tab === 'sales' ? 'Sotuv cheklari' : tab === 'returns' ? 'Mijozdan qaytarishlar' : tab === 'voided' ? 'Bekor qilingan cheklar' : 'Sotilgan mahsulotlar'} subtitle={tab === 'lines' ? 'Har bir chek qatori: miqdor, narx, foyda' : all.length >= LIST_LIMIT ? `Roʻyxatda oxirgi ${LIST_LIMIT} ta hujjat (davrda jami ${(stats.count + stats.returnCount + stats.voided).toLocaleString('ru-RU')} ta; yuqoridagi summalar hammasi boʻyicha). Qidiruv yoki sana bilan toraytiring.` : 'Qatorni bosib chek tafsilotini oching'} action={<div className="toolbar"><SearchBox value={search} onChange={setSearch} placeholder="Chek, kassir, mijoz, mahsulot" />{tab !== 'lines' && <SelectMenu ariaLabel="Toʻlov turi" value={method} onChange={setMethod} options={paymentMenu} align="right" />}</div>}>
       {tab === 'lines' ? <>
         <DataState loading={linesQ.isLoading} error={linesQ.isError} empty={!linesQ.isLoading && !linesQ.isError && !(linesQ.data || []).length} retry={() => linesQ.refetch()} />
         {!!linesQ.data?.length && <TableWrap><thead><tr><th>SANA / CHEK</th><th>MAHSULOT</th><th>FILIAL / KASSIR</th><th className="num">MIQDOR</th><th className="num">NARX</th><th className="num">CHEGIRMA</th><th className="num">SUMMA</th><th className="num">TANNARX</th><th className="num">FOYDA</th><th>TOʻLOV</th></tr></thead><tbody>{linesQ.data.map(s => <tr key={s.id}><td>{dateTime(s.date)}<small>{s.receiptNo}</small></td><td className="cell-strong">{s.productName}</td><td>{s.branchName}<small>{s.cashier || '—'}</small></td><td className={`num ${s.quantity < 0 ? 'negative' : ''}`}>{qty(s.quantity)}</td><td className="num">{money(s.unitPrice)}</td><td className="num">{money(s.discount)}</td><td className="num">{money(s.revenue)}</td><td className="num">{money(s.costPrice)}</td><td className={`num ${s.grossProfit == null ? 'missing' : 'positive'}`}>{money(s.grossProfit)}</td><td>{paymentLabels[s.paymentType] ?? s.paymentType}</td></tr>)}</tbody></TableWrap>}

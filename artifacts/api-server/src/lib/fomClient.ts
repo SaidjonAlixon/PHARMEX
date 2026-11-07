@@ -5,6 +5,7 @@ import {
   fomSqlOrganizations,
   fomSqlPayments,
   fomSqlProcInfo,
+  fomSqlPurchases,
   fomSqlReceiptLines,
   fomSqlReceiptPayments,
   fomSqlStock,
@@ -35,6 +36,7 @@ export const FOM_REPORTS = {
   retailSales: { id: 14, key: "retailSales", label: "Chakana savdo (v2)", target: "Savdolar (cheklar)", dated: true },
   insuranceSales: { id: 15, key: "insuranceSales", label: "Sugʻurta savdosi (v2)", target: "Savdolar (sugʻurta orqali)", dated: true },
   // Not P_GetReport_XML reports: read from F-APTEKA's tables in SQL mode only (id 0).
+  incomes: { id: 0, key: "incomes", label: "Omborga kirim (hujjat boʻyicha)", target: "Kirim: yetkazib beruvchi, faktura, tannarx, QQS", dated: true },
   receipts: { id: 0, key: "receipts", label: "Cheklar (tannarx bilan)", target: "Savdolar: har bir chek, toʻlov turi, chegirma, tannarx", dated: true },
   stockDocuments: { id: 0, key: "stockDocuments", label: "Hisobdan chiqarish, qaytarish, inventarizatsiya", target: "Tovar harakati va xarajatlar", dated: true },
   transfers: { id: 0, key: "transfers", label: "Ichki koʻchirishlar", target: "Tovar harakati: ombor ↔ dorixona oʻtkazmalari", dated: true },
@@ -135,6 +137,7 @@ const REPORT_FALLBACKS: Record<FomReportKey, number[]> = {
   writeOffs: [3],
   retailSales: [14, 4],
   insuranceSales: [15, 5],
+  incomes: [],
   receipts: [],
   stockDocuments: [],
   transfers: [],
@@ -176,6 +179,10 @@ export const fetchFomReceiptsDirect = async (config: FomConfig, from: Date, to: 
   lines: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptLines(cfg, from, to, timeoutMs)),
   payments: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptPayments(cfg, from, to, timeoutMs)),
 });
+
+/** Supplier receipts into the warehouse, one row per line (see fomSqlPurchases). */
+export const fetchFomPurchasesDirect = (config: FomConfig, from: Date, to: Date) =>
+  fetchDirect(config, (cfg, timeoutMs) => fomSqlPurchases(cfg, from, to, timeoutMs));
 
 /** Write-offs, supplier returns and inventory documents (see fomSqlStockDocuments). */
 export const fetchFomStockDocumentsDirect = (config: FomConfig, from: Date, to: Date) =>

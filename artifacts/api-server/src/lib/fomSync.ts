@@ -22,6 +22,7 @@ import {
   FomError,
   fetchFomOrganizationsDirect,
   fetchFomPaymentsDirect,
+  fetchFomPurchasesDirect,
   fetchFomReceiptsDirect,
   fetchFomReport,
   fetchFomStockDocumentsDirect,
@@ -40,6 +41,7 @@ import {
 import {
   centsMoney,
   divideRounded,
+  extendedMoney,
   milliQuantity,
   moneyCents,
 } from "../routes/financialUtils";
@@ -340,7 +342,9 @@ export async function importStockSnapshot(
   await ensureBranches(lookups, owner.keys());
   await ensureProducts(lookups, batches.map((row) => row.productFomId));
 
-  const balances = new Map<string, { branchId: number; productId: number; qty: bigint }>();
+  // Direct SQL stock knows each branch's batch cost; then balances carry that exact cost.
+  const exactCosts = batches.some((row) => row.costValue);
+  const balances = new Map<string, { branchId: number; productId: number; qty: bigint; value: bigint }>();
   const productInfo = new Map<number, { price: bigint; expiry: string | null }>();
   const stockCost = new Map<number, { qty: bigint; value: bigint }>();
   for (const row of batches) {
@@ -348,8 +352,9 @@ export async function importStockSnapshot(
     const productId = lookups.products.get(row.productFomId)!.id;
     const key = `${branchId}:${productId}`;
     const qty = qtyMilli(row.quantity);
-    const entry = balances.get(key) ?? { branchId, productId, qty: 0n };
+    const entry = balances.get(key) ?? { branchId, productId, qty: 0n, value: 0n };
     entry.qty += qty;
+    entry.value += moneyCents(fomNumber(row.costValue));
     balances.set(key, entry);
     if (row.costValue && qty > 0n) {
       const cost = stockCost.get(productId) ?? { qty: 0n, value: 0n };
@@ -376,14 +381,18 @@ export async function importStockSnapshot(
           branchId: row.branchId,
           productId: row.productId,
           quantity: milliQuantity(row.qty),
-          costPrice: costById.get(row.productId) ?? null,
+          costPrice: exactCosts
+            ? row.qty > 0n ? centsMoney(divideRounded(row.value * 1000n, row.qty)) : null
+            : costById.get(row.productId) ?? null,
           source: SOURCE,
           updatedAt: stamp,
         })),
       )
       .onConflictDoUpdate({
         target: [inventoryBalancesTable.branchId, inventoryBalancesTable.productId],
-        set: { quantity: sql`excluded.quantity`, source: SOURCE, updatedAt: stamp },
+        set: exactCosts
+          ? { quantity: sql`excluded.quantity`, costPrice: sql`excluded.cost_price`, source: SOURCE, updatedAt: stamp }
+          : { quantity: sql`excluded.quantity`, source: SOURCE, updatedAt: stamp },
       });
   }
   const branchIds = [...owner.keys()].map((id) => lookups.branches.get(id)!);
@@ -410,7 +419,7 @@ export async function importStockSnapshot(
       from (values ${values}) as v(id, price, expiry)
       where p.id = v.id`);
   }
-  // Products never bought in the synced window still need a cost for stock value and margins.
+  // A product's cost is the weighted cost of the batches on hand across all branches.
   const averages = [...stockCost.entries()].filter(([, cost]) => cost.value > 0n);
   for (const part of chunks(averages)) {
     const values = sql.join(
@@ -419,7 +428,7 @@ export async function importStockSnapshot(
     );
     const updated = await db.execute<{ id: number; cost_price: string }>(sql`
       update ${productsTable} as p set cost_price = v.cost
-      from (values ${values}) as v(id, cost) where p.id = v.id and p.cost_price is null
+      from (values ${values}) as v(id, cost) where p.id = v.id
       returning p.id, p.cost_price`);
     const costs = new Map(updated.rows.map((row) => [Number(row.id), String(row.cost_price)]));
     for (const entry of lookups.products.values()) {
@@ -427,7 +436,7 @@ export async function importStockSnapshot(
       if (cost) entry.cost = cost;
     }
   }
-  await syncBalanceCosts();
+  if (!exactCosts) await syncBalanceCosts();
   return batches.length;
 }
 
@@ -827,13 +836,14 @@ const transferLabels: Record<string, string> = {
 
 /** Rows from fomSqlTransfers; each document becomes a transfer with paired out/in movements. */
 export async function importTransfers(lookups: Lookups, rows: FomRow[]): Promise<number> {
-  const docs = new Map<string, { head: FomRow; date: Date; lines: Array<{ productFomId: string; qty: bigint; unitCost: bigint }> }>();
+  const docs = new Map<string, { head: FomRow; date: Date; lines: Array<{ productFomId: string; qty: bigint; amount: bigint; unitCost: bigint }> }>();
   for (const row of rows) {
     const date = fomDateValue(row.D);
     const qty = qtyMilli(row.Q);
     if (!row.ID || !row.G || !row.F || !row.T || row.F === row.T || !date || qty <= 0n) continue;
+    const amount = moneyCents(fomNumber(row.A));
     const doc = docs.get(row.ID) ?? { head: row, date, lines: [] };
-    doc.lines.push({ productFomId: row.G, qty, unitCost: moneyCents(fomNumber(row.C)) });
+    doc.lines.push({ productFomId: row.G, qty, amount, unitCost: unitFor(amount, qty, moneyCents(fomNumber(row.C))) });
     docs.set(row.ID, doc);
   }
   const list = [...docs.values()];
@@ -852,7 +862,7 @@ export async function importTransfers(lookups: Lookups, rows: FomRow[]): Promise
           occurredAt: date,
           reason: transferLabels[head.DT ?? ""] ?? "FOM: ichki koʻchirish",
           note: /^[*\s]*$/.test(purpose) ? "" : purpose,
-          totalCost: centsMoney(lines.reduce((sum, line) => sum + divideRounded(line.unitCost * line.qty, 1000n), 0n)),
+          totalCost: centsMoney(lines.reduce((sum, line) => sum + line.amount, 0n)),
           createdBy: "FOM",
           source: SOURCE,
           sourceId: `tr:${head.ID}`,
@@ -903,28 +913,42 @@ export async function importTransfers(lookups: Lookups, rows: FomRow[]): Promise
   return list.length;
 }
 
-const paymentKinds: Record<string, { account: string; kind: "cash" | "bank"; type: string; category: string; note: string }> = {
-  "in:20": { account: "Humo terminal", kind: "bank", type: "sale", category: "card", note: "Humo orqali tushum" },
-  "in:21": { account: "Naqd kassa", kind: "cash", type: "sale", category: "cash", note: "Naqd tushum" },
-  "in:22": { account: "Onlayn toʻlovlar", kind: "bank", type: "sale", category: "transfer", note: "Onlayn tushum" },
-  "in:23": { account: "Boshqa toʻlovlar", kind: "bank", type: "sale", category: "other", note: "Boshqa usulda tushum" },
-  "in:24": { account: "Boshqa toʻlovlar", kind: "bank", type: "sale", category: "other", note: "Jamgʻarma kartasi orqali" },
-  "out:40": { account: "Naqd kassa", kind: "cash", type: "encashment", category: "", note: "Inkassatsiya" },
-  "out:52": { account: "Naqd kassa", kind: "cash", type: "supplier_payment", category: "", note: "Yetkazib beruvchiga toʻlov" },
-  "out:56": { account: "Naqd kassa", kind: "cash", type: "cash_out", category: "", note: "Kassadan chiqim" },
+/** Where an F-APTEKA cash box (CASHBOX: КАССА, HUMO, UzCard, Click, PayMe, …) books its money. */
+interface Channel {
+  account: string;
+  kind: "cash" | "bank";
+  method: string;
+}
+
+function channelOf(cashboxId: string | undefined, cashboxName: string | undefined, docType: string | undefined): Channel {
+  const name = cashboxName?.trim() ?? "";
+  const upper = name.toUpperCase();
+  if (cashboxId === "1" || upper === "КАССА") return { account: "Naqd kassa (КАССА)", kind: "cash", method: "cash" };
+  const account = !name ? `Kassa #${cashboxId ?? "?"}` : /^\d+$/.test(name) ? `Toʻlov turi ${name}` : name;
+  if (/HUMO|UZCARD|VISA|MASTER/.test(upper)) return { account, kind: "bank", method: "card" };
+  if (/НАКОП/.test(upper)) return { account, kind: "bank", method: "other" };
+  if (docType === "21") return { account, kind: "cash", method: "cash" };
+  if (docType === "20") return { account, kind: "bank", method: "card" };
+  return { account, kind: "bank", method: "transfer" };
+}
+
+const payoutTypes: Record<string, { type: string; note: string }> = {
+  "40": { type: "encashment", note: "Inkassatsiya" },
+  "52": { type: "supplier_payment", note: "Yetkazib beruvchiga toʻlov" },
+  "56": { type: "cash_out", note: "Kassadan chiqim" },
 };
 
 const accountIds = new Map<string, number>();
 
-/** The branch's FOM account for a payment kind, created on first use. */
-async function fomAccount(lookups: Lookups, branchFomId: string, spec: (typeof paymentKinds)[string]) {
+/** The branch's FOM account for a payment channel, created on first use. */
+async function fomAccount(lookups: Lookups, branchFomId: string, channel: Channel) {
   const branchId = lookups.branches.get(branchFomId)!;
-  const key = `${branchId}:${spec.account}`;
+  const key = `${branchId}:${channel.account}`;
   let id = accountIds.get(key);
   if (id == null) {
     const [row] = await db
       .insert(cashAccountsTable)
-      .values({ name: spec.account, kind: spec.kind, branchId, source: SOURCE })
+      .values({ name: channel.account, kind: channel.kind, branchId, source: SOURCE })
       .onConflictDoUpdate({
         target: [cashAccountsTable.source, cashAccountsTable.branchId, cashAccountsTable.name],
         set: { kind: sql`excluded.kind` },
@@ -944,47 +968,54 @@ function localTime(t: string | undefined, day: string | undefined): Date | null 
   return fomDateValue(day);
 }
 
-const receiptMethods: Record<string, string> = { "20": "card", "21": "cash", "22": "transfer", "23": "other", "24": "other" };
+/**
+ * Unit price that makes `qty` (milli-units) times it come out at `amount` cents. PHARMEX keeps
+ * three decimals of quantity while F-APTEKA keeps six, so exact line amounts come from SQL and
+ * the stored unit figures are derived from them.
+ */
+function unitFor(amount: bigint, qty: bigint, fallback: bigint) {
+  return qty === 0n ? fallback : divideRounded(amount * 1000n, qty);
+}
 
 /** Rows from fomSqlReceiptLines / fomSqlReceiptPayments: one sale (or return) per F-APTEKA receipt. */
 export async function importReceipts(lookups: Lookups, lines: FomRow[], payments: FomRow[]): Promise<number> {
-  type ReceiptLine = { productFomId: string; qty: bigint; unit: bigint; net: bigint; vat: bigint; cost: bigint };
+  type ReceiptLine = { productFomId: string; qty: bigint; unit: bigint; amount: bigint; vatRate: number; costAmount: bigint; cost: bigint };
   const receipts = new Map<string, { head: FomRow; at: Date; lines: ReceiptLine[] }>();
   for (const row of lines) {
     const at = localTime(row.T, row.D);
     // Return receipts (4) carry negative KOL; older sale receipts also hold refunded lines as
     // negative KOL, which stay negative so the receipt total matches F-APTEKA.
-    const qty = row.DT === "4" ? -qtyMilli(row.Q) : qtyMilli(row.Q);
+    const sign = row.DT === "4" ? -1n : 1n;
+    const qty = sign * qtyMilli(row.Q);
     if (!row.ID || !row.G || !row.F || !at || qty === 0n) continue;
     const net = moneyCents(fomNumber(row.P));
     const before = moneyCents(fomNumber(row.P1));
+    const vat = moneyCents(fomNumber(row.V));
     const receipt = receipts.get(row.ID) ?? { head: row, at, lines: [] };
     receipt.lines.push({
       productFomId: row.G,
       qty,
       unit: before > net ? before : net,
-      net,
-      vat: moneyCents(fomNumber(row.V)),
+      amount: sign * moneyCents(fomNumber(row.A)),
+      vatRate: net - vat > 0n ? Math.round(Number((vat * 10000n) / (net - vat)) / 100) : 0,
+      costAmount: sign * moneyCents(fomNumber(row.CA)),
       cost: moneyCents(fomNumber(row.C)),
     });
     receipts.set(row.ID, receipt);
   }
-  const paid = new Map<string, Array<{ method: string; dt: string; cents: bigint }>>();
+  const paid = new Map<string, Array<{ channel: Channel; cents: bigint }>>();
   for (const row of payments) {
-    const method = receiptMethods[row.DT ?? ""];
     const cents = moneyCents(fomNumber(row.S));
-    if (!row.ID || !method || cents === 0n) continue;
+    if (!row.ID || cents === 0n) continue;
     const list = paid.get(row.ID) ?? [];
-    list.push({ method, dt: row.DT!, cents: cents < 0n ? -cents : cents });
+    list.push({ channel: channelOf(row.CB, row.CN, row.DT), cents: cents < 0n ? -cents : cents });
     paid.set(row.ID, list);
   }
   const list = [...receipts.values()];
   await ensureBranches(lookups, list.map((receipt) => receipt.head.F));
   await ensureProducts(lookups, list.flatMap((receipt) => receipt.lines.map((line) => line.productFomId)));
   for (const receipt of list) {
-    for (const payment of paid.get(receipt.head.ID) ?? []) {
-      await fomAccount(lookups, receipt.head.F, paymentKinds[`in:${payment.dt}`]!);
-    }
+    for (const payment of paid.get(receipt.head.ID) ?? []) await fomAccount(lookups, receipt.head.F, payment.channel);
   }
 
   for (const part of chunks(list, 300)) {
@@ -998,7 +1029,7 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
           soldAt: at,
           cashier: "FOM",
           kind: head.DT === "4" ? "return" : "sale",
-          paymentType: new Set(methods.map((m) => m.method)).size > 1 ? "mixed" : main?.method ?? "other",
+          paymentType: new Set(methods.map((m) => m.channel.method)).size > 1 ? "mixed" : main?.channel.method ?? "other",
           status: "completed",
           note: head.DT === "4" ? "Qaytarish cheki (FOM)" : "Chek (FOM)",
           createdBy: "FOM",
@@ -1038,23 +1069,26 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
         const saleId = idOf.get(header.sourceId)!;
         receipt.lines.forEach((line, lineIndex) => {
           const productId = lookups.products.get(line.productFomId)!.id;
-          const discount = divideRounded((line.unit - line.net) * line.qty, 1000n);
-          const netExVat = line.net - line.vat;
+          const quantity = milliQuantity(line.qty);
+          const unitPrice = centsMoney(line.unit);
+          // Discount closes the gap to F-APTEKA's exact line amount (chegirma + quantity rounding).
+          const discount = extendedMoney(unitPrice, quantity) - line.amount;
+          const unitCost = centsMoney(unitFor(line.costAmount, line.qty, line.cost));
           items.push({
             saleId,
             productId,
-            quantity: milliQuantity(line.qty),
-            unitPrice: centsMoney(line.unit),
+            quantity,
+            unitPrice,
             discount: centsMoney(discount),
-            vatRate: String(netExVat > 0n ? Math.round(Number((line.vat * 10000n) / netExVat) / 100) : 0),
-            costPrice: centsMoney(line.cost),
+            vatRate: String(line.vatRate),
+            costPrice: unitCost,
           });
           movements.push({
             branchId: header.branchId,
             productId,
             movementType: header.kind === "return" ? "customer_return" : "sale",
-            quantity: milliQuantity(line.qty),
-            unitCost: centsMoney(line.cost),
+            quantity,
+            unitCost,
             documentNo: header.receiptNo,
             occurredAt: receipt.at,
             source: SOURCE,
@@ -1064,9 +1098,9 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
         for (const payment of paid.get(receipt.head.ID) ?? []) {
           pays.push({
             saleId,
-            method: payment.method,
+            method: payment.channel.method,
             amount: centsMoney(payment.cents),
-            accountId: accountIds.get(`${header.branchId}:${paymentKinds[`in:${payment.dt}`]!.account}`) ?? null,
+            accountId: accountIds.get(`${header.branchId}:${payment.channel.account}`) ?? null,
           });
         }
       });
@@ -1074,6 +1108,135 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
       await insertMovements(tx, movements);
       for (const payPart of chunks(pays)) await tx.insert(salePaymentsTable).values(payPart);
     });
+  }
+  return list.length;
+}
+
+/** Rows from fomSqlPurchases: one purchase per INCOME document, supplier by ORG id. */
+export async function importDirectPurchases(lookups: Lookups, rows: FomRow[]): Promise<number> {
+  type PurchaseLine = { productFomId: string; qty: bigint; amount: bigint; vat: bigint; unit: bigint; expiry: string | null };
+  const docs = new Map<string, { head: FomRow; date: Date; lines: PurchaseLine[] }>();
+  for (const row of rows) {
+    const date = fomDateValue(row.D);
+    const qty = qtyMilli(row.Q);
+    if (!row.ID || !row.G || !row.F || !date || qty === 0n) continue;
+    const doc = docs.get(row.ID) ?? { head: row, date, lines: [] };
+    doc.lines.push({
+      productFomId: row.G,
+      qty,
+      amount: moneyCents(fomNumber(row.A)),
+      vat: moneyCents(fomNumber(row.VA)),
+      unit: moneyCents(fomNumber(row.C)),
+      expiry: fomDay(row.E),
+    });
+    docs.set(row.ID, doc);
+  }
+  const list = [...docs.values()];
+  await ensureBranches(lookups, list.map((doc) => doc.head.F));
+  await ensureProducts(lookups, list.flatMap((doc) => doc.lines.map((line) => line.productFomId)));
+  const lastCost = new Map<number, { date: number; unit: string }>();
+
+  for (const part of chunks(list, 200)) {
+    await db.transaction(async (tx) => {
+      const headers = part.map(({ head, date, lines }) => {
+        const supplier = supplierOf(lookups, head.O ?? "");
+        const total = lines.reduce((sum, line) => sum + line.amount, 0n);
+        const due = fomDay(head.DUE);
+        return {
+          branchId: lookups.branches.get(head.F)!,
+          counterpartyId: supplier?.id ?? null,
+          supplierName: supplier?.name ?? lookups.orgNames.get(head.O ?? "") ?? (head.O ? `Kontragent #${head.O}` : "Nomaʼlum yetkazib beruvchi"),
+          documentNo: head.N?.trim() || head.ID,
+          invoiceNo: head.PN?.trim() ?? "",
+          invoiceDate: fomDay(head.PD),
+          receivedAt: date,
+          itemsTotal: centsMoney(total),
+          vatAmount: centsMoney(lines.reduce((sum, line) => sum + line.vat, 0n)),
+          totalAmount: centsMoney(total),
+          dueDate: due && due > (fomDay(head.D) ?? "") ? due : null,
+          note: head.R?.trim() || "FOM kirimi",
+          createdBy: "FOM",
+          source: SOURCE,
+          sourceId: `inc:${head.ID}`,
+        };
+      });
+      const saved = await tx
+        .insert(purchasesTable)
+        .values(headers)
+        .onConflictDoUpdate({
+          target: [purchasesTable.source, purchasesTable.sourceId],
+          set: {
+            branchId: sql`excluded.branch_id`,
+            counterpartyId: sql`excluded.counterparty_id`,
+            supplierName: sql`excluded.supplier_name`,
+            documentNo: sql`excluded.document_no`,
+            invoiceNo: sql`excluded.invoice_no`,
+            invoiceDate: sql`excluded.invoice_date`,
+            receivedAt: sql`excluded.received_at`,
+            itemsTotal: sql`excluded.items_total`,
+            vatAmount: sql`excluded.vat_amount`,
+            totalAmount: sql`excluded.total_amount`,
+            dueDate: sql`excluded.due_date`,
+            note: sql`excluded.note`,
+          },
+        })
+        .returning({ id: purchasesTable.id, sourceId: purchasesTable.sourceId });
+      const idOf = new Map(saved.map((row) => [row.sourceId!, row.id]));
+      const deleted = await tx
+        .delete(purchaseItemsTable)
+        .where(inArray(purchaseItemsTable.purchaseId, saved.map((row) => row.id)))
+        .returning({ parentId: purchaseItemsTable.purchaseId });
+      await deleteLineMovements(tx, lineCounts(deleted, new Map(saved.map((row) => [row.id, row.sourceId!]))));
+
+      const items: (typeof purchaseItemsTable.$inferInsert)[] = [];
+      const movements: (typeof inventoryMovementsTable.$inferInsert)[] = [];
+      part.forEach((doc, index) => {
+        const header = headers[index];
+        const purchaseId = idOf.get(header.sourceId)!;
+        doc.lines.forEach((line, lineIndex) => {
+          const product = lookups.products.get(line.productFomId)!;
+          const quantity = milliQuantity(line.qty);
+          const unitCost = centsMoney(line.unit);
+          const net = line.amount - line.vat;
+          items.push({
+            purchaseId,
+            productId: product.id,
+            quantity,
+            unitCost,
+            discount: centsMoney(extendedMoney(unitCost, quantity) - line.amount),
+            vatRate: String(net > 0n ? Math.round(Number((line.vat * 10000n) / net) / 100) : 0),
+            landedUnitCost: centsMoney(unitFor(line.amount, line.qty, line.unit)),
+            expiryDate: line.expiry,
+          });
+          movements.push({
+            branchId: header.branchId,
+            productId: product.id,
+            movementType: "purchase",
+            quantity,
+            unitCost,
+            documentNo: header.documentNo,
+            note: header.supplierName,
+            occurredAt: doc.date,
+            source: SOURCE,
+            sourceId: `${header.sourceId}#${lineIndex}`,
+          });
+          const previous = lastCost.get(product.id);
+          if (!previous || previous.date <= doc.date.getTime()) lastCost.set(product.id, { date: doc.date.getTime(), unit: unitCost });
+        });
+      });
+      for (const itemPart of chunks(items)) await tx.insert(purchaseItemsTable).values(itemPart);
+      await insertMovements(tx, movements);
+    });
+  }
+  // Products with no stock left keep the cost of their latest receipt; stocked ones get the
+  // weighted batch cost from the stock step.
+  for (const part of chunks([...lastCost.entries()])) {
+    const values = sql.join(part.map(([id, cost]) => sql`(${id}::int, ${cost.unit}::numeric)`), sql`, `);
+    await db.execute(sql`
+      update ${productsTable} as p set cost_price = v.cost
+      from (values ${values}) as v(id, cost)
+      where p.id = v.id and not exists (
+        select 1 from ${inventoryBalancesTable} b where b.product_id = p.id and b.quantity > 0)`);
   }
   return list.length;
 }
@@ -1090,14 +1253,16 @@ const directDocs: Record<string, { docType: string; movement: string; reason: st
 
 /** Rows from fomSqlStockDocuments; write-offs and shortages are also booked as expenses. */
 export async function importDirectStockDocuments(lookups: Lookups, rows: FomRow[]): Promise<number> {
-  const docs = new Map<string, { head: FomRow; date: Date; lines: Array<{ productFomId: string; qty: bigint; unitCost: bigint }> }>();
+  const docs = new Map<string, { head: FomRow; date: Date; lines: Array<{ productFomId: string; qty: bigint; amount: bigint; unitCost: bigint }> }>();
   for (const row of rows) {
     const date = fomDateValue(row.D);
     let qty = qtyMilli(row.Q);
+    let amount = moneyCents(fomNumber(row.A));
     if (qty < 0n) qty = -qty;
+    if (amount < 0n) amount = -amount;
     if (!row.K || !row.G || !row.F || !date || qty === 0n || !directDocs[row.DT ?? ""]) continue;
     const doc = docs.get(row.K) ?? { head: row, date, lines: [] };
-    doc.lines.push({ productFomId: row.G, qty, unitCost: moneyCents(fomNumber(row.C)) });
+    doc.lines.push({ productFomId: row.G, qty, amount, unitCost: unitFor(amount, qty, moneyCents(fomNumber(row.C))) });
     docs.set(row.K, doc);
   }
   const list = [...docs.values()];
@@ -1120,9 +1285,7 @@ export async function importDirectStockDocuments(lookups: Lookups, rows: FomRow[
           reason: spec.reason,
           note: /^[*\s]*$/.test(purpose) ? "" : purpose,
           totalCost: centsMoney(
-            spec.movement === "inventory_surplus"
-              ? 0n
-              : lines.reduce((sum, line) => sum + divideRounded(line.unitCost * line.qty, 1000n), 0n),
+            spec.movement === "inventory_surplus" ? 0n : lines.reduce((sum, line) => sum + line.amount, 0n),
           ),
           createdBy: "FOM",
           source: SOURCE,
@@ -1203,15 +1366,18 @@ export async function importDirectStockDocuments(lookups: Lookups, rows: FomRow[
   return list.length;
 }
 
-/** Rows from fomSqlPayments: one money transaction per day, department and payment type. */
+/** Rows from fomSqlPayments: one money transaction per day, department and cash box. */
 export async function importPayments(lookups: Lookups, rows: FomRow[]): Promise<number> {
-  const usable = rows.filter((row) => row.F && paymentKinds[`${row.DIR}:${row.DT}`] && fomDateValue(row.D));
+  const usable = rows.filter((row) => row.F && (row.DIR === "in" || payoutTypes[row.DT ?? ""]) && fomDateValue(row.D));
   await ensureBranches(lookups, usable.map((row) => row.F));
-  const accountFor = (branchFomId: string, spec: (typeof paymentKinds)[string]) => fomAccount(lookups, branchFomId, spec);
 
   const values: (typeof moneyTransactionsTable.$inferInsert)[] = [];
   for (const row of usable) {
-    const spec = paymentKinds[`${row.DIR}:${row.DT}`]!;
+    const channel = channelOf(row.CB, row.CN, row.DT);
+    const payout = row.DIR === "out" ? payoutTypes[row.DT!]! : null;
+    const spec = payout
+      ? { type: payout.type, category: "", note: payout.note }
+      : { type: "sale", category: channel.method, note: `${channel.account} orqali tushum` };
     let cents = moneyCents(fomNumber(row.S));
     if (cents === 0n) continue;
     let direction = row.DIR === "out" ? "out" : "in";
@@ -1226,13 +1392,13 @@ export async function importPayments(lookups: Lookups, rows: FomRow[]): Promise<
       category: spec.category,
       amount: centsMoney(cents),
       direction,
-      accountId: await accountFor(row.F, spec),
+      accountId: await fomAccount(lookups, row.F, channel),
       branchId: lookups.branches.get(row.F)!,
       documentNo: `FOM-${row.D}`,
       note: `${spec.note} (FOM, ${row.C} ta)`,
       createdBy: "FOM",
       source: SOURCE,
-      sourceId: `pay:${row.DIR}:${row.DT}:${row.F}:${row.D}`,
+      sourceId: `pay:${row.DIR}:${row.CB}:${row.DT}:${row.F}:${row.D}`,
     });
   }
   for (const part of chunks(values)) {
@@ -1536,11 +1702,19 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   ];
   // SQL mode reads receipts and stock documents per document with batch costs instead of these
   // procedure reports (they aggregate per day and carry no cost).
-  const replacedBySql = new Set<FomReportKey>(["supplierReturns", "writeOffs", "retailSales"]);
+  const replacedBySql = new Set<FomReportKey>(["purchases", "supplierReturns", "writeOffs", "retailSales"]);
   const procReports = dated.filter((report) => !(sqlMode && replacedBySql.has(report.key)));
   // `weight`: rough cost of one 30-day window relative to one procedure report call.
   const direct: Array<{ key: FomReportKey; weight: number; load: (start: Date, end: Date) => Promise<{ rows: number; imported: number }> }> = sqlMode
     ? [
+        {
+          key: "incomes",
+          weight: 5,
+          load: async (start, end) => {
+            const data = await fetchFomPurchasesDirect(config, start, end);
+            return { rows: data.length, imported: await importDirectPurchases(lookups, data) };
+          },
+        },
         {
           key: "receipts",
           weight: 100,

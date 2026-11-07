@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Router, type IRouter } from "express";
 import {
@@ -42,6 +42,7 @@ import {
   dateConditions,
   extendedMoney,
   milliQuantity,
+  moneyCents,
   quantityMilli,
   toNumber,
 } from "./financialUtils";
@@ -86,7 +87,7 @@ export async function loadStockDocuments(filters: StockFilters) {
     .leftJoin(toBranch, eq(toBranch.id, stockDocumentsTable.toBranchId))
     .where(and(...conditions))
     .orderBy(desc(stockDocumentsTable.occurredAt), desc(stockDocumentsTable.id))
-    .limit(500);
+    .limit(20000);
   const filtered = filters.branchId
     ? rows.filter(
         (row) =>
@@ -95,23 +96,28 @@ export async function loadStockDocuments(filters: StockFilters) {
       )
     : rows;
   if (filtered.length === 0) return [];
-  const movements = await db
-    .select({
-      documentId: inventoryMovementsTable.documentId,
-      movementType: inventoryMovementsTable.movementType,
-      productId: inventoryMovementsTable.productId,
-      quantity: inventoryMovementsTable.quantity,
-      unitCost: inventoryMovementsTable.unitCost,
-    })
-    .from(inventoryMovementsTable)
-    .where(inArray(inventoryMovementsTable.documentId, filtered.map((row) => row.document.id)));
+  // Per document: distinct products and inventory surplus / shortage value, aggregated in SQL
+  // (a year of transfers is ~100k movement rows).
+  const ids = filtered.map((row) => row.document.id);
+  const stats = new Map<number, { items: number; surplus: bigint; shortage: bigint }>();
+  for (let i = 0; i < ids.length; i += 5000) {
+    const rows = await db
+      .select({
+        documentId: inventoryMovementsTable.documentId,
+        items: sql<number>`count(distinct ${inventoryMovementsTable.productId})::int`,
+        surplus: sql<string>`coalesce(sum(round(${inventoryMovementsTable.quantity} * ${inventoryMovementsTable.unitCost}, 2)) filter (where ${inventoryMovementsTable.movementType} = 'inventory_surplus'), 0)::text`,
+        shortage: sql<string>`coalesce(sum(round(${inventoryMovementsTable.quantity} * ${inventoryMovementsTable.unitCost}, 2)) filter (where ${inventoryMovementsTable.movementType} = 'inventory_shortage'), 0)::text`,
+      })
+      .from(inventoryMovementsTable)
+      .where(inArray(inventoryMovementsTable.documentId, ids.slice(i, i + 5000)))
+      .groupBy(inventoryMovementsTable.documentId);
+    for (const row of rows) {
+      stats.set(row.documentId!, { items: row.items, surplus: moneyCents(row.surplus), shortage: moneyCents(row.shortage) });
+    }
+  }
 
   return filtered.map(({ document, branchName, branchKind, toBranchName, toBranchKind }) => {
-    const own = movements.filter((movement) => movement.documentId === document.id);
-    const value = (type: string) =>
-      own
-        .filter((movement) => movement.movementType === type)
-        .reduce((sum, movement) => sum + extendedMoney(movement.unitCost, movement.quantity), 0n);
+    const own = stats.get(document.id) ?? { items: 0, surplus: 0n, shortage: 0n };
     return {
       id: document.id,
       docType: document.docType as keyof typeof prefixes,
@@ -128,10 +134,10 @@ export async function loadStockDocuments(filters: StockFilters) {
       occurredAt: document.occurredAt,
       reason: document.reason,
       note: document.note,
-      itemsCount: new Set(own.map((movement) => movement.productId)).size,
+      itemsCount: own.items,
       totalCost: document.totalCost,
-      surplusValue: centsMoney(value("inventory_surplus")),
-      shortageValue: centsMoney(value("inventory_shortage")),
+      surplusValue: centsMoney(own.surplus),
+      shortageValue: centsMoney(own.shortage),
       createdBy: document.createdBy,
     };
   });

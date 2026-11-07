@@ -70,16 +70,21 @@ export function toNumber(value: string | number | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/** Business days follow the pharmacies' local time (Tashkent, UTC+5 unless APP_TZ_OFFSET_MIN says otherwise). */
+const TZ_OFFSET_MS = (Number(process.env.APP_TZ_OFFSET_MIN ?? 300) || 0) * 60_000;
+
+/** `dateFrom` / `dateTo` are calendar days (UTC midnight from the query string), both inclusive. */
 export function dateConditions(
   column: AnyPgColumn,
   dateFrom?: Date,
   dateTo?: Date,
 ): SQL | undefined {
+  const start = dateFrom ? new Date(dateFrom.getTime() - TZ_OFFSET_MS) : undefined;
   const exclusiveEnd = dateTo
-    ? new Date(dateTo.getTime() + 24 * 60 * 60 * 1000)
+    ? new Date(dateTo.getTime() + 24 * 60 * 60 * 1000 - TZ_OFFSET_MS)
     : undefined;
   return and(
-    dateFrom ? gte(column, dateFrom) : undefined,
+    start ? gte(column, start) : undefined,
     exclusiveEnd ? lt(column, exclusiveEnd) : undefined,
   );
 }
@@ -118,7 +123,8 @@ export function combineConditions(
   return and(...conditions);
 }
 
+/** Local calendar day of an instant (see TZ_OFFSET_MS); strings are already days. */
 export function dateOnly(date: Date | string): string {
   if (typeof date === "string") return date.slice(0, 10);
-  return date.toISOString().slice(0, 10);
+  return new Date(date.getTime() + TZ_OFFSET_MS).toISOString().slice(0, 10);
 }

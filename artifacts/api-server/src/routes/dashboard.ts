@@ -45,12 +45,11 @@ router.get("/dashboard", async (req, res): Promise<void> => {
     return;
   }
   const now = new Date();
+  const localToday = new Date(dateOnly(now));
   const dateFrom =
     parsed.data.dateFrom ??
-    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const dateTo =
-    parsed.data.dateTo ??
-    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    new Date(Date.UTC(localToday.getUTCFullYear(), localToday.getUTCMonth(), 1));
+  const dateTo = parsed.data.dateTo ?? localToday;
   const mode = await getDataMode();
   const filters = {
     mode,

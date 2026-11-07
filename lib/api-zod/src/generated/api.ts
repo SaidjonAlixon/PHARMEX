@@ -1169,6 +1169,38 @@ export const CreateReceiptResponse = zod.object({
 
 
 /**
+ * @summary Totals over every receipt in the period, with payments per cash box / account
+ */
+
+
+
+export const GetReceiptSummaryQueryParams = zod.object({
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional(),
+  "branchId": zod.coerce.number().int().min(1).optional()
+})
+
+export const GetReceiptSummaryResponse = zod.object({
+  "count": zod.number().int(),
+  "voided": zod.number().int(),
+  "returnCount": zod.number().int(),
+  "gross": zod.string(),
+  "net": zod.string(),
+  "returns": zod.string(),
+  "discount": zod.string(),
+  "vat": zod.string(),
+  "cost": zod.string().nullable(),
+  "profit": zod.string().nullable(),
+  "channels": zod.array(zod.object({
+  "name": zod.string(),
+  "method": zod.string(),
+  "amount": zod.string(),
+  "count": zod.number().int()
+}))
+})
+
+
+/**
  * @summary Receipt lines, payments and linked returns
  */
 

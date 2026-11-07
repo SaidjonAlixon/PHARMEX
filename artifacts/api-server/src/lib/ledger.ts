@@ -13,6 +13,7 @@ import {
 } from "@workspace/db";
 import {
   centsMoney,
+  dateOnly,
   divideRounded,
   extendedMoney,
   milliQuantity,
@@ -404,8 +405,7 @@ export async function findOrCreateCounterparty(
 
 export function dateOnlyString(value: Date | string | null | undefined) {
   if (!value) return null;
-  if (typeof value === "string") return value.slice(0, 10);
-  return value.toISOString().slice(0, 10);
+  return dateOnly(value);
 }
 
 export function addDays(date: Date, days: number) {

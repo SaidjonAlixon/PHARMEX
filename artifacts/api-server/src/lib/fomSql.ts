@@ -149,9 +149,9 @@ export function fomSqlOrganizations(cfg: FomSqlConfig, timeoutMs: number) {
 
 /**
  * Current stock per department and good, for procedure versions without report 6.
- * A batch (INCOMELN, posted = STATE 12) minus its posted outgoing lines (INVOICELN STATE 11/12:
- * sales, transfers, write-offs, returns). INCOMELN.SALE is not kept in step, and STATE 3
- * batches are unposted, so neither is used.
+ * A batch (INCOMELN; pharmacies post with STATE 12, the warehouse keeps supplier receipts at
+ * STATE 3) minus its posted outgoing lines (INVOICELN STATE 11/12: sales, transfers, write-offs,
+ * returns). INCOMELN.SALE is not kept in step, so it is not used.
  * Columns: F department, G good, Q quantity, C cost value, P retail price, E nearest expiry.
  */
 export function fomSqlStock(cfg: FomSqlConfig, timeoutMs: number) {
@@ -166,7 +166,7 @@ export function fomSqlStock(cfg: FomSqlConfig, timeoutMs: number) {
       FROM dbo.INCOMELN L
       LEFT JOIN (SELECT INCOMELN, SUM(KOL) AS K FROM dbo.INVOICELN WHERE STATE IN (11, 12) GROUP BY INCOMELN) S
         ON S.INCOMELN = L.ID
-      WHERE L.STATE = 12
+      WHERE L.STATE IN (3, 12)
     ) x
     WHERE x.rest > 0.0005
     GROUP BY x.OTDEL, x.GOOD`);
@@ -183,7 +183,8 @@ export function fomSqlTransfers(cfg: FomSqlConfig, from: Date, to: Date, timeout
     SELECT I.ID, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(10), I.DATA, 120) AS D,
            I.OTDEL AS F, I.ORG AS T, ISNULL(I.PURPOSE, '') AS R,
            IL.GOOD AS G, CONVERT(varchar(40), L.KOL) AS Q,
-           CONVERT(varchar(40), IL.PRICEPRIH) AS C, CONVERT(varchar(40), L.PRICE) AS P
+           CONVERT(varchar(40), IL.PRICEPRIH) AS C, CONVERT(varchar(40), L.PRICE) AS P,
+           CONVERT(varchar(40), CAST(L.KOL * IL.PRICEPRIH AS numeric(20, 2))) AS A
     FROM dbo.INVOICE I
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
@@ -199,12 +200,32 @@ export function fomSqlTransfers(cfg: FomSqlConfig, from: Date, to: Date, timeout
  */
 export function fomSqlPayments(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
   const part = (table: string, dir: string, types: string) => `
-    SELECT '${dir}' AS DIR, P.DOCTYPE AS DT, P.OTDEL AS F, CONVERT(varchar(10), P.DATA, 120) AS D,
-           COUNT(*) AS C, CONVERT(varchar(40), SUM(P.SUMMA)) AS S
-    FROM dbo.${table} P
+    SELECT '${dir}' AS DIR, P.DOCTYPE AS DT, P.CASHBOX AS CB, ISNULL(B.NAME, '') AS CN, P.OTDEL AS F,
+           CONVERT(varchar(10), P.DATA, 120) AS D, COUNT(*) AS C, CONVERT(varchar(40), SUM(P.SUMMA)) AS S
+    FROM dbo.${table} P LEFT JOIN dbo.CASHBOX B ON B.ID = P.CASHBOX
     WHERE P.DOCTYPE IN (${types}) AND P.DATA >= @from AND P.DATA < DATEADD(day, 1, @to)
-    GROUP BY P.DOCTYPE, P.OTDEL, CONVERT(varchar(10), P.DATA, 120)`;
-  return queryRows(cfg, timeoutMs, `${part("PAYIN", "in", "20, 21, 22, 23, 24")} UNION ALL ${part("PAYOUT", "out", "40, 52, 56")}`, dateWindow(from, to));
+    GROUP BY P.DOCTYPE, P.CASHBOX, B.NAME, P.OTDEL, CONVERT(varchar(10), P.DATA, 120)`;
+  return queryRows(cfg, timeoutMs, `${part("PAYIN", "in", "2, 20, 21, 22, 23, 24")} UNION ALL ${part("PAYOUT", "out", "40, 52, 56")}`, dateWindow(from, to));
+}
+
+/**
+ * Supplier receipts into the warehouse (INCOME 1), one row per line. PRICEPRIH is the unit cost
+ * with VAT, PRICEPRIHNDS its VAT; the line sums equal INCOME.SUMMAPOZ.
+ * Columns: ID, N, D, F department, O supplier ORG, PN / PD supplier invoice, DUE payment date,
+ * R purpose, G, Q, C unit cost, V unit VAT, A / VA line cost / VAT, S series, E expiry.
+ */
+export function fomSqlPurchases(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+  return queryRows(cfg, timeoutMs, `
+    SELECT H.ID, H.NUMBER AS N, CONVERT(varchar(10), H.DATA, 120) AS D, H.OTDEL AS F, H.ORG AS O,
+           ISNULL(H.SNUMBER, '') AS PN, CONVERT(varchar(10), H.SDATA, 120) AS PD, CONVERT(varchar(10), H.DATAOTS, 120) AS DUE,
+           ISNULL(H.PURPOSE, '') AS R, L.GOOD AS G, CONVERT(varchar(40), L.KOL) AS Q,
+           CONVERT(varchar(40), L.PRICEPRIH) AS C, CONVERT(varchar(40), L.PRICEPRIHNDS) AS V,
+           CONVERT(varchar(40), CAST(L.KOL * L.PRICEPRIH AS numeric(20, 2))) AS A,
+           CONVERT(varchar(40), CAST(L.KOL * L.PRICEPRIHNDS AS numeric(20, 2))) AS VA,
+           ISNULL(L.SERIA, '') AS S, CONVERT(varchar(10), L.EXPDATA, 120) AS E
+    FROM dbo.INCOME H JOIN dbo.INCOMELN L ON L.INCOME = H.ID
+    WHERE H.DOCTYPE = 1 AND H.STATE IN (3, 12) AND H.DATA >= @from AND H.DATA < DATEADD(day, 1, @to)
+    ORDER BY H.ID, L.ID`, dateWindow(from, to));
 }
 
 const dateWindow = (from: Date, to: Date) => (request: sql.Request) => {
@@ -215,14 +236,17 @@ const dateWindow = (from: Date, to: Date) => (request: sql.Request) => {
 /**
  * Retail receipts (INVOICE 2) and retail returns (4, negative KOL), one row per line with the
  * batch cost. PRICE is after discount, PRICE1 before it; NDS is per unit.
- * Columns: ID, DT, N, T entered at (local time), D day, F department, G good, Q, P, P1, V, C.
+ * Columns: ID, DT, N, T entered at (local time), D day, F department, G good, Q, P, P1, V, C,
+ * A line amount and CA line cost (KOL × price rounded to tiyin, KOL keeps 6 decimals).
  */
 export function fomSqlReceiptLines(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
   return queryRows(cfg, timeoutMs, `
     SELECT I.ID, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(19), I.DATAENTER, 126) AS T,
            CONVERT(varchar(10), I.DATA, 120) AS D, I.OTDEL AS F, IL.GOOD AS G,
            CONVERT(varchar(40), L.KOL) AS Q, CONVERT(varchar(40), L.PRICE) AS P, CONVERT(varchar(40), L.PRICE1) AS P1,
-           CONVERT(varchar(40), L.NDS) AS V, CONVERT(varchar(40), IL.PRICEPRIH) AS C
+           CONVERT(varchar(40), L.NDS) AS V, CONVERT(varchar(40), IL.PRICEPRIH) AS C,
+           CONVERT(varchar(40), CAST(L.KOL * L.PRICE AS numeric(20, 2))) AS A,
+           CONVERT(varchar(40), CAST(L.KOL * IL.PRICEPRIH AS numeric(20, 2))) AS CA
     FROM dbo.INVOICE I
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
@@ -231,13 +255,14 @@ export function fomSqlReceiptLines(cfg: FomSqlConfig, from: Date, to: Date, time
     ORDER BY I.ID, L.ID`, dateWindow(from, to));
 }
 
-/** Payments of the receipts above, per receipt and PAYIN type. Columns: ID receipt, DT, S sum. */
+/** Payments of the receipts above, per receipt and cash box. Columns: ID receipt, DT, CB, CN, S sum. */
 export function fomSqlReceiptPayments(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
   return queryRows(cfg, timeoutMs, `
-    SELECT P.INVOICE AS ID, P.DOCTYPE AS DT, CONVERT(varchar(40), SUM(P.SUMMA)) AS S
-    FROM dbo.PAYIN P JOIN dbo.INVOICE I ON I.ID = P.INVOICE
+    SELECT P.INVOICE AS ID, MAX(P.DOCTYPE) AS DT, P.CASHBOX AS CB, ISNULL(B.NAME, '') AS CN,
+           CONVERT(varchar(40), SUM(P.SUMMA)) AS S
+    FROM dbo.PAYIN P JOIN dbo.INVOICE I ON I.ID = P.INVOICE LEFT JOIN dbo.CASHBOX B ON B.ID = P.CASHBOX
     WHERE I.DOCTYPE IN (2, 4) AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
-    GROUP BY P.INVOICE, P.DOCTYPE`, dateWindow(from, to));
+    GROUP BY P.INVOICE, P.CASHBOX, B.NAME`, dateWindow(from, to));
 }
 
 /**
@@ -249,7 +274,8 @@ export function fomSqlStockDocuments(cfg: FomSqlConfig, from: Date, to: Date, ti
   return queryRows(cfg, timeoutMs, `
     SELECT 'inv:' + CONVERT(varchar(20), I.ID) AS K, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(10), I.DATA, 120) AS D,
            I.OTDEL AS F, I.ORG AS O, ISNULL(I.PURPOSE, '') AS R, IL.GOOD AS G,
-           CONVERT(varchar(40), L.KOL) AS Q, CONVERT(varchar(40), IL.PRICEPRIH) AS C
+           CONVERT(varchar(40), L.KOL) AS Q, CONVERT(varchar(40), IL.PRICEPRIH) AS C,
+           CONVERT(varchar(40), CAST(L.KOL * IL.PRICEPRIH AS numeric(20, 2))) AS A
     FROM dbo.INVOICE I
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
@@ -258,7 +284,8 @@ export function fomSqlStockDocuments(cfg: FomSqlConfig, from: Date, to: Date, ti
     UNION ALL
     SELECT 'inc:' + CONVERT(varchar(20), H.ID), 1009, H.NUMBER, CONVERT(varchar(10), H.DATA, 120),
            H.OTDEL, H.ORG, ISNULL(H.PURPOSE, ''), L.GOOD,
-           CONVERT(varchar(40), L.KOL), CONVERT(varchar(40), L.PRICEPRIH)
+           CONVERT(varchar(40), L.KOL), CONVERT(varchar(40), L.PRICEPRIH),
+           CONVERT(varchar(40), CAST(L.KOL * L.PRICEPRIH AS numeric(20, 2)))
     FROM dbo.INCOME H JOIN dbo.INCOMELN L ON L.INCOME = H.ID
     WHERE H.DOCTYPE = 9 AND H.STATE = 12 AND H.DATA >= @from AND H.DATA < DATEADD(day, 1, @to)
     ORDER BY 1`, dateWindow(from, to));

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   branchesTable,
@@ -79,12 +79,18 @@ export async function loadPurchases(filters: PurchaseFilters) {
     .leftJoin(debtsTable, eq(debtsTable.id, purchasesTable.debtId))
     .where(and(...conditions))
     .orderBy(desc(purchasesTable.receivedAt), desc(purchasesTable.id))
-    .limit(500);
+    .limit(20000);
   if (rows.length === 0) return [];
-  const counts = await db
-    .select({ purchaseId: purchaseItemsTable.purchaseId })
-    .from(purchaseItemsTable)
-    .where(inArray(purchaseItemsTable.purchaseId, rows.map((row) => row.purchase.id)));
+  const itemCounts = new Map<number, number>();
+  const ids = rows.map((row) => row.purchase.id);
+  for (let i = 0; i < ids.length; i += 5000) {
+    const counted = await db
+      .select({ purchaseId: purchaseItemsTable.purchaseId, n: count() })
+      .from(purchaseItemsTable)
+      .where(inArray(purchaseItemsTable.purchaseId, ids.slice(i, i + 5000)))
+      .groupBy(purchaseItemsTable.purchaseId);
+    for (const row of counted) itemCounts.set(row.purchaseId, Number(row.n));
+  }
   const today = new Date().toISOString().slice(0, 10);
 
   const mapped = rows.map(({ purchase, branchName, debt }) => {
@@ -109,7 +115,7 @@ export async function loadPurchases(filters: PurchaseFilters) {
       eInvoiceId: purchase.eInvoiceId,
       invoiceDate: purchase.invoiceDate,
       receivedAt: purchase.receivedAt,
-      itemsCount: counts.filter((row) => row.purchaseId === purchase.id).length,
+      itemsCount: itemCounts.get(purchase.id) ?? 0,
       itemsTotal: purchase.itemsTotal,
       discount: purchase.discount,
       extraCosts: purchase.extraCosts,

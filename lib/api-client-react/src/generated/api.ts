@@ -50,6 +50,7 @@ import type {
   GetProductParams,
   GetPurchaseParams,
   GetReceiptParams,
+  GetReceiptSummaryParams,
   GetReportParams,
   GetStockDocumentParams,
   HealthStatus,
@@ -81,6 +82,7 @@ import type {
   ReceiptDetail,
   ReceiptInput,
   ReceiptReturnInput,
+  ReceiptSummary,
   ReceiptVoidInput,
   Report,
   Sale,
@@ -2661,6 +2663,90 @@ export const useCreateReceipt = <TError = ErrorType<BadRequestResponse>,
       > => {
       return useMutation(getCreateReceiptMutationOptions(options));
     }
+
+export const getGetReceiptSummaryUrl = (params?: GetReceiptSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/receipts/summary?${stringifiedParams}` : `/api/receipts/summary`
+}
+
+/**
+ * @summary Totals over every receipt in the period, with payments per cash box / account
+ */
+export const getReceiptSummary = async (params?: GetReceiptSummaryParams, options?: Parameters<typeof customFetch>[1]): Promise<ReceiptSummary> => {
+
+  return customFetch<ReceiptSummary>(getGetReceiptSummaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReceiptSummaryQueryKey = (params?: GetReceiptSummaryParams,) => {
+    return [
+    `/api/receipts/summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetReceiptSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getReceiptSummary>>, TError = ErrorType<unknown>>(params?: GetReceiptSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReceiptSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReceiptSummaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReceiptSummary>>> = ({ signal }) => getReceiptSummary(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReceiptSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReceiptSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getReceiptSummary>>>
+export type GetReceiptSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Totals over every receipt in the period, with payments per cash box / account
+ */
+
+export function useGetReceiptSummary<TData = Awaited<ReturnType<typeof getReceiptSummary>>, TError = ErrorType<unknown>>(
+ params?: GetReceiptSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReceiptSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReceiptSummaryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetReceiptUrl = (params: GetReceiptParams,) => {
   const normalizedParams = new URLSearchParams();
