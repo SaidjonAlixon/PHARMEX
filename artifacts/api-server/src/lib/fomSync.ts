@@ -4,6 +4,7 @@ import {
   cashAccountsTable,
   counterpartiesTable,
   db,
+  expensesTable,
   integrationImportsTable,
   inventoryBalancesTable,
   inventoryMovementsTable,
@@ -12,6 +13,7 @@ import {
   purchaseItemsTable,
   purchasesTable,
   saleItemsTable,
+  salePaymentsTable,
   salesTable,
   stockDocumentsTable,
 } from "@workspace/db";
@@ -20,7 +22,9 @@ import {
   FomError,
   fetchFomOrganizationsDirect,
   fetchFomPaymentsDirect,
+  fetchFomReceiptsDirect,
   fetchFomReport,
+  fetchFomStockDocumentsDirect,
   fetchFomStockDirect,
   fetchFomTransfersDirect,
   fomConfig,
@@ -60,6 +64,10 @@ export interface SyncDetails {
   filials: string[];
   /** When organisations + catalog were last refreshed successfully. */
   refsAt?: string | null;
+  /** When stock balances were last refreshed. */
+  stockAt?: string | null;
+  /** Work units done / planned in this run (one report window each). */
+  progress?: { done: number; total: number };
   reports: Partial<Record<FomReportKey | "site", ReportOutcome>>;
 }
 
@@ -906,29 +914,299 @@ const paymentKinds: Record<string, { account: string; kind: "cash" | "bank"; typ
   "out:56": { account: "Naqd kassa", kind: "cash", type: "cash_out", category: "", note: "Kassadan chiqim" },
 };
 
+const accountIds = new Map<string, number>();
+
+/** The branch's FOM account for a payment kind, created on first use. */
+async function fomAccount(lookups: Lookups, branchFomId: string, spec: (typeof paymentKinds)[string]) {
+  const branchId = lookups.branches.get(branchFomId)!;
+  const key = `${branchId}:${spec.account}`;
+  let id = accountIds.get(key);
+  if (id == null) {
+    const [row] = await db
+      .insert(cashAccountsTable)
+      .values({ name: spec.account, kind: spec.kind, branchId, source: SOURCE })
+      .onConflictDoUpdate({
+        target: [cashAccountsTable.source, cashAccountsTable.branchId, cashAccountsTable.name],
+        set: { kind: sql`excluded.kind` },
+      })
+      .returning({ id: cashAccountsTable.id });
+    id = row.id;
+    accountIds.set(key, id);
+  }
+  return id;
+}
+
+const FOM_TZ = process.env.FOM_TZ?.trim() || "+05:00";
+
+/** F-APTEKA stores local wall-clock time; `T` is `yyyy-mm-ddThh:mm:ss`. */
+function localTime(t: string | undefined, day: string | undefined): Date | null {
+  if (t && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(t)) return new Date(`${t}${FOM_TZ}`);
+  return fomDateValue(day);
+}
+
+const receiptMethods: Record<string, string> = { "20": "card", "21": "cash", "22": "transfer", "23": "other", "24": "other" };
+
+/** Rows from fomSqlReceiptLines / fomSqlReceiptPayments: one sale (or return) per F-APTEKA receipt. */
+export async function importReceipts(lookups: Lookups, lines: FomRow[], payments: FomRow[]): Promise<number> {
+  type ReceiptLine = { productFomId: string; qty: bigint; unit: bigint; net: bigint; vat: bigint; cost: bigint };
+  const receipts = new Map<string, { head: FomRow; at: Date; lines: ReceiptLine[] }>();
+  for (const row of lines) {
+    const at = localTime(row.T, row.D);
+    let qty = qtyMilli(row.Q);
+    if (qty < 0n) qty = -qty;
+    if (!row.ID || !row.G || !row.F || !at || qty === 0n) continue;
+    const net = moneyCents(fomNumber(row.P));
+    const before = moneyCents(fomNumber(row.P1));
+    const receipt = receipts.get(row.ID) ?? { head: row, at, lines: [] };
+    receipt.lines.push({
+      productFomId: row.G,
+      qty,
+      unit: before > net ? before : net,
+      net,
+      vat: moneyCents(fomNumber(row.V)),
+      cost: moneyCents(fomNumber(row.C)),
+    });
+    receipts.set(row.ID, receipt);
+  }
+  const paid = new Map<string, Array<{ method: string; dt: string; cents: bigint }>>();
+  for (const row of payments) {
+    const method = receiptMethods[row.DT ?? ""];
+    const cents = moneyCents(fomNumber(row.S));
+    if (!row.ID || !method || cents === 0n) continue;
+    const list = paid.get(row.ID) ?? [];
+    list.push({ method, dt: row.DT!, cents: cents < 0n ? -cents : cents });
+    paid.set(row.ID, list);
+  }
+  const list = [...receipts.values()];
+  await ensureBranches(lookups, list.map((receipt) => receipt.head.F));
+  await ensureProducts(lookups, list.flatMap((receipt) => receipt.lines.map((line) => line.productFomId)));
+  for (const receipt of list) {
+    for (const payment of paid.get(receipt.head.ID) ?? []) {
+      await fomAccount(lookups, receipt.head.F, paymentKinds[`in:${payment.dt}`]!);
+    }
+  }
+
+  for (const part of chunks(list, 300)) {
+    await db.transaction(async (tx) => {
+      const headers = part.map(({ head, at }) => {
+        const methods = paid.get(head.ID) ?? [];
+        const main = [...methods].sort((a, b) => (b.cents > a.cents ? 1 : b.cents < a.cents ? -1 : 0))[0];
+        return {
+          branchId: lookups.branches.get(head.F)!,
+          receiptNo: head.N?.trim() || head.ID,
+          soldAt: at,
+          cashier: "FOM",
+          kind: head.DT === "4" ? "return" : "sale",
+          paymentType: new Set(methods.map((m) => m.method)).size > 1 ? "mixed" : main?.method ?? "other",
+          status: "completed",
+          note: head.DT === "4" ? "Qaytarish cheki (FOM)" : "Chek (FOM)",
+          createdBy: "FOM",
+          source: SOURCE,
+          sourceId: `chk:${head.ID}`,
+        };
+      });
+      const saved = await tx
+        .insert(salesTable)
+        .values(headers)
+        .onConflictDoUpdate({
+          target: [salesTable.source, salesTable.sourceId],
+          set: {
+            branchId: sql`excluded.branch_id`,
+            receiptNo: sql`excluded.receipt_no`,
+            soldAt: sql`excluded.sold_at`,
+            kind: sql`excluded.kind`,
+            paymentType: sql`excluded.payment_type`,
+            note: sql`excluded.note`,
+          },
+        })
+        .returning({ id: salesTable.id, sourceId: salesTable.sourceId });
+      const idOf = new Map(saved.map((row) => [row.sourceId!, row.id]));
+      const saleIds = saved.map((row) => row.id);
+      const deleted = await tx
+        .delete(saleItemsTable)
+        .where(inArray(saleItemsTable.saleId, saleIds))
+        .returning({ parentId: saleItemsTable.saleId });
+      await deleteLineMovements(tx, lineCounts(deleted, new Map(saved.map((row) => [row.id, row.sourceId!]))));
+      await tx.delete(salePaymentsTable).where(inArray(salePaymentsTable.saleId, saleIds));
+
+      const items: (typeof saleItemsTable.$inferInsert)[] = [];
+      const movements: (typeof inventoryMovementsTable.$inferInsert)[] = [];
+      const pays: (typeof salePaymentsTable.$inferInsert)[] = [];
+      part.forEach((receipt, index) => {
+        const header = headers[index];
+        const saleId = idOf.get(header.sourceId)!;
+        receipt.lines.forEach((line, lineIndex) => {
+          const productId = lookups.products.get(line.productFomId)!.id;
+          const discount = divideRounded((line.unit - line.net) * line.qty, 1000n);
+          const netExVat = line.net - line.vat;
+          items.push({
+            saleId,
+            productId,
+            quantity: milliQuantity(line.qty),
+            unitPrice: centsMoney(line.unit),
+            discount: centsMoney(discount > 0n ? discount : 0n),
+            vatRate: String(netExVat > 0n ? Math.round(Number((line.vat * 10000n) / netExVat) / 100) : 0),
+            costPrice: centsMoney(line.cost),
+          });
+          movements.push({
+            branchId: header.branchId,
+            productId,
+            movementType: header.kind === "return" ? "customer_return" : "sale",
+            quantity: milliQuantity(line.qty),
+            unitCost: centsMoney(line.cost),
+            documentNo: header.receiptNo,
+            occurredAt: receipt.at,
+            source: SOURCE,
+            sourceId: `${header.sourceId}#${lineIndex}`,
+          });
+        });
+        for (const payment of paid.get(receipt.head.ID) ?? []) {
+          pays.push({
+            saleId,
+            method: payment.method,
+            amount: centsMoney(payment.cents),
+            accountId: accountIds.get(`${header.branchId}:${paymentKinds[`in:${payment.dt}`]!.account}`) ?? null,
+          });
+        }
+      });
+      for (const itemPart of chunks(items)) await tx.insert(saleItemsTable).values(itemPart);
+      await insertMovements(tx, movements);
+      for (const payPart of chunks(pays)) await tx.insert(salePaymentsTable).values(payPart);
+    });
+  }
+  return list.length;
+}
+
+const directDocs: Record<string, { docType: string; movement: string; reason: string; expense?: string }> = {
+  "11": { docType: "write_off", movement: "write_off", reason: "Hisobdan chiqarish (СПИСАНИЕ ТОВАРОВ)", expense: "Tovar hisobdan chiqarish" },
+  "58": { docType: "write_off", movement: "write_off", reason: "Muddati oʻtgan tovar (СПИСАНИЕ ПРОСРОЧЕНОГО)", expense: "Tovar hisobdan chiqarish" },
+  "12": { docType: "supplier_return", movement: "supplier_return", reason: "Yetkazib beruvchiga qaytarish (ВОЗВРАТ ПОСТАВЩИКУ)" },
+  "17": { docType: "supplier_return", movement: "supplier_return", reason: "Muddati oʻtgan tovar qaytarildi (ВОЗВРАТ ПРОСРОЧЕНОГО)" },
+  "6": { docType: "inventory_count", movement: "inventory_shortage", reason: "Inventarizatsiya kamomadi (НЕДОСТАЧА)", expense: "Inventarizatsiya kamomadi" },
+  "9": { docType: "inventory_count", movement: "inventory_shortage", reason: "Inventarizatsiya kamomadi (ИНВЕНТАРИЗАЦИЯ АПТЕКИ)", expense: "Inventarizatsiya kamomadi" },
+  "1009": { docType: "inventory_count", movement: "inventory_surplus", reason: "Inventarizatsiya ortiqchasi (ИНВЕНТАРИЗАЦИЯ АПТЕКИ)" },
+};
+
+/** Rows from fomSqlStockDocuments; write-offs and shortages are also booked as expenses. */
+export async function importDirectStockDocuments(lookups: Lookups, rows: FomRow[]): Promise<number> {
+  const docs = new Map<string, { head: FomRow; date: Date; lines: Array<{ productFomId: string; qty: bigint; unitCost: bigint }> }>();
+  for (const row of rows) {
+    const date = fomDateValue(row.D);
+    let qty = qtyMilli(row.Q);
+    if (qty < 0n) qty = -qty;
+    if (!row.K || !row.G || !row.F || !date || qty === 0n || !directDocs[row.DT ?? ""]) continue;
+    const doc = docs.get(row.K) ?? { head: row, date, lines: [] };
+    doc.lines.push({ productFomId: row.G, qty, unitCost: moneyCents(fomNumber(row.C)) });
+    docs.set(row.K, doc);
+  }
+  const list = [...docs.values()];
+  await ensureBranches(lookups, list.map((doc) => doc.head.F));
+  await ensureProducts(lookups, list.flatMap((doc) => doc.lines.map((line) => line.productFomId)));
+
+  for (const part of chunks(list, 200)) {
+    await db.transaction(async (tx) => {
+      const headers = part.map(({ head, date, lines }) => {
+        const spec = directDocs[head.DT!]!;
+        const supplier = spec.docType === "supplier_return" ? supplierOf(lookups, head.O ?? "") : undefined;
+        const purpose = head.R?.trim() ?? "";
+        return {
+          docType: spec.docType,
+          documentNo: head.N?.trim() || head.K,
+          branchId: lookups.branches.get(head.F)!,
+          counterpartyId: supplier?.id ?? null,
+          counterpartyName: spec.docType === "supplier_return" ? supplier?.name ?? lookups.orgNames.get(head.O ?? "") ?? "" : "",
+          occurredAt: date,
+          reason: spec.reason,
+          note: /^[*\s]*$/.test(purpose) ? "" : purpose,
+          totalCost: centsMoney(
+            spec.movement === "inventory_surplus"
+              ? 0n
+              : lines.reduce((sum, line) => sum + divideRounded(line.unitCost * line.qty, 1000n), 0n),
+          ),
+          createdBy: "FOM",
+          source: SOURCE,
+          sourceId: `doc:${head.K}`,
+        };
+      });
+      const saved = await tx
+        .insert(stockDocumentsTable)
+        .values(headers)
+        .onConflictDoUpdate({
+          target: [stockDocumentsTable.source, stockDocumentsTable.sourceId],
+          set: {
+            documentNo: sql`excluded.document_no`,
+            branchId: sql`excluded.branch_id`,
+            counterpartyId: sql`excluded.counterparty_id`,
+            counterpartyName: sql`excluded.counterparty_name`,
+            occurredAt: sql`excluded.occurred_at`,
+            reason: sql`excluded.reason`,
+            note: sql`excluded.note`,
+            totalCost: sql`excluded.total_cost`,
+          },
+        })
+        .returning({ id: stockDocumentsTable.id, sourceId: stockDocumentsTable.sourceId });
+      const idOf = new Map(saved.map((row) => [row.sourceId!, row.id]));
+      await tx.delete(inventoryMovementsTable).where(inArray(inventoryMovementsTable.documentId, saved.map((row) => row.id)));
+
+      const movements: (typeof inventoryMovementsTable.$inferInsert)[] = [];
+      const expenses: (typeof expensesTable.$inferInsert)[] = [];
+      part.forEach((doc, index) => {
+        const header = headers[index];
+        const spec = directDocs[doc.head.DT!]!;
+        doc.lines.forEach((line, lineIndex) => {
+          movements.push({
+            branchId: header.branchId,
+            productId: lookups.products.get(line.productFomId)!.id,
+            documentId: idOf.get(header.sourceId)!,
+            movementType: spec.movement,
+            quantity: milliQuantity(line.qty),
+            unitCost: centsMoney(line.unitCost),
+            documentNo: header.documentNo,
+            note: header.reason,
+            occurredAt: doc.date,
+            source: SOURCE,
+            sourceId: `${header.sourceId}#${lineIndex}`,
+          });
+        });
+        if (spec.expense && moneyCents(header.totalCost) > 0n) {
+          expenses.push({
+            date: doc.head.D!,
+            branchId: header.branchId,
+            category: spec.expense,
+            description: `${header.documentNo}: ${header.reason}`,
+            amount: header.totalCost,
+            source: SOURCE,
+            sourceId: `stock-document:${header.sourceId}`,
+            status: "confirmed",
+          });
+        }
+      });
+      await insertMovements(tx, movements);
+      for (const expensePart of chunks(expenses)) {
+        await tx
+          .insert(expensesTable)
+          .values(expensePart)
+          .onConflictDoUpdate({
+            target: [expensesTable.source, expensesTable.sourceId],
+            set: {
+              date: sql`excluded.date`,
+              branchId: sql`excluded.branch_id`,
+              category: sql`excluded.category`,
+              description: sql`excluded.description`,
+              amount: sql`excluded.amount`,
+            },
+          });
+      }
+    });
+  }
+  return list.length;
+}
+
 /** Rows from fomSqlPayments: one money transaction per day, department and payment type. */
 export async function importPayments(lookups: Lookups, rows: FomRow[]): Promise<number> {
   const usable = rows.filter((row) => row.F && paymentKinds[`${row.DIR}:${row.DT}`] && fomDateValue(row.D));
   await ensureBranches(lookups, usable.map((row) => row.F));
-  const accounts = new Map<string, number>();
-  const accountFor = async (branchFomId: string, spec: (typeof paymentKinds)[string]) => {
-    const branchId = lookups.branches.get(branchFomId)!;
-    const key = `${branchId}:${spec.account}`;
-    let id = accounts.get(key);
-    if (id == null) {
-      const [row] = await db
-        .insert(cashAccountsTable)
-        .values({ name: spec.account, kind: spec.kind, branchId, source: SOURCE })
-        .onConflictDoUpdate({
-          target: [cashAccountsTable.source, cashAccountsTable.branchId, cashAccountsTable.name],
-          set: { kind: sql`excluded.kind` },
-        })
-        .returning({ id: cashAccountsTable.id });
-      id = row.id;
-      accounts.set(key, id);
-    }
-    return id;
-  };
+  const accountFor = (branchFomId: string, spec: (typeof paymentKinds)[string]) => fomAccount(lookups, branchFomId, spec);
 
   const values: (typeof moneyTransactionsTable.$inferInsert)[] = [];
   for (const row of usable) {
@@ -1049,6 +1327,11 @@ export async function startFomSync(options: SyncOptions): Promise<{ started: boo
     .insert(integrationImportsTable)
     .values({ integration: "fom", status: "running", message: "Sinxronlash boshlandi…" })
     .returning({ id: integrationImportsTable.id });
+  // Auto sync runs every few seconds; keep one day of history plus the last success.
+  await db.execute(sql`
+    delete from ${integrationImportsTable}
+    where integration = 'fom' and started_at < now() - interval '1 day'
+      and id <> coalesce((select max(id) from ${integrationImportsTable} where integration = 'fom' and status = 'success'), 0)`);
   running = runFomSync(config, options, row.id).finally(() => {
     running = null;
   });
@@ -1079,6 +1362,20 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       .where(eq(integrationImportsTable.id, importId));
   };
 
+  // Progress: refs and stock count as one unit each; dated work is planned once filials are known.
+  details.progress = { done: 0, total: (skipRefs ? 0 : 2) + 1 };
+  let lastWrite = 0;
+  const percent = () => Math.min(99, Math.floor((details.progress!.done * 100) / Math.max(1, details.progress!.total)));
+  const plan = (units: number) => {
+    details.progress!.total += units;
+  };
+  const tick = async (label: string) => {
+    details.progress!.done += 1;
+    if (Date.now() - lastWrite < 2000) return;
+    lastWrite = Date.now();
+    await progress(`${label} · ${percent()}%`);
+  };
+
   const isConnectionError = (error: unknown) =>
     error instanceof FomError && /ulanib boʻlmadi|soniyada kelmadi/.test(error.message);
 
@@ -1088,10 +1385,12 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       details.reports[key] = { rows: 0, imported: 0, error: "Oʻtkazib yuborildi: server bilan aloqa yoʻq.", warning: null };
       return;
     }
-    await progress(`${FOM_REPORTS[key].label} yuklanmoqda…`);
+    await progress(`${FOM_REPORTS[key].label} yuklanmoqda… · ${percent()}%`);
+    lastWrite = Date.now();
     const warnings: string[] = [];
     try {
       const result = await work((message) => warnings.push(message));
+      if (key === "organizations" || key === "catalog" || key === "stock") details.progress!.done += 1;
       details.reports[key] = { ...result, error: null, warning: warnings.length ? warnings.join("; ").slice(0, 400) : null };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1167,7 +1466,20 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   ]);
   if (details.filials.length === 0) details.filials = [firstFilial];
 
-  await run("stock", async (warn) => {
+  // The 15-second auto runs refresh stock only every FOM_STOCK_INTERVAL_MIN (a heavy query on the pharmacy server).
+  const stockEveryMs = (Number(process.env.FOM_STOCK_INTERVAL_MIN) || 5) * 60_000;
+  const stockFresh =
+    options.trigger === "auto" &&
+    !!previous?.stockAt &&
+    !!previous.reports.stock &&
+    !previous.reports.stock.error &&
+    Date.now() - new Date(previous.stockAt).getTime() < stockEveryMs;
+  if (stockFresh) {
+    details.reports.stock = previous!.reports.stock;
+    details.stockAt = previous!.stockAt;
+    details.progress.done += 1;
+  } else await run("stock", async (warn) => {
+    details.stockAt = new Date().toISOString();
     if (fomSqlMode(config) && (await fomReportIdFor(config, "stock")) == null) {
       const rows = await fetchFomStockDirect(config);
       const batches = rows
@@ -1201,6 +1513,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     return { rows, imported: await importStockSnapshot(lookups, responses) };
   });
 
+  const sqlMode = fomSqlMode(config);
   const dated: Array<{ key: FomReportKey; prefix: string; keyOf: (row: FomRow) => string; save: (docs: Doc[]) => Promise<number> }> = [
     { key: "purchases", prefix: "p", keyOf: docKey, save: (docs) => importPurchases(lookups, docs) },
     { key: "supplierReturns", prefix: "sr", keyOf: docKey, save: (docs) => importStockDocuments(lookups, docs, "supplier_return") },
@@ -1208,39 +1521,69 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     { key: "retailSales", prefix: "rs", keyOf: docKey, save: (docs) => importSales(lookups, docs, "retail") },
     { key: "insuranceSales", prefix: "is", keyOf: docKey, save: (docs) => importSales(lookups, docs, "insurance") },
   ];
-  for (const report of dated) {
+  // SQL mode reads receipts and stock documents per document with batch costs instead of these
+  // procedure reports (they aggregate per day and carry no cost).
+  const replacedBySql = new Set<FomReportKey>(["supplierReturns", "writeOffs", "retailSales"]);
+  const procReports = dated.filter((report) => !(sqlMode && replacedBySql.has(report.key)));
+  const direct: Array<{ key: FomReportKey; load: (start: Date, end: Date) => Promise<{ rows: number; imported: number }> }> = sqlMode
+    ? [
+        {
+          key: "receipts",
+          load: async (start, end) => {
+            const data = await fetchFomReceiptsDirect(config, start, end);
+            return { rows: data.lines.length, imported: await importReceipts(lookups, data.lines, data.payments) };
+          },
+        },
+        {
+          key: "stockDocuments",
+          load: async (start, end) => {
+            const data = await fetchFomStockDocumentsDirect(config, start, end);
+            return { rows: data.length, imported: await importDirectStockDocuments(lookups, data) };
+          },
+        },
+        {
+          key: "transfers",
+          load: async (start, end) => {
+            const data = await fetchFomTransfersDirect(config, start, end);
+            return { rows: data.length, imported: await importTransfers(lookups, data) };
+          },
+        },
+        {
+          key: "payments",
+          load: async (start, end) => {
+            const data = await fetchFomPaymentsDirect(config, start, end);
+            return { rows: data.length, imported: await importPayments(lookups, data) };
+          },
+        },
+      ]
+    : [];
+  const ranges = windows(from, to);
+  plan(procReports.length * details.filials.length * ranges.length + direct.length * ranges.length);
+
+  for (const report of procReports) {
     await run(report.key, async (warn) => {
       let rows = 0;
       let imported = 0;
       await perFilial(warn, async (filial) => {
-        for (const [start, end] of windows(from, to)) {
+        for (const [start, end] of ranges) {
           const data = await fetchReport(report.key, filial, start, end);
           rows += data.length;
           imported += await report.save(groupDocs(data, report.prefix, filial, report.keyOf));
+          await tick(FOM_REPORTS[report.key].label);
         }
       });
       return { rows, imported };
     });
   }
-
-  if (fomSqlMode(config)) {
-    await run("transfers", async () => {
+  for (const step of direct) {
+    await run(step.key, async () => {
       let rows = 0;
       let imported = 0;
-      for (const [start, end] of windows(from, to)) {
-        const data = await fetchFomTransfersDirect(config, start, end);
-        rows += data.length;
-        imported += await importTransfers(lookups, data);
-      }
-      return { rows, imported };
-    });
-    await run("payments", async () => {
-      let rows = 0;
-      let imported = 0;
-      for (const [start, end] of windows(from, to)) {
-        const data = await fetchFomPaymentsDirect(config, start, end);
-        rows += data.length;
-        imported += await importPayments(lookups, data);
+      for (const [start, end] of ranges) {
+        const result = await step.load(start, end);
+        rows += result.rows;
+        imported += result.imported;
+        await tick(`${FOM_REPORTS[step.key].label} (${fomDay(end.toISOString())} gacha)`);
       }
       return { rows, imported };
     });
@@ -1249,6 +1592,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   const fetched = Object.entries(details.reports)
     .filter(([key]) => !(skipRefs && REFERENCE_REPORTS.includes(key as FomReportKey)))
     .map(([, outcome]) => outcome);
+  details.progress.done = details.progress.total;
   const errors = fetched.filter((outcome) => outcome?.error);
   const total = fetched.reduce((sum, outcome) => sum + (outcome?.imported ?? 0), 0);
   const status = errors.length === fetched.length ? "error" : "success";

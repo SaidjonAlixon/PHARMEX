@@ -5,7 +5,10 @@ import {
   fomSqlOrganizations,
   fomSqlPayments,
   fomSqlProcInfo,
+  fomSqlReceiptLines,
+  fomSqlReceiptPayments,
   fomSqlStock,
+  fomSqlStockDocuments,
   fomSqlTransfers,
   fomSqlUrl,
   type FomSqlConfig,
@@ -31,7 +34,9 @@ export const FOM_REPORTS = {
   writeOffs: { id: 3, key: "writeOffs", label: "Hisobdan chiqarish", target: "Tovar harakati: hisobdan chiqarish", dated: true },
   retailSales: { id: 14, key: "retailSales", label: "Chakana savdo (v2)", target: "Savdolar (cheklar)", dated: true },
   insuranceSales: { id: 15, key: "insuranceSales", label: "Sugʻurta savdosi (v2)", target: "Savdolar (sugʻurta orqali)", dated: true },
-  // Not a P_GetReport_XML report: read from F-APTEKA's INVOICE tables in SQL mode only (id 0).
+  // Not P_GetReport_XML reports: read from F-APTEKA's tables in SQL mode only (id 0).
+  receipts: { id: 0, key: "receipts", label: "Cheklar (tannarx bilan)", target: "Savdolar: har bir chek, toʻlov turi, chegirma, tannarx", dated: true },
+  stockDocuments: { id: 0, key: "stockDocuments", label: "Hisobdan chiqarish, qaytarish, inventarizatsiya", target: "Tovar harakati va xarajatlar", dated: true },
   transfers: { id: 0, key: "transfers", label: "Ichki koʻchirishlar", target: "Tovar harakati: ombor ↔ dorixona oʻtkazmalari", dated: true },
   payments: { id: 0, key: "payments", label: "Kassa tushumlari", target: "Pul operatsiyalari: naqd, Humo, onlayn, boshqa", dated: true },
 } satisfies Record<string, FomReportDef>;
@@ -130,6 +135,8 @@ const REPORT_FALLBACKS: Record<FomReportKey, number[]> = {
   writeOffs: [3],
   retailSales: [14, 4],
   insuranceSales: [15, 5],
+  receipts: [],
+  stockDocuments: [],
   transfers: [],
   payments: [],
 };
@@ -163,6 +170,16 @@ export const fetchFomStockDirect = (config: FomConfig) => fetchDirect(config, fo
 /** Daily money totals per department and payment type (see fomSqlPayments). */
 export const fetchFomPaymentsDirect = (config: FomConfig, from: Date, to: Date) =>
   fetchDirect(config, (cfg, timeoutMs) => fomSqlPayments(cfg, from, to, timeoutMs));
+
+/** Retail receipts with their lines and payments (see fomSqlReceiptLines / fomSqlReceiptPayments). */
+export const fetchFomReceiptsDirect = async (config: FomConfig, from: Date, to: Date) => ({
+  lines: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptLines(cfg, from, to, timeoutMs)),
+  payments: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptPayments(cfg, from, to, timeoutMs)),
+});
+
+/** Write-offs, supplier returns and inventory documents (see fomSqlStockDocuments). */
+export const fetchFomStockDocumentsDirect = (config: FomConfig, from: Date, to: Date) =>
+  fetchDirect(config, (cfg, timeoutMs) => fomSqlStockDocuments(cfg, from, to, timeoutMs));
 
 /** Warehouse ↔ pharmacy moves, one row per line (see fomSqlTransfers). */
 export const fetchFomTransfersDirect = (config: FomConfig, from: Date, to: Date) =>

@@ -36,7 +36,7 @@ function ago(value: string | null | undefined) {
 /** Topbar indicator; refreshes every page's data as soon as a new FOM import lands. */
 export function FomLive() {
   const qc = useQueryClient();
-  const q = useGetFomStatus({ query: { queryKey: getGetFomStatusQueryKey(), refetchInterval: 15_000 } });
+  const q = useGetFomStatus({ query: { queryKey: getGetFomStatusQueryKey(), refetchInterval: query => (query.state.data?.running ? 3_000 : 15_000) } });
   const seen = useRef<string | undefined>(undefined);
   const [, setTick] = useState(0);
   const s = q.data;
@@ -45,7 +45,7 @@ export function FomLive() {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (!s || s.running) return;
+    if (!s) return;
     const key = `${s.lastSyncAt}|${s.site.lastAt}`;
     if (seen.current !== undefined && seen.current !== key) qc.invalidateQueries();
     seen.current = key;
@@ -54,9 +54,12 @@ export function FomLive() {
   const latest = [s.lastSyncAt, s.site.lastAt].filter(Boolean).sort().pop() ?? null;
   const sitePushing = !!s.site.lastAt && Date.now() - new Date(s.site.lastAt).getTime() < 30 * 60_000;
   const live = s.connected || sitePushing;
-  const tone = s.running ? 'running' : live ? 'live' : 'down';
+  // Auto sync runs every few seconds; only a long (initial / backfill) run shows its percentage.
+  const longRun = s.running && (!s.lastSyncAt || Date.now() - new Date(s.lastSyncAt).getTime() > 2 * 60_000);
+  const pct = longRun ? /(\d+)%\s*$/.exec(s.lastMessage ?? '')?.[1] : undefined;
+  const tone = longRun ? 'running' : live ? 'live' : 'down';
   return <Link href="/settings" className={`fom-live ${tone}`} title={s.lastMessage ?? 'FOM integratsiyasi'} data-testid="status-fom-live">
-    <span className="dot" /><b>FOM</b><small>{s.running ? 'yangilanmoqda…' : live ? ago(latest) : 'aloqa yoʻq'}</small>
+    <span className="dot" /><b>FOM</b><small>{longRun ? (pct ? `yuklanmoqda ${pct}%` : 'yangilanmoqda…') : live ? ago(latest) : 'aloqa yoʻq'}</small>
   </Link>;
 }
 

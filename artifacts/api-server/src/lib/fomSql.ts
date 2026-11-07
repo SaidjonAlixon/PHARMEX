@@ -189,10 +189,7 @@ export function fomSqlTransfers(cfg: FomSqlConfig, from: Date, to: Date, timeout
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
     WHERE I.DOCTYPE IN (13, 15, 57) AND L.STATE IN (11, 12)
       AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
-    ORDER BY I.ID, L.ID`, (request) => {
-    request.input("from", sql.DateTime, from);
-    request.input("to", sql.DateTime, to);
-  });
+    ORDER BY I.ID, L.ID`, dateWindow(from, to));
 }
 
 /**
@@ -207,10 +204,64 @@ export function fomSqlPayments(cfg: FomSqlConfig, from: Date, to: Date, timeoutM
     FROM dbo.${table} P
     WHERE P.DOCTYPE IN (${types}) AND P.DATA >= @from AND P.DATA < DATEADD(day, 1, @to)
     GROUP BY P.DOCTYPE, P.OTDEL, CONVERT(varchar(10), P.DATA, 120)`;
-  return queryRows(cfg, timeoutMs, `${part("PAYIN", "in", "20, 21, 22, 23, 24")} UNION ALL ${part("PAYOUT", "out", "40, 52, 56")}`, (request) => {
-    request.input("from", sql.DateTime, from);
-    request.input("to", sql.DateTime, to);
-  });
+  return queryRows(cfg, timeoutMs, `${part("PAYIN", "in", "20, 21, 22, 23, 24")} UNION ALL ${part("PAYOUT", "out", "40, 52, 56")}`, dateWindow(from, to));
+}
+
+const dateWindow = (from: Date, to: Date) => (request: sql.Request) => {
+  request.input("from", sql.DateTime, from);
+  request.input("to", sql.DateTime, to);
+};
+
+/**
+ * Retail receipts (INVOICE 2) and retail returns (4, negative KOL), one row per line with the
+ * batch cost. PRICE is after discount, PRICE1 before it; NDS is per unit.
+ * Columns: ID, DT, N, T entered at (local time), D day, F department, G good, Q, P, P1, V, C.
+ */
+export function fomSqlReceiptLines(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+  return queryRows(cfg, timeoutMs, `
+    SELECT I.ID, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(19), I.DATAENTER, 126) AS T,
+           CONVERT(varchar(10), I.DATA, 120) AS D, I.OTDEL AS F, IL.GOOD AS G,
+           CONVERT(varchar(40), L.KOL) AS Q, CONVERT(varchar(40), L.PRICE) AS P, CONVERT(varchar(40), L.PRICE1) AS P1,
+           CONVERT(varchar(40), L.NDS) AS V, CONVERT(varchar(40), IL.PRICEPRIH) AS C
+    FROM dbo.INVOICE I
+    JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
+    JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
+    WHERE I.DOCTYPE IN (2, 4) AND L.STATE IN (11, 12)
+      AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
+    ORDER BY I.ID, L.ID`, dateWindow(from, to));
+}
+
+/** Payments of the receipts above, per receipt and PAYIN type. Columns: ID receipt, DT, S sum. */
+export function fomSqlReceiptPayments(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+  return queryRows(cfg, timeoutMs, `
+    SELECT P.INVOICE AS ID, P.DOCTYPE AS DT, CONVERT(varchar(40), SUM(P.SUMMA)) AS S
+    FROM dbo.PAYIN P JOIN dbo.INVOICE I ON I.ID = P.INVOICE
+    WHERE I.DOCTYPE IN (2, 4) AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
+    GROUP BY P.INVOICE, P.DOCTYPE`, dateWindow(from, to));
+}
+
+/**
+ * Other stock documents, one row per line. INVOICE 11 write-off, 58 expired write-off,
+ * 12 supplier return, 17 expired return, 6 / 9 inventory shortage; INCOME 9 inventory surplus.
+ * Columns: K key, DT, N, D, F department, O counterparty ORG, R purpose, G, Q, C unit cost.
+ */
+export function fomSqlStockDocuments(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+  return queryRows(cfg, timeoutMs, `
+    SELECT 'inv:' + CONVERT(varchar(20), I.ID) AS K, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(10), I.DATA, 120) AS D,
+           I.OTDEL AS F, I.ORG AS O, ISNULL(I.PURPOSE, '') AS R, IL.GOOD AS G,
+           CONVERT(varchar(40), L.KOL) AS Q, CONVERT(varchar(40), IL.PRICEPRIH) AS C
+    FROM dbo.INVOICE I
+    JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
+    JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
+    WHERE I.DOCTYPE IN (6, 9, 11, 12, 17, 58) AND L.STATE IN (11, 12)
+      AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
+    UNION ALL
+    SELECT 'inc:' + CONVERT(varchar(20), H.ID), 1009, H.NUMBER, CONVERT(varchar(10), H.DATA, 120),
+           H.OTDEL, H.ORG, ISNULL(H.PURPOSE, ''), L.GOOD,
+           CONVERT(varchar(40), L.KOL), CONVERT(varchar(40), L.PRICEPRIH)
+    FROM dbo.INCOME H JOIN dbo.INCOMELN L ON L.INCOME = H.ID
+    WHERE H.DOCTYPE = 9 AND H.STATE = 12 AND H.DATA >= @from AND H.DATA < DATEADD(day, 1, @to)
+    ORDER BY 1`, dateWindow(from, to));
 }
 
 async function queryRows(
