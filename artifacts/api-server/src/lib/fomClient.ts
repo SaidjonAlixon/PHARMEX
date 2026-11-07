@@ -1,3 +1,5 @@
+import { FomSqlConnectionError, execFomSqlReport, fomSqlConfig, fomSqlProcInfo, fomSqlUrl } from "./fomSql";
+
 export type FomRow = Record<string, string>;
 
 export interface FomReportDef {
@@ -56,8 +58,9 @@ export function fomEnvConfig(): FomConfig {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   };
+  const sqlCfg = fomSqlConfig();
   return {
-    reportUrl: process.env.FOM_REPORT_URL?.trim().replace(/\/+$/, "") || null,
+    reportUrl: sqlCfg ? fomSqlUrl(sqlCfg) : process.env.FOM_REPORT_URL?.trim().replace(/\/+$/, "") || null,
     filialIds: parseFilialIds(process.env.FOM_FILIAL_IDS ?? ""),
     siteToken: process.env.FOM_SITE_TOKEN?.trim() || null,
     apiToken: process.env.FOM_API_TOKEN?.trim() || null,
@@ -103,6 +106,34 @@ export function reportUrl(
 
 export class FomError extends Error {}
 
+// Older P_GetReport_XML versions only know the v1 reports (1, 2, 4, 5) and lack 6 / 189.
+const REPORT_FALLBACKS: Record<FomReportKey, number[]> = {
+  organizations: [189],
+  catalog: [188],
+  stock: [6],
+  purchases: [11, 1],
+  supplierReturns: [12, 2],
+  writeOffs: [3],
+  retailSales: [14, 4],
+  insuranceSales: [15, 5],
+};
+
+/** Report id to request for a section; null when the connected FOM version has no such report. */
+export async function fomReportIdFor(config: FomConfig, key: FomReportKey): Promise<number | null> {
+  const sqlCfg = config.reportUrl?.startsWith("mssql://") ? fomSqlConfig() : null;
+  if (!sqlCfg) return FOM_REPORTS[key].id;
+  let info;
+  try {
+    info = await fomSqlProcInfo(sqlCfg, config.timeoutMs);
+  } catch (error) {
+    if (error instanceof FomSqlConnectionError) {
+      throw new FomError(`FOM bazasiga ulanib boʻlmadi (${error.message} — ${config.reportUrl}).`);
+    }
+    throw new FomError(error instanceof Error ? error.message : String(error));
+  }
+  return REPORT_FALLBACKS[key].find((id) => info.reports.size === 0 || info.reports.has(id)) ?? null;
+}
+
 const connectionHints: Record<string, string> = {
   ECONNREFUSED: "port yopiq: REPORT.exe ishga tushmagan yoki port notoʻgʻri",
   ECONNRESET: "server ulanishni uzdi",
@@ -132,6 +163,16 @@ export async function fetchFomReport(
   to: Date,
 ): Promise<FomRow[]> {
   if (!config.reportUrl) throw new FomError("FOM server manzili sozlanmagan.");
+  const sqlCfg = config.reportUrl.startsWith("mssql://") ? fomSqlConfig() : null;
+  if (sqlCfg) {
+    try {
+      return parseFomXml(await execFomSqlReport(sqlCfg, reportId, filialId, from, to, Math.max(config.timeoutMs, 300_000)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (error instanceof FomSqlConnectionError) throw new FomError(`FOM bazasiga ulanib boʻlmadi (${message} — ${config.reportUrl}).`);
+      throw new FomError(message);
+    }
+  }
   const url = reportUrl(config.reportUrl, reportId, filialId, from, to);
   let response: Response;
   try {

@@ -18,6 +18,7 @@ import {
   FomError,
   fetchFomReport,
   fomConfig,
+  fomReportIdFor,
   fomDateValue,
   fomDay,
   fomNumber,
@@ -886,8 +887,10 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     }
   };
 
-  const fetchReport = (key: FomReportKey, filial: string, rangeFrom = from, rangeTo = to) =>
-    fetchFomReport(config, FOM_REPORTS[key].id, filial, rangeFrom, rangeTo);
+  const fetchReport = async (key: FomReportKey, filial: string, rangeFrom = from, rangeTo = to) => {
+    const id = await fomReportIdFor(config, key);
+    return id == null ? [] : fetchFomReport(config, id, filial, rangeFrom, rangeTo);
+  };
 
   /** Runs `fetch` for every filial; one filial failing does not stop the others. */
   const perFilial = async <T>(warn: (message: string) => void, fetch: (filial: string) => Promise<T>) => {
@@ -916,6 +919,14 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   } else {
     await run("organizations", async () => {
       orgRows = await fetchReport("organizations", firstFilial);
+      // Versions without report 189 still need the branch row the documents point at.
+      if (orgRows.length === 0 && (await fomReportIdFor(config, "organizations")) == null) {
+        orgRows = (config.filialIds.length ? config.filialIds : [firstFilial]).map((id) => ({
+          I: id,
+          N: process.env.FOM_BRANCH_NAME?.trim() || `Filial ${id}`,
+          APT: "1",
+        }));
+      }
       return { rows: orgRows.length, imported: await importOrganizations(lookups, orgRows) };
     });
     await run("catalog", async () => {
@@ -1005,14 +1016,16 @@ export async function testFomConnection(): Promise<{ ok: boolean; message: strin
   if (!config.reportUrl) return { ok: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
   try {
     const today = new Date();
+    // Report 189 is missing from older P_GetReport_XML versions; the catalog is always there.
+    const key: FomReportKey = (await fomReportIdFor(config, "organizations")) == null ? "catalog" : "organizations";
     const rows = await fetchFomReport(
-      { ...config, timeoutMs: Math.min(config.timeoutMs, 20_000) },
-      FOM_REPORTS.organizations.id,
+      { ...config, timeoutMs: Math.min(config.timeoutMs, key === "catalog" ? 120_000 : 20_000) },
+      (await fomReportIdFor(config, key))!,
       config.filialIds[0] ?? "1",
       today,
       today,
     );
-    return { ok: true, message: `FOM serveri javob berdi: ${rows.length} ta tashkilot.` };
+    return { ok: true, message: `FOM serveri javob berdi: ${rows.length} ta ${key === "catalog" ? "tovar" : "tashkilot"}.` };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }
