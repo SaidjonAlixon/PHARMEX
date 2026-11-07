@@ -4,7 +4,10 @@ import {
   fomSqlConfig,
   fomSqlOrganizations,
   fomSqlProcInfo,
+  fomSqlStock,
+  fomSqlTransfers,
   fomSqlUrl,
+  type FomSqlConfig,
 } from "./fomSql";
 
 export type FomRow = Record<string, string>;
@@ -27,6 +30,8 @@ export const FOM_REPORTS = {
   writeOffs: { id: 3, key: "writeOffs", label: "Hisobdan chiqarish", target: "Tovar harakati: hisobdan chiqarish", dated: true },
   retailSales: { id: 14, key: "retailSales", label: "Chakana savdo (v2)", target: "Savdolar (cheklar)", dated: true },
   insuranceSales: { id: 15, key: "insuranceSales", label: "Sugʻurta savdosi (v2)", target: "Savdolar (sugʻurta orqali)", dated: true },
+  // Not a P_GetReport_XML report: read from F-APTEKA's INVOICE tables in SQL mode only (id 0).
+  transfers: { id: 0, key: "transfers", label: "Ichki koʻchirishlar", target: "Tovar harakati: ombor ↔ dorixona oʻtkazmalari", dated: true },
 } satisfies Record<string, FomReportDef>;
 
 export type FomReportKey = keyof typeof FOM_REPORTS;
@@ -123,14 +128,22 @@ const REPORT_FALLBACKS: Record<FomReportKey, number[]> = {
   writeOffs: [3],
   retailSales: [14, 4],
   insuranceSales: [15, 5],
+  transfers: [],
 };
 
-/** Organisations in report-189 shape straight from F-APTEKA's ORG table; [] outside SQL mode. */
-export async function fetchFomOrganizationsDirect(config: FomConfig): Promise<FomRow[]> {
-  const sqlCfg = config.reportUrl?.startsWith("mssql://") ? fomSqlConfig() : null;
+export function fomSqlMode(config: FomConfig): boolean {
+  return Boolean(config.reportUrl?.startsWith("mssql://") && fomSqlConfig());
+}
+
+/** Reads F-APTEKA tables directly (SQL mode only); [] otherwise. */
+async function fetchDirect(
+  config: FomConfig,
+  query: (cfg: FomSqlConfig, timeoutMs: number) => Promise<FomRow[]>,
+): Promise<FomRow[]> {
+  const sqlCfg = fomSqlMode(config) ? fomSqlConfig() : null;
   if (!sqlCfg) return [];
   try {
-    return await fomSqlOrganizations(sqlCfg, config.timeoutMs);
+    return await query(sqlCfg, Math.max(config.timeoutMs, 300_000));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof FomSqlConnectionError) throw new FomError(`FOM bazasiga ulanib boʻlmadi (${message} — ${config.reportUrl}).`);
@@ -138,10 +151,20 @@ export async function fetchFomOrganizationsDirect(config: FomConfig): Promise<Fo
   }
 }
 
+/** Organisations in report-189 shape straight from F-APTEKA's ORG table. */
+export const fetchFomOrganizationsDirect = (config: FomConfig) => fetchDirect(config, fomSqlOrganizations);
+
+/** Current stock per department and good (see fomSqlStock). */
+export const fetchFomStockDirect = (config: FomConfig) => fetchDirect(config, fomSqlStock);
+
+/** Warehouse ↔ pharmacy moves, one row per line (see fomSqlTransfers). */
+export const fetchFomTransfersDirect = (config: FomConfig, from: Date, to: Date) =>
+  fetchDirect(config, (cfg, timeoutMs) => fomSqlTransfers(cfg, from, to, timeoutMs));
+
 /** Report id to request for a section; null when the connected FOM version has no such report. */
 export async function fomReportIdFor(config: FomConfig, key: FomReportKey): Promise<number | null> {
   const sqlCfg = config.reportUrl?.startsWith("mssql://") ? fomSqlConfig() : null;
-  if (!sqlCfg) return FOM_REPORTS[key].id;
+  if (!sqlCfg) return FOM_REPORTS[key].id || null;
   let info;
   try {
     info = await fomSqlProcInfo(sqlCfg, config.timeoutMs);

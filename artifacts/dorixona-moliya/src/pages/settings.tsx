@@ -248,7 +248,7 @@ export function SettingsPage() {
         {pull && <Panel title="Hisobotlar (REPORT.exe)" subtitle={status.lastSyncFrom ? `Oxirgi davr: ${date(status.lastSyncFrom)} — ${date(status.lastSyncTo)}` : 'Hali sinxronlanmagan'}>
           <TableWrap><thead><tr><th>ID</th><th>Hisobot</th><th>Platformada</th><th className="num">Qator</th><th className="num">Import</th><th>Holat</th></tr></thead>
             <tbody>{status.reports.map(report => <tr key={report.key} data-testid={`row-fom-report-${report.key}`}>
-              <td><code>{report.reportId}</code></td>
+              <td><code>{report.reportId || 'SQL'}</code></td>
               <td><b>{report.label}</b>{report.dated && <small className="muted-line">davr boʻyicha</small>}{report.error && <small className="error-line">{report.error}</small>}{report.warning && <small className="error-line warn">{report.warning}</small>}</td>
               <td className="muted">{report.target}</td>
               <td className="num">{report.rows?.toLocaleString('uz-UZ') ?? '—'}</td>

@@ -18,8 +18,11 @@ import {
   FomError,
   fetchFomOrganizationsDirect,
   fetchFomReport,
+  fetchFomStockDirect,
+  fetchFomTransfersDirect,
   fomConfig,
   fomReportIdFor,
+  fomSqlMode,
   fomDateValue,
   fomDay,
   fomNumber,
@@ -164,15 +167,14 @@ export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Pro
     const inserted = await db
       .insert(branchesTable)
       .values(
-        branchRows.map((row) => ({
-          name: row.N?.trim() || `Filial ${row.I}`,
-          fomId: row.I,
-          source: SOURCE,
-        })),
+        branchRows.map((row) => {
+          const name = row.N?.trim() || `Filial ${row.I}`;
+          return { name, fomId: row.I, kind: /склад|sklad|ombor/i.test(name) ? "warehouse" : "pharmacy", source: SOURCE };
+        }),
       )
       .onConflictDoUpdate({
         target: [branchesTable.source, branchesTable.fomId],
-        set: { name: sql`excluded.name` },
+        set: { name: sql`excluded.name`, kind: sql`excluded.kind` },
       })
       .returning({ id: branchesTable.id, fomId: branchesTable.fomId });
     for (const row of inserted) lookups.branches.set(row.fomId!, row.id);
@@ -300,6 +302,8 @@ export interface StockBatch {
   quantity: string;
   retailPrice: string;
   expiry: string | null;
+  /** Cost of the whole quantity, when the source knows it (direct SQL stock). */
+  costValue?: string;
 }
 
 /**
@@ -327,6 +331,7 @@ export async function importStockSnapshot(
 
   const balances = new Map<string, { branchId: number; productId: number; qty: bigint }>();
   const productInfo = new Map<number, { price: bigint; expiry: string | null }>();
+  const stockCost = new Map<number, { qty: bigint; value: bigint }>();
   for (const row of batches) {
     const branchId = lookups.branches.get(row.branchFomId)!;
     const productId = lookups.products.get(row.productFomId)!.id;
@@ -335,6 +340,12 @@ export async function importStockSnapshot(
     const entry = balances.get(key) ?? { branchId, productId, qty: 0n };
     entry.qty += qty;
     balances.set(key, entry);
+    if (row.costValue && qty > 0n) {
+      const cost = stockCost.get(productId) ?? { qty: 0n, value: 0n };
+      cost.qty += qty;
+      cost.value += moneyCents(fomNumber(row.costValue));
+      stockCost.set(productId, cost);
+    }
     if (qty > 0n) {
       const price = moneyCents(fomNumber(row.retailPrice));
       const info = productInfo.get(productId) ?? { price: 0n, expiry: null };
@@ -387,6 +398,23 @@ export async function importStockSnapshot(
           expiry_date = coalesce(v.expiry, p.expiry_date)
       from (values ${values}) as v(id, price, expiry)
       where p.id = v.id`);
+  }
+  // Products never bought in the synced window still need a cost for stock value and margins.
+  const averages = [...stockCost.entries()].filter(([, cost]) => cost.value > 0n);
+  for (const part of chunks(averages)) {
+    const values = sql.join(
+      part.map(([id, cost]) => sql`(${id}::int, ${centsMoney(divideRounded(cost.value * 1000n, cost.qty))}::numeric)`),
+      sql`, `,
+    );
+    const updated = await db.execute<{ id: number; cost_price: string }>(sql`
+      update ${productsTable} as p set cost_price = v.cost
+      from (values ${values}) as v(id, cost) where p.id = v.id and p.cost_price is null
+      returning p.id, p.cost_price`);
+    const costs = new Map(updated.rows.map((row) => [Number(row.id), String(row.cost_price)]));
+    for (const entry of lookups.products.values()) {
+      const cost = costs.get(entry.id);
+      if (cost) entry.cost = cost;
+    }
   }
   await syncBalanceCosts();
   return batches.length;
@@ -780,6 +808,90 @@ export async function importStockDocuments(
   return docs.length;
 }
 
+const transferLabels: Record<string, string> = {
+  "13": "Omborga qaytarish (ВОЗВРАТ НА СКЛАД)",
+  "15": "Dorixonaga koʻchirish (ПЕРЕМЕЩЕНИЕ В АПТЕКУ)",
+  "57": "Dorixonalararo qaytarish (ВОЗВРАТ ДЛЯ АПТЕКИ)",
+};
+
+/** Rows from fomSqlTransfers; each document becomes a transfer with paired out/in movements. */
+export async function importTransfers(lookups: Lookups, rows: FomRow[]): Promise<number> {
+  const docs = new Map<string, { head: FomRow; date: Date; lines: Array<{ productFomId: string; qty: bigint; unitCost: bigint }> }>();
+  for (const row of rows) {
+    const date = fomDateValue(row.D);
+    const qty = qtyMilli(row.Q);
+    if (!row.ID || !row.G || !row.F || !row.T || row.F === row.T || !date || qty <= 0n) continue;
+    const doc = docs.get(row.ID) ?? { head: row, date, lines: [] };
+    doc.lines.push({ productFomId: row.G, qty, unitCost: moneyCents(fomNumber(row.C)) });
+    docs.set(row.ID, doc);
+  }
+  const list = [...docs.values()];
+  await ensureBranches(lookups, list.flatMap((doc) => [doc.head.F, doc.head.T]));
+  await ensureProducts(lookups, list.flatMap((doc) => doc.lines.map((line) => line.productFomId)));
+
+  for (const part of chunks(list, 200)) {
+    await db.transaction(async (tx) => {
+      const headers = part.map(({ head, date, lines }) => {
+        const purpose = head.R?.trim() ?? "";
+        return {
+          docType: "transfer",
+          documentNo: head.N?.trim() || head.ID,
+          branchId: lookups.branches.get(head.F)!,
+          toBranchId: lookups.branches.get(head.T)!,
+          occurredAt: date,
+          reason: transferLabels[head.DT ?? ""] ?? "FOM: ichki koʻchirish",
+          note: /^[*\s]*$/.test(purpose) ? "" : purpose,
+          totalCost: centsMoney(lines.reduce((sum, line) => sum + divideRounded(line.unitCost * line.qty, 1000n), 0n)),
+          createdBy: "FOM",
+          source: SOURCE,
+          sourceId: `tr:${head.ID}`,
+        };
+      });
+      const saved = await tx
+        .insert(stockDocumentsTable)
+        .values(headers)
+        .onConflictDoUpdate({
+          target: [stockDocumentsTable.source, stockDocumentsTable.sourceId],
+          set: {
+            documentNo: sql`excluded.document_no`,
+            branchId: sql`excluded.branch_id`,
+            toBranchId: sql`excluded.to_branch_id`,
+            occurredAt: sql`excluded.occurred_at`,
+            reason: sql`excluded.reason`,
+            note: sql`excluded.note`,
+            totalCost: sql`excluded.total_cost`,
+          },
+        })
+        .returning({ id: stockDocumentsTable.id, sourceId: stockDocumentsTable.sourceId });
+      const idOf = new Map(saved.map((row) => [row.sourceId!, row.id]));
+      await tx.delete(inventoryMovementsTable).where(inArray(inventoryMovementsTable.documentId, saved.map((row) => row.id)));
+
+      const movements: (typeof inventoryMovementsTable.$inferInsert)[] = [];
+      part.forEach((doc, index) => {
+        const header = headers[index];
+        doc.lines.forEach((line, lineIndex) => {
+          const common = {
+            productId: lookups.products.get(line.productFomId)!.id,
+            documentId: idOf.get(header.sourceId)!,
+            quantity: milliQuantity(line.qty),
+            unitCost: centsMoney(line.unitCost),
+            documentNo: header.documentNo,
+            note: header.reason,
+            occurredAt: doc.date,
+            source: SOURCE,
+          };
+          movements.push(
+            { ...common, branchId: header.branchId, toBranchId: header.toBranchId, movementType: "transfer_out", sourceId: `${header.sourceId}#${lineIndex}` },
+            { ...common, branchId: header.toBranchId, toBranchId: header.branchId, movementType: "transfer_in", sourceId: `${header.sourceId}#${lineIndex}in` },
+          );
+        });
+      });
+      await insertMovements(tx, movements);
+    });
+  }
+  return list.length;
+}
+
 // ---------------------------------------------------------------- orchestration
 
 let running: Promise<SyncDetails> | null = null;
@@ -973,6 +1085,21 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   if (details.filials.length === 0) details.filials = [firstFilial];
 
   await run("stock", async (warn) => {
+    if (fomSqlMode(config) && (await fomReportIdFor(config, "stock")) == null) {
+      const rows = await fetchFomStockDirect(config);
+      const batches = rows
+        .filter((row) => row.F && row.G)
+        .map((row) => ({
+          branchFomId: row.F,
+          productFomId: row.G,
+          quantity: row.Q,
+          retailPrice: row.P,
+          expiry: fomDay(row.E),
+          costValue: row.C,
+        }));
+      details.filials = sortIds([...details.filials, ...batches.map((row) => row.branchFomId)]);
+      return { rows: rows.length, imported: await importStockSnapshot(lookups, [batches]) };
+    }
     const results = await perFilial(warn, (filial) => fetchReport("stock", filial));
     const responses = results.map(({ filial, value }) =>
       value
@@ -1009,6 +1136,19 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
           imported += await report.save(groupDocs(data, report.prefix, filial, report.keyOf));
         }
       });
+      return { rows, imported };
+    });
+  }
+
+  if (fomSqlMode(config)) {
+    await run("transfers", async () => {
+      let rows = 0;
+      let imported = 0;
+      for (const [start, end] of windows(from, to)) {
+        const data = await fetchFomTransfersDirect(config, start, end);
+        rows += data.length;
+        imported += await importTransfers(lookups, data);
+      }
       return { rows, imported };
     });
   }

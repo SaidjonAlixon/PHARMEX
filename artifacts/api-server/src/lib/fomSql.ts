@@ -138,14 +138,73 @@ export async function execFomSqlReport(
  * Report 189's fields from F-APTEKA's ORG table, for procedure versions without that report.
  * ORG ids of APT rows equal the OTDEL ids the document reports filter on.
  */
-export async function fomSqlOrganizations(cfg: FomSqlConfig, timeoutMs: number): Promise<Array<Record<string, string>>> {
-  const p = await pool(cfg, timeoutMs);
-  const result = await p.request().query<Record<string, unknown>>(`
+export function fomSqlOrganizations(cfg: FomSqlConfig, timeoutMs: number) {
+  return queryRows(cfg, timeoutMs, `
     SELECT O.ID AS I, O.NAME AS N, O.INN AS INN,
            CAST(ISNULL(O.INC, 0) AS int) AS INC, CAST(ISNULL(O.INV, 0) AS int) AS INV,
            CAST(ISNULL(O.APT, 0) AS int) AS APT, CAST(ISNULL(O.INSURE, 0) AS int) AS INS,
            CAST(ISNULL(O.DISCOUNTS, 0) AS int) AS DIS
     FROM dbo.ORG O WHERE O.NAME IS NOT NULL`);
+}
+
+/**
+ * Current stock per department and good, for procedure versions without report 6.
+ * A batch (INCOMELN, posted = STATE 12) minus its posted outgoing lines (INVOICELN STATE 11/12:
+ * sales, transfers, write-offs, returns). INCOMELN.SALE is not kept in step, and STATE 3
+ * batches are unposted, so neither is used.
+ * Columns: F department, G good, Q quantity, C cost value, P retail price, E nearest expiry.
+ */
+export function fomSqlStock(cfg: FomSqlConfig, timeoutMs: number) {
+  return queryRows(cfg, timeoutMs, `
+    SELECT x.OTDEL AS F, x.GOOD AS G,
+           CONVERT(varchar(40), SUM(x.rest)) AS Q,
+           CONVERT(varchar(40), CAST(SUM(x.rest * x.PRICEPRIH) AS numeric(20, 2))) AS C,
+           CONVERT(varchar(40), MAX(x.PRICEROZ)) AS P,
+           CONVERT(varchar(10), MIN(x.EXPDATA), 120) AS E
+    FROM (
+      SELECT L.OTDEL, L.GOOD, L.PRICEPRIH, L.PRICEROZ, L.EXPDATA, L.KOL - ISNULL(S.K, 0) AS rest
+      FROM dbo.INCOMELN L
+      LEFT JOIN (SELECT INCOMELN, SUM(KOL) AS K FROM dbo.INVOICELN WHERE STATE IN (11, 12) GROUP BY INCOMELN) S
+        ON S.INCOMELN = L.ID
+      WHERE L.STATE = 12
+    ) x
+    WHERE x.rest > 0.0005
+    GROUP BY x.OTDEL, x.GOOD`);
+}
+
+/**
+ * Internal moves, one row per line: 15 warehouse → pharmacy, 13 pharmacy → warehouse,
+ * 57 pharmacy → pharmacy. The receiving side (INCOME 19, INVOICE 16) mirrors these and is skipped.
+ * Columns: ID, DT doc type, N number, D date, F from department, T to department (ORG id),
+ * R purpose, G good, Q quantity, C unit cost, P unit price.
+ */
+export function fomSqlTransfers(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+  return queryRows(cfg, timeoutMs, `
+    SELECT I.ID, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(10), I.DATA, 120) AS D,
+           I.OTDEL AS F, I.ORG AS T, ISNULL(I.PURPOSE, '') AS R,
+           IL.GOOD AS G, CONVERT(varchar(40), L.KOL) AS Q,
+           CONVERT(varchar(40), IL.PRICEPRIH) AS C, CONVERT(varchar(40), L.PRICE) AS P
+    FROM dbo.INVOICE I
+    JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
+    JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
+    WHERE I.DOCTYPE IN (13, 15, 57) AND L.STATE IN (11, 12)
+      AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
+    ORDER BY I.ID, L.ID`, (request) => {
+    request.input("from", sql.DateTime, from);
+    request.input("to", sql.DateTime, to);
+  });
+}
+
+async function queryRows(
+  cfg: FomSqlConfig,
+  timeoutMs: number,
+  text: string,
+  bind?: (request: sql.Request) => void,
+): Promise<Array<Record<string, string>>> {
+  const p = await pool(cfg, timeoutMs);
+  const request = p.request();
+  bind?.(request);
+  const result = await request.query<Record<string, unknown>>(text);
   return result.recordset.map((row) =>
     Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v == null ? "" : String(v).trim()])),
   );
