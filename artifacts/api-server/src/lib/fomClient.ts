@@ -1,4 +1,11 @@
-import { FomSqlConnectionError, execFomSqlReport, fomSqlConfig, fomSqlProcInfo, fomSqlUrl } from "./fomSql";
+import {
+  FomSqlConnectionError,
+  execFomSqlReport,
+  fomSqlConfig,
+  fomSqlOrganizations,
+  fomSqlProcInfo,
+  fomSqlUrl,
+} from "./fomSql";
 
 export type FomRow = Record<string, string>;
 
@@ -117,6 +124,19 @@ const REPORT_FALLBACKS: Record<FomReportKey, number[]> = {
   retailSales: [14, 4],
   insuranceSales: [15, 5],
 };
+
+/** Organisations in report-189 shape straight from F-APTEKA's ORG table; [] outside SQL mode. */
+export async function fetchFomOrganizationsDirect(config: FomConfig): Promise<FomRow[]> {
+  const sqlCfg = config.reportUrl?.startsWith("mssql://") ? fomSqlConfig() : null;
+  if (!sqlCfg) return [];
+  try {
+    return await fomSqlOrganizations(sqlCfg, config.timeoutMs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof FomSqlConnectionError) throw new FomError(`FOM bazasiga ulanib boʻlmadi (${message} — ${config.reportUrl}).`);
+    throw new FomError(message);
+  }
+}
 
 /** Report id to request for a section; null when the connected FOM version has no such report. */
 export async function fomReportIdFor(config: FomConfig, key: FomReportKey): Promise<number | null> {

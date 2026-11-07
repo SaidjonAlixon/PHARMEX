@@ -16,6 +16,7 @@ import {
 import {
   FOM_REPORTS,
   FomError,
+  fetchFomOrganizationsDirect,
   fetchFomReport,
   fomConfig,
   fomReportIdFor,
@@ -80,6 +81,8 @@ interface Lookups {
   branches: Map<string, number>;
   products: Map<string, { id: number; cost: string | null }>;
   suppliers: Map<string, { id: number; name: string }>;
+  /** Older FOM reports (e.g. purchases v1) identify the supplier by INN instead of its FOM id. */
+  suppliersByInn: Map<string, { id: number; name: string }>;
   orgNames: Map<string, string>;
 }
 
@@ -99,6 +102,7 @@ async function loadLookups(): Promise<Lookups> {
         fomId: counterpartiesTable.fomId,
         kind: counterpartiesTable.kind,
         name: counterpartiesTable.name,
+        taxId: counterpartiesTable.taxId,
       })
       .from(counterpartiesTable)
       .where(isNotNull(counterpartiesTable.fomId)),
@@ -107,14 +111,21 @@ async function loadLookups(): Promise<Lookups> {
     branches: new Map(branches.map((row) => [row.fomId!, row.id])),
     products: new Map(products.map((row) => [row.fomId!, { id: row.id, cost: row.cost }])),
     suppliers: new Map(),
+    suppliersByInn: new Map(),
     orgNames: new Map(),
   };
   for (const row of counterparties) {
     lookups.orgNames.set(row.fomId!, row.name);
-    if (row.kind === "supplier") lookups.suppliers.set(row.fomId!, { id: row.id, name: row.name });
+    if (row.kind === "supplier") {
+      lookups.suppliers.set(row.fomId!, { id: row.id, name: row.name });
+      if (row.taxId?.trim()) lookups.suppliersByInn.set(row.taxId.trim(), { id: row.id, name: row.name });
+    }
   }
   return lookups;
 }
+
+const supplierOf = (lookups: Lookups, orgId: string) =>
+  lookups.suppliers.get(orgId) ?? lookups.suppliersByInn.get(orgId);
 
 async function ensureBranches(lookups: Lookups, fomIds: Iterable<string>) {
   const missing = [...new Set(fomIds)].filter((id) => id && !lookups.branches.has(id));
@@ -219,10 +230,18 @@ export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Pro
           target: [counterpartiesTable.kind, counterpartiesTable.fomId],
           set: { name: sql`excluded.name`, taxId: sql`excluded.tax_id`, note: sql`excluded.note` },
         })
-        .returning({ id: counterpartiesTable.id, fomId: counterpartiesTable.fomId, name: counterpartiesTable.name });
+        .returning({
+          id: counterpartiesTable.id,
+          fomId: counterpartiesTable.fomId,
+          name: counterpartiesTable.name,
+          taxId: counterpartiesTable.taxId,
+        });
       for (const row of saved) {
         lookups.orgNames.set(row.fomId!, row.name);
-        if (kind === "supplier") lookups.suppliers.set(row.fomId!, { id: row.id, name: row.name });
+        if (kind === "supplier") {
+          lookups.suppliers.set(row.fomId!, { id: row.id, name: row.name });
+          if (row.taxId?.trim()) lookups.suppliersByInn.set(row.taxId.trim(), { id: row.id, name: row.name });
+        }
       }
     }
     imported += values.length;
@@ -496,7 +515,7 @@ export async function importPurchases(lookups: Lookups, docs: Doc[]): Promise<nu
   for (const part of chunks(docs, 200)) {
     await db.transaction(async (tx) => {
       const headers = part.map((doc) => {
-        const supplier = lookups.suppliers.get(doc.orgId);
+        const supplier = supplierOf(lookups, doc.orgId);
         const figures = doc.lines.map(lineFigures);
         const total = figures.reduce((sum, line) => sum + line.gross, 0n);
         const vat = figures.reduce((sum, line) => sum + line.vat, 0n);
@@ -700,7 +719,7 @@ export async function importStockDocuments(
     await db.transaction(async (tx) => {
       const headers = part.map((doc) => {
         const total = doc.lines.reduce((sum, line) => sum + lineFigures(line).gross, 0n);
-        const supplier = docType === "supplier_return" ? lookups.suppliers.get(doc.orgId) : undefined;
+        const supplier = docType === "supplier_return" ? supplierOf(lookups, doc.orgId) : undefined;
         return {
           docType,
           documentNo: doc.number,
@@ -919,7 +938,10 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   } else {
     await run("organizations", async () => {
       orgRows = await fetchReport("organizations", firstFilial);
-      // Versions without report 189 still need the branch row the documents point at.
+      // Versions without report 189: read F-APTEKA's ORG table directly (SQL mode), else one named branch.
+      if (orgRows.length === 0 && (await fomReportIdFor(config, "organizations")) == null) {
+        orgRows = await fetchFomOrganizationsDirect(config);
+      }
       if (orgRows.length === 0 && (await fomReportIdFor(config, "organizations")) == null) {
         orgRows = (config.filialIds.length ? config.filialIds : [firstFilial]).map((id) => ({
           I: id,

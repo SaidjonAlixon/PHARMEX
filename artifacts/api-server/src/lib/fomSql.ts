@@ -134,6 +134,23 @@ export async function execFomSqlReport(
   return `<R>${xml}${rows}</R>`;
 }
 
+/**
+ * Report 189's fields from F-APTEKA's ORG table, for procedure versions without that report.
+ * ORG ids of APT rows equal the OTDEL ids the document reports filter on.
+ */
+export async function fomSqlOrganizations(cfg: FomSqlConfig, timeoutMs: number): Promise<Array<Record<string, string>>> {
+  const p = await pool(cfg, timeoutMs);
+  const result = await p.request().query<Record<string, unknown>>(`
+    SELECT O.ID AS I, O.NAME AS N, O.INN AS INN,
+           CAST(ISNULL(O.INC, 0) AS int) AS INC, CAST(ISNULL(O.INV, 0) AS int) AS INV,
+           CAST(ISNULL(O.APT, 0) AS int) AS APT, CAST(ISNULL(O.INSURE, 0) AS int) AS INS,
+           CAST(ISNULL(O.DISCOUNTS, 0) AS int) AS DIS
+    FROM dbo.ORG O WHERE O.NAME IS NOT NULL`);
+  return result.recordset.map((row) =>
+    Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v == null ? "" : String(v).trim()])),
+  );
+}
+
 function fomDay(date: Date): string {
   const dd = String(date.getUTCDate()).padStart(2, "0");
   const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
