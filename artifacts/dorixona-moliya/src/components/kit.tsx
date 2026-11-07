@@ -48,7 +48,8 @@ export function money(value: string | number | null | undefined) {
   const text = moneyFormat.format(n).replace(/\u00a0|\u202f/g, ' ');
   // Tiyin are shown as two digits (14 000,30), never one.
   const amount = /,\d$/.test(text) ? `${text}0` : text;
-  return `${amount} soʻm`;
+  // Non-breaking space keeps "soʻm" glued to the figure (e.g. 2 729 156 996 soʻm).
+  return `${amount}\u00a0soʻm`;
 }
 export function qty(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === '') return '—';
@@ -136,15 +137,15 @@ export function Panel({ title, subtitle, action, children, className = '' }: { t
   return <section className={`panel ${className}`}><div className="panel-head"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action}</div>{children}</section>;
 }
 /**
- * Card figure that fits its card: sums of a million and more drop the tiyin, and long figures get
- * a smaller size class. The exact amount stays in `title`.
+ * Card figure: every money amount uses the same size; million+ drops tiyin for readability.
+ * Full amount (with soʻm) stays in `title` for hover.
  */
 export function fitFigure(value: string | number | null | undefined, count = false) {
   if (value === null || value === undefined || value === '') return { text: '—', title: undefined, cls: '' };
   const n = Number(value);
   const text = count || !Number.isFinite(n) ? String(value) : Math.abs(n) >= 1_000_000 ? money(Math.round(n)) : money(n);
   const title = count || !Number.isFinite(n) ? undefined : money(n);
-  return { text, title, cls: text.length > 18 ? 'fit-sm' : text.length > 13 ? 'fit-md' : '' };
+  return { text, title, cls: count ? '' : 'money-figure' };
 }
 
 export function Metric({ label, value, unit, trend, icon: Icon }: { label: string; value: string | null | undefined; unit?: string; trend?: string; icon: LucideIcon }) {
