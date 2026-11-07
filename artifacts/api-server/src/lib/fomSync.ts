@@ -1831,18 +1831,27 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   }
 
   const fetched = Object.entries(details.reports)
-    .filter(([key]) => !(skipRefs && REFERENCE_REPORTS.includes(key as FomReportKey)))
+    .filter(([key]) => !(skipRefs && REFERENCE_REPORTS.includes(key as FomReportKey)) && !(stockFresh && key === "stock"))
     .map(([, outcome]) => outcome);
   details.progress.done = details.progress.total;
   const errors = fetched.filter((outcome) => outcome?.error);
-  const total = fetched.reduce((sum, outcome) => sum + (outcome?.imported ?? 0), 0);
+  // In change mode reference books and stock are snapshots, not new records.
+  const total = Object.entries(details.reports)
+    .filter(([key]) => (since ? !["organizations", "catalog", "stock"].includes(key) : fetched.includes(details.reports[key as FomReportKey])))
+    .reduce((sum, [, outcome]) => sum + (outcome?.imported ?? 0), 0);
   const status = errors.length === fetched.length ? "error" : "success";
-  const scope = `${details.filials.length} filial, ${details.from} — ${details.to}`;
+  const scope = since
+    ? `${details.filials.length} filial, F-APTEKA ${since.toISOString().slice(11, 19)} dan beri`
+    : `${details.filials.length} filial, ${details.from} — ${details.to}`;
   const message = fatal
     ? fatal
     : errors.length
-      ? `${fetched.length - errors.length}/${fetched.length} hisobot yuklandi, ${errors.length} tasida xatolik (${scope}).`
-      : `${fetched.length} hisobot yuklandi: ${total.toLocaleString("ru-RU")} yozuv (${scope}).`;
+      ? `${fetched.length - errors.length}/${fetched.length} manba yuklandi, ${errors.length} tasida xatolik (${scope}).`
+      : since
+        ? total
+          ? `Yangi va oʻzgargan: ${total.toLocaleString("ru-RU")} yozuv qoʻshildi (${scope}).`
+          : `Yangi maʼlumot yoʻq, hammasi joyida (${scope}).`
+        : `${fetched.length} manba yuklandi: ${total.toLocaleString("ru-RU")} yozuv (${scope}).`;
   await db
     .update(integrationImportsTable)
     .set({ status, message, importedRecords: total, completedAt: new Date(), details: JSON.stringify(details) })
