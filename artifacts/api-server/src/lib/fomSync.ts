@@ -987,7 +987,8 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
     // negative KOL, which stay negative so the receipt total matches F-APTEKA.
     const sign = row.DT === "4" ? -1n : 1n;
     const qty = sign * qtyMilli(row.Q);
-    if (!row.ID || !row.G || !row.F || !at || qty === 0n) continue;
+    // Lines below 0.0005 units round to quantity 0 but still carry money; keep them for the total.
+    if (!row.ID || !row.G || !row.F || !at || (qty === 0n && moneyCents(fomNumber(row.A)) === 0n)) continue;
     const net = moneyCents(fomNumber(row.P));
     const before = moneyCents(fomNumber(row.P1));
     const vat = moneyCents(fomNumber(row.V));
