@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import express, {
   type Express,
   type NextFunction,
@@ -60,6 +62,18 @@ if (localAuthEnabled) {
 }
 
 app.use("/api", router);
+
+// Production: the API also serves the built web app (dev uses the Vite server). Run from artifacts/api-server.
+const webDir = process.env.WEB_DIST_DIR?.trim() || path.resolve(process.cwd(), "../dorixona-moliya/dist/public");
+if (existsSync(path.join(webDir, "index.html"))) {
+  app.use("/assets", express.static(path.join(webDir, "assets"), { immutable: true, maxAge: "1y" }));
+  app.use(express.static(webDir, { index: false }));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(webDir, "index.html"));
+  });
+  logger.info({ webDir }, "Serving web app");
+}
 
 app.use(
   (error: unknown, req: Request, res: Response, _next: NextFunction): void => {

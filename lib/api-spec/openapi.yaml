@@ -1746,7 +1746,7 @@ components:
         running: { type: boolean }
         reportAvailable:
           type: boolean
-          description: false when the API runs where REPORT.exe cannot be reached (Vercel); data then arrives only via SITE.exe
+          description: false when the API cannot reach REPORT.exe; data then arrives only via SITE.exe
         filialIds:
           type: array
           items: { type: string }

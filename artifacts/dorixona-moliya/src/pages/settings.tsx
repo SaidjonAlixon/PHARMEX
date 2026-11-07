@@ -226,7 +226,7 @@ export function SettingsPage() {
             ? (status.site.lastMessage
               ? status.site.lastMessage
               : 'Token sozlangan. SITE.exe apteka kompyuterida ishga tushgach, qoldiqlar shu yerga oʻzi keladi.')
-            : 'FOM_SITE_TOKEN sozlanmagan: Vercel → Settings → Environment Variables ga qoʻshing va Redeploy qiling.'}</span></div>
+            : 'FOM_SITE_TOKEN sozlanmagan: server .env fayliga qoʻshing va API ni qayta ishga tushiring.'}</span></div>
         <StatusBadge tone={status.connected ? 'good' : status.site.configured ? 'warn' : 'bad'}>{status.connected ? 'Maʼlumot kelyapti' : status.site.configured ? 'Kutilmoqda' : 'Token yoʻq'}</StatusBadge>
       </div>}
       {message && <div className={`notice ${message.tone}`} data-testid="status-fom-message">{message.text}</div>}

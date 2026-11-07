@@ -65,7 +65,7 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
-  # deployments run on linux-x64 (Vercel) and development on win32-x64, so other platforms are excluded
+  # servers run on linux-x64 and development on win32-x64, so other platforms are excluded
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
   "esbuild>@esbuild/freebsd-arm64": "-"

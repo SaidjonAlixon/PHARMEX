@@ -53,6 +53,4 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Vercel
-.vercel
 

@@ -35,8 +35,6 @@ import { saveFomSettings } from "../lib/fomSettings";
 import {
   fomSyncRunning,
   importSitePush,
-  requestFomBackfill,
-  runFomStep,
   startFomSync,
   testFomConnection,
   type SyncDetails,
@@ -44,8 +42,6 @@ import {
 
 const router: IRouter = Router();
 const LAST_TEST_KEY = "fom_last_test";
-// Vercel has no long-running process: there the sync runs as bounded steps (button or /fom/tick cron).
-const serverless = Boolean(process.env.VERCEL);
 
 async function latestImport(integration: string, statusFilter?: string) {
   const [row] = await db
@@ -88,10 +84,7 @@ async function readStatus() {
       .limit(1)
       .then((rows) => rows[0]),
   ]);
-  // A serverless step lives in another invocation for up to 60 s; only an older "running" row is dead.
-  const stepAlive =
-    serverless && lastImport?.startedAt != null && Date.now() - lastImport.startedAt.getTime() < 90_000;
-  if (lastImport?.status === "running" && !fomSyncRunning() && !stepAlive) {
+  if (lastImport?.status === "running" && !fomSyncRunning()) {
     lastImport.status = "error";
     lastImport.message = "Sinxronlash yakunlanmadi (server qayta ishga tushgan). Qayta boshlang.";
   }
@@ -239,12 +232,6 @@ router.put("/fom/settings", requireRole("admin"), async (req, res): Promise<void
     res.status(400).json({ error: "Server manzili notoʻgʻri. Faqat IP yoki domen kiriting (masalan 84.54.70.12)." });
     return;
   }
-  if (serverless && /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|localhost$)/i.test(host)) {
-    res.status(400).json({
-      error: `${host} — apteka ichidagi manzil, internetdagi serverdan koʻrinmaydi. Routerning tashqi (WAN) IP sini kiriting va portni ServiceReports kompyuteriga yoʻnaltiring.`,
-    });
-    return;
-  }
   const filialIds = parseFilialIds(input.filialIds);
   if (filialIds.some((id) => !/^\d+$/.test(id))) {
     res.status(400).json({ error: "Filial ID lari faqat raqamlardan iborat boʻlishi kerak (masalan: 1, 2, 3)." });
@@ -301,19 +288,6 @@ router.post(
     const { dateFrom, dateTo } = parsed.data;
     if (dateFrom && dateTo && dateFrom > dateTo) {
       res.status(400).json({ error: "Boshlanish sanasi tugash sanasidan keyin boʻlishi mumkin emas." });
-      return;
-    }
-    if (serverless) {
-      if (dateFrom && dateTo) await requestFomBackfill(new Date(dateFrom), new Date(dateTo));
-      const step = await runFomStep({ trigger: "manual", budgetMs: 50_000 });
-      await db.insert(auditLogTable).values({
-        actorId: String(res.locals.userId),
-        action: "fom.sync.started",
-        entityType: "integration",
-        entityId: "fom",
-        summary: step.message.slice(0, 300),
-      });
-      res.json(SyncFomResponse.parse({ status: step.ok ? "success" : "error", message: step.message, checkedAt: new Date() }));
       return;
     }
     const result = await startFomSync({
@@ -427,19 +401,3 @@ fomSiteRouter.post(
     }
   },
 );
-
-// ---------------------------------------------------------------- Scheduled pull step (external cron / Vercel Cron)
-
-fomSiteRouter.all(["/fom/tick", "/fom/tick/:token"], async (req, res): Promise<void> => {
-  const siteToken = fomConfig().siteToken;
-  const cronSecret = process.env.CRON_SECRET?.trim();
-  const given = tokenFrom(req);
-  const allowed =
-    (siteToken && given && sameToken(given, siteToken)) || (cronSecret && given && sameToken(given, cronSecret));
-  if (!allowed) {
-    res.status(401).json({ ok: false, error: "Invalid token" });
-    return;
-  }
-  const step = await runFomStep({ trigger: "auto", budgetMs: 50_000 });
-  res.status(step.ok ? 200 : 502).json(step);
-});

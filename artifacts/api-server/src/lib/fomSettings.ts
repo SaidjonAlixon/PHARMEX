@@ -37,10 +37,6 @@ export function scheduleFomSync(): void {
   if (firstRun) clearTimeout(firstRun);
   if (timer) clearInterval(timer);
   firstRun = timer = null;
-  if (process.env.VERCEL) {
-    logger.info("FOM auto sync is not available on Vercel (no long-running process)");
-    return;
-  }
   const config = fomConfig();
   if (!config.reportUrl || config.intervalMinutes <= 0) {
     logger.info("FOM auto sync disabled");
