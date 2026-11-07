@@ -6,12 +6,37 @@ import {
 } from '@workspace/api-client-react';
 import type { Product } from '@workspace/api-client-react';
 
-export type Filters = { dateFrom: string; dateTo: string; branchId: string };
-/** YYYY-MM-DD in the browser's time zone (toISOString would shift to the UTC day). */
-export const localDay = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export const today = localDay(new Date());
+/** `period` is the topbar choice (today, this-week, range, …) the dates were derived from. */
+export type Filters = { dateFrom: string; dateTo: string; branchId: string; period?: string };
+
+/** The pharmacies' time zone: every day and clock time in the app is shown in it, whatever the browser's zone. */
+export const APP_TZ = 'Asia/Tashkent';
+const tzFormat = new Intl.DateTimeFormat('en-CA', {
+  timeZone: APP_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+function tzParts(d: Date) {
+  const p = Object.fromEntries(tzFormat.formatToParts(d).map(x => [x.type, x.value]));
+  return { y: p.year, m: p.month, d: p.day, h: p.hour, mi: p.minute, s: p.second };
+}
+/** YYYY-MM-DD of an instant in Tashkent. */
+export const localDay = (d: Date) => { const p = tzParts(d); return `${p.y}-${p.m}-${p.d}`; };
+/** Calendar arithmetic on YYYY-MM-DD strings. */
+export function addDaysTo(day: string, days: number) {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+export const todayDay = () => localDay(new Date());
+export const today = todayDay();
 export const monthStart = `${today.slice(0, 8)}01`;
+/** HH:mm:ss of an instant in Tashkent. */
+export function clockTime(value?: string | Date | null) {
+  if (!value) return '—';
+  const d = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return '—';
+  const p = tzParts(d);
+  return `${p.h}:${p.mi}:${p.s}`;
+}
 
 export function money(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === '') return '—';
@@ -26,26 +51,35 @@ export function qty(value: number | string | null | undefined) {
 // Browsers ship no short Uzbek month names (Chromium prints "M10"), so they are spelled out here.
 const MONTHS = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avg', 'sen', 'okt', 'noy', 'dek'];
 const pad = (n: number) => String(n).padStart(2, '0');
-// Date-only strings ("2026-10-09") are calendar days, not UTC instants; read them without a timezone shift.
-const parse = (value: string) => new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+// Date-only strings ("2026-10-09") are calendar days, not instants; instants are read in Tashkent time.
+function fields(value: string) {
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (day) return { y: day[1], m: day[2], d: day[3], h: '00', mi: '00' };
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : tzParts(d);
+}
 export function date(value?: string | null) {
   if (!value) return '—';
-  const d = parse(value);
-  return Number.isNaN(d.getTime()) ? value : `${pad(d.getDate())} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  const f = fields(value);
+  return f ? `${f.d} ${MONTHS[Number(f.m) - 1]} ${f.y}` : value;
 }
 export function dateTime(value?: string | null) {
   if (!value) return '—';
-  const d = parse(value);
-  return Number.isNaN(d.getTime()) ? value : `${date(value)}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const f = fields(value);
+  return f ? `${f.d} ${MONTHS[Number(f.m) - 1]} ${f.y}, ${f.h}:${f.mi}` : value;
 }
 export function sourceText(value?: string) { return value === 'demo' ? 'Sinov maʼlumoti' : value === 'fom' ? 'FOM' : value === 'manual' ? 'Qoʻlda kiritilgan' : '—'; }
 
-/** Current local time in the format a datetime-local input expects. */
+/** Current Tashkent time in the format a datetime-local input expects. */
 export function nowLocal() {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const p = tzParts(new Date());
+  return `${p.y}-${p.m}-${p.d}T${p.h}:${p.mi}`;
 }
-export function localToIso(value: string) { return new Date(value).toISOString(); }
+/** A datetime-local value entered as Tashkent time (UTC+5, no daylight saving). */
+export function localToIso(value: string) {
+  const withSeconds = /T\d{2}:\d{2}$/.test(value) ? `${value}:00` : value;
+  return new Date(`${withSeconds}+05:00`).toISOString();
+}
 export function round2(n: number) { return Math.round((n + Number.EPSILON) * 100) / 100; }
 /** Formats a number for API money fields, which accept at most two decimals and no sign. */
 export function toMoney(n: number) { return Math.max(0, round2(n)).toFixed(2); }

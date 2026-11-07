@@ -34,12 +34,15 @@ import {
   fomDateValue,
   fomDay,
   fomNumber,
+  fetchFomSourceNow,
   type FomConfig,
   type FomReportKey,
   type FomRow,
+  type FomScope,
 } from "./fomClient";
 import {
   centsMoney,
+  dateOnly,
   divideRounded,
   extendedMoney,
   milliQuantity,
@@ -68,6 +71,10 @@ export interface SyncDetails {
   refsAt?: string | null;
   /** When stock balances were last refreshed. */
   stockAt?: string | null;
+  /** F-APTEKA clock at the start of the last run whose document steps all succeeded. */
+  sourceAt?: string | null;
+  /** Change mode: documents entered / edited at or after this F-APTEKA time were read. */
+  since?: string | null;
   /** Work units done / planned in this run (one report window each). */
   progress?: { done: number; total: number };
   reports: Partial<Record<FomReportKey | "site", ReportOutcome>>;
@@ -1423,6 +1430,12 @@ export async function importPayments(lookups: Lookups, rows: FomRow[]): Promise<
 
 // ---------------------------------------------------------------- orchestration
 
+/**
+ * In SQL mode these procedure reports are replaced by per-document reads (receipts, incomes,
+ * stockDocuments); report 5 / 15 would count insurance receipts a second time.
+ */
+export const SQL_REPLACED_REPORTS = new Set<FomReportKey>(["purchases", "supplierReturns", "writeOffs", "retailSales", "insuranceSales"]);
+
 let running: Promise<SyncDetails> | null = null;
 /** Set while the import row is being created, so two ticks cannot both pass the `running` check. */
 let starting = false;
@@ -1514,14 +1527,43 @@ export async function startFomSync(options: SyncOptions): Promise<{ started: boo
   return { started: true, message: "Sinxronlash boshlandi. Holat shu sahifada yangilanadi." };
 }
 
+/** F-APTEKA edits that commit a little after the clock reading must not slip between two runs. */
+const CHANGE_OVERLAP_MS = 2 * 60_000;
+
+/** Where the previous run's change window ended (F-APTEKA clock, UTC-labelled local time). */
+function changesSince(previous: SyncDetails): Date | null {
+  if (previous.sourceAt) return new Date(new Date(`${previous.sourceAt}Z`).getTime() - CHANGE_OVERLAP_MS);
+  // Runs from before change tracking: everything touched since two days before their range end.
+  return previous.to ? new Date(new Date(previous.to).getTime() - 2 * DAY_MS) : null;
+}
+
+/** First document day ever imported: FOM_START_DATE, else FOM_INITIAL_DAYS before today. */
+function startDay(config: FomConfig, today: Date): Date {
+  const start = process.env.FOM_START_DATE?.trim();
+  if (start && /^\d{4}-\d{2}-\d{2}$/.test(start)) return new Date(start);
+  return new Date(today.getTime() - config.initialDays * DAY_MS);
+}
+
 async function runFomSync(config: FomConfig, options: SyncOptions, importId: number): Promise<SyncDetails> {
   const previous = await previousSuccess();
-  const to = utcDay(options.to ?? new Date());
-  const from = utcDay(options.from ?? defaultFrom(config, to, previous));
+  const sqlMode = fomSqlMode(config);
+  // Calendar days are the pharmacies' local (Tashkent) days.
+  const today = new Date(dateOnly(new Date()));
+  const to = utcDay(options.to ?? today);
+  const floor = startDay(config, today);
+  // SQL mode reads only what was entered or edited since the previous run; a full range read is
+  // the first run, or a range the user asked for explicitly.
+  const since = sqlMode && !options.from && !options.to && previous ? changesSince(previous) : null;
+  const sourceNow = sqlMode ? await fetchFomSourceNow(config).catch(() => null) : null;
+  const from = since
+    ? utcDay(since)
+    : utcDay(options.from ?? (sqlMode && !previous ? floor : defaultFrom(config, to, previous)));
   const details: SyncDetails = {
     trigger: options.trigger,
     from: from.toISOString().slice(0, 10),
     to: to.toISOString().slice(0, 10),
+    since: since ? since.toISOString().slice(0, 19) : null,
+    sourceAt: previous?.sourceAt ?? null,
     filials: [],
     refsAt: null,
     reports: {},
@@ -1540,7 +1582,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   // Progress: refs and stock count as one unit each; dated work is planned once filials are known.
   // Until filials are known the dated work is estimated from the branches already imported.
   let estimated =
-    windows(from, to).length *
+    (since ? 1 : windows(from, to).length) *
     (fomSqlMode(config) ? 2 * Math.max(1, lookups.branches.size) + 120 : 5 * Math.max(1, lookups.branches.size));
   details.progress = { done: 0, total: (skipRefs ? 0 : 2) + 1 + estimated };
   let lastWrite = 0;
@@ -1693,7 +1735,6 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     return { rows, imported: await importStockSnapshot(lookups, responses) };
   });
 
-  const sqlMode = fomSqlMode(config);
   const dated: Array<{ key: FomReportKey; prefix: string; keyOf: (row: FomRow) => string; save: (docs: Doc[]) => Promise<number> }> = [
     { key: "purchases", prefix: "p", keyOf: docKey, save: (docs) => importPurchases(lookups, docs) },
     { key: "supplierReturns", prefix: "sr", keyOf: docKey, save: (docs) => importStockDocuments(lookups, docs, "supplier_return") },
@@ -1701,56 +1742,53 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     { key: "retailSales", prefix: "rs", keyOf: docKey, save: (docs) => importSales(lookups, docs, "retail") },
     { key: "insuranceSales", prefix: "is", keyOf: docKey, save: (docs) => importSales(lookups, docs, "insurance") },
   ];
-  // SQL mode reads receipts and stock documents per document with batch costs instead of these
-  // procedure reports (they aggregate per day and carry no cost).
-  const replacedBySql = new Set<FomReportKey>(["purchases", "supplierReturns", "writeOffs", "retailSales"]);
-  const procReports = dated.filter((report) => !(sqlMode && replacedBySql.has(report.key)));
+  const procReports = dated.filter((report) => !(sqlMode && SQL_REPLACED_REPORTS.has(report.key)));
   // `weight`: rough cost of one 30-day window relative to one procedure report call.
-  const direct: Array<{ key: FomReportKey; weight: number; load: (start: Date, end: Date) => Promise<{ rows: number; imported: number }> }> = sqlMode
+  const direct: Array<{ key: FomReportKey; weight: number; load: (scope: FomScope) => Promise<{ rows: number; imported: number }> }> = sqlMode
     ? [
         {
           key: "incomes",
           weight: 5,
-          load: async (start, end) => {
-            const data = await fetchFomPurchasesDirect(config, start, end);
+          load: async (scope) => {
+            const data = await fetchFomPurchasesDirect(config, scope);
             return { rows: data.length, imported: await importDirectPurchases(lookups, data) };
           },
         },
         {
           key: "receipts",
           weight: 100,
-          load: async (start, end) => {
-            const data = await fetchFomReceiptsDirect(config, start, end);
+          load: async (scope) => {
+            const data = await fetchFomReceiptsDirect(config, scope);
             return { rows: data.lines.length, imported: await importReceipts(lookups, data.lines, data.payments) };
           },
         },
         {
           key: "stockDocuments",
           weight: 3,
-          load: async (start, end) => {
-            const data = await fetchFomStockDocumentsDirect(config, start, end);
+          load: async (scope) => {
+            const data = await fetchFomStockDocumentsDirect(config, scope);
             return { rows: data.length, imported: await importDirectStockDocuments(lookups, data) };
           },
         },
         {
           key: "transfers",
           weight: 14,
-          load: async (start, end) => {
-            const data = await fetchFomTransfersDirect(config, start, end);
+          load: async (scope) => {
+            const data = await fetchFomTransfersDirect(config, scope);
             return { rows: data.length, imported: await importTransfers(lookups, data) };
           },
         },
         {
           key: "payments",
           weight: 3,
-          load: async (start, end) => {
-            const data = await fetchFomPaymentsDirect(config, start, end);
+          load: async (scope) => {
+            const data = await fetchFomPaymentsDirect(config, scope);
             return { rows: data.length, imported: await importPayments(lookups, data) };
           },
         },
       ]
     : [];
-  const ranges = windows(from, to);
+  const ranges: Array<[Date, Date]> = since ? [[from, to]] : windows(from, to);
   plan(
     procReports.length * details.filials.length * ranges.length +
       direct.reduce((sum, step) => sum + step.weight, 0) * ranges.length,
@@ -1776,13 +1814,20 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       let rows = 0;
       let imported = 0;
       for (const [start, end] of ranges) {
-        const result = await step.load(start, end);
+        const result = await step.load(since ? { from: start, to: end, since, floor } : { from: start, to: end });
         rows += result.rows;
         imported += result.imported;
-        await tick(`${FOM_REPORTS[step.key].label} (${fomDay(end.toISOString())} gacha)`, step.weight);
+        await tick(
+          since ? `${FOM_REPORTS[step.key].label} (yangi va oʻzgarganlar)` : `${FOM_REPORTS[step.key].label} (${fomDay(end.toISOString())} gacha)`,
+          step.weight,
+        );
       }
       return { rows, imported };
     });
+  }
+  // Advance the change window only when every document step succeeded, so nothing is skipped.
+  if (sqlMode && sourceNow && direct.every((step) => details.reports[step.key] && !details.reports[step.key]?.error)) {
+    details.sourceAt = sourceNow;
   }
 
   const fetched = Object.entries(details.reports)

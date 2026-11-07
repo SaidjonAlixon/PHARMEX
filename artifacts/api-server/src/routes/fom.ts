@@ -28,11 +28,14 @@ import {
   decodeXml,
   fomConfig,
   fomSavedConfig,
+  fomSqlMode,
   parseFilialIds,
   parseFomXml,
+  type FomReportKey,
 } from "../lib/fomClient";
 import { saveFomSettings } from "../lib/fomSettings";
 import {
+  SQL_REPLACED_REPORTS,
   fomSyncRunning,
   importSitePush,
   startFomSync,
@@ -142,7 +145,11 @@ async function readStatus() {
     refsAt: details?.refsAt ?? null,
     lastSyncFrom: details?.from ?? null,
     lastSyncTo: details?.to ?? null,
-    reports: Object.values(FOM_REPORTS).map((report) => {
+    // Only the sources this connection actually reads: SQL mode replaces some procedure reports
+    // with per-document reads, which other modes cannot do.
+    reports: Object.values(FOM_REPORTS).filter((report) =>
+      fomSqlMode(config) ? !SQL_REPLACED_REPORTS.has(report.key as FomReportKey) : report.id !== 0,
+    ).map((report) => {
       const outcome = details?.reports?.[report.key as keyof SyncDetails["reports"]];
       return {
         key: report.key,

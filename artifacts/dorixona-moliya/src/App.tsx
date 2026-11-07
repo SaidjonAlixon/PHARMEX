@@ -7,7 +7,7 @@ import {
   Activity, AlertCircle, ArrowDownLeft, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Boxes, Building2,
   Check, ChevronDown, CircleHelp, ClipboardList, Clock3, Download, FileBarChart2, Filter, HandCoins, LogOut,
   Menu, PackageSearch, Plus, RefreshCw, Search, Settings2, ShieldCheck, ShoppingCart, Truck, Wallet, X,
-  CalendarDays, CalendarClock, CalendarRange, Infinity as InfinityIcon, Layers, Store, UserCog
+  CalendarCheck, CalendarDays, CalendarClock, CalendarRange, Infinity as InfinityIcon, Layers, Store, UserCog
 } from 'lucide-react';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
 import {
@@ -20,7 +20,8 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
-  DataMode, DataState, Metric, PageHeading, Panel, StatusBadge, TableWrap, date, localDay, money, monthStart, sourceText, today, type Filters,
+  DataMode, DataState, Metric, PageHeading, Panel, StatusBadge, TableWrap, addDaysTo, date, dateTime, money, monthStart, sourceText, today,
+  todayDay, type Filters,
 } from '@/components/kit';
 import NotFound from '@/pages/not-found';
 import { SalesPage } from '@/pages/sales';
@@ -87,12 +88,52 @@ const navItems = [
 const usersNavItem = { href: '/users', label: 'Foydalanuvchilar', icon: UserCog };
 
 const periodOptions: MenuOption[] = [
-  { value: 'this-month', label: 'Joriy oy', hint: 'Oy boshidan bugungacha', icon: CalendarDays, color: '#0fb3c7' },
+  { value: 'today', label: 'Bugun', hint: 'Faqat bugungi kun (Toshkent vaqti)', icon: CalendarCheck, color: '#0fb3c7' },
+  { value: 'this-week', label: 'Shu hafta', hint: 'Dushanbadan bugungacha', icon: CalendarRange, color: '#1fb84f' },
+  { value: '7-days', label: 'Soʻnggi 7 kun', hint: 'Bugun bilan birga', icon: CalendarRange, color: '#16a37a' },
+  { value: 'this-month', label: 'Joriy oy', hint: 'Oy boshidan bugungacha', icon: CalendarDays, color: '#1f8fd0' },
   { value: 'last-month', label: 'Oʻtgan oy', hint: 'Toʻliq oldingi oy', icon: CalendarClock, color: '#1f5fd0' },
-  { value: '7-days', label: 'Soʻnggi 7 kun', hint: 'Bugun bilan birga', icon: CalendarRange, color: '#1fb84f' },
-  { value: 'range', label: 'Sana oraligʻi', hint: 'Boshlanish va tugash sanasini tanlang', icon: CalendarDays, color: '#f0a020' },
+  { value: 'range', label: 'Sanadan sanagacha', hint: 'Sanalarni tanlab “Tasdiqlash” ni bosing', icon: CalendarDays, color: '#f0a020' },
   { value: 'custom', label: 'Barcha davr', hint: 'Sana cheklovisiz', icon: InfinityIcon, color: '#6d4fd8' },
 ];
+const DEFAULT_PERIOD = 'this-month';
+const FILTERS_KEY = 'pharmex.filters.v1';
+
+/** Dates of a relative period, computed from today's Tashkent day each time it is applied. */
+function periodRange(period: string): { dateFrom: string; dateTo: string } {
+  const end = todayDay();
+  const weekday = (new Date(`${end}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const firstOfMonth = `${end.slice(0, 8)}01`;
+  switch (period) {
+    case 'today': return { dateFrom: end, dateTo: end };
+    case 'this-week': return { dateFrom: addDaysTo(end, -weekday), dateTo: end };
+    case '7-days': return { dateFrom: addDaysTo(end, -6), dateTo: end };
+    case 'last-month': {
+      const lastDay = addDaysTo(firstOfMonth, -1);
+      return { dateFrom: `${lastDay.slice(0, 8)}01`, dateTo: lastDay };
+    }
+    case 'custom': return { dateFrom: '', dateTo: '' };
+    default: return { dateFrom: firstOfMonth, dateTo: end };
+  }
+}
+
+const defaultFilters = (): Filters => ({ ...periodRange(DEFAULT_PERIOD), branchId: '', period: DEFAULT_PERIOD });
+
+/** Filters survive reloads and data refreshes until “Tozalash”; relative periods follow the current day. */
+function loadFilters(): Filters {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTERS_KEY) || 'null') as Filters | null;
+    if (!saved?.period) return defaultFilters();
+    const dates = saved.period === 'range' ? { dateFrom: saved.dateFrom, dateTo: saved.dateTo } : periodRange(saved.period);
+    return { ...dates, branchId: saved.branchId || '', period: saved.period };
+  } catch {
+    return defaultFilters();
+  }
+}
+
+function saveFilters(filters: Filters) {
+  try { localStorage.setItem(FILTERS_KEY, JSON.stringify(filters)); } catch { /* private mode */ }
+}
 
 function Shell({ children, filters, setFilters }: { children: ReactNode; filters: Filters; setFilters: (v: Filters) => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -109,19 +150,29 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const accounts = usePendingAccounts();
   const access = useAccess();
   const items = localAuth && accounts.isAdmin ? [...navItems.slice(0, -1), usersNavItem, navItems[navItems.length - 1]!] : navItems;
-  const [period, setPeriod] = useState('this-month');
+  const period = filters.period ?? DEFAULT_PERIOD;
+  // The range bar edits a draft; data follows only after “Tasdiqlash”.
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [draft, setDraft] = useState({ from: filters.dateFrom || monthStart, to: filters.dateTo || todayDay() });
   const choosePeriod = (value: string) => {
-    setPeriod(value);
-    const now = new Date();
-    const end = localDay(now);
     if (value === 'range') {
-      setFilters({ ...filters, dateFrom: filters.dateFrom || `${end.slice(0, 8)}01`, dateTo: filters.dateTo || end });
+      setDraft({ from: filters.dateFrom || `${todayDay().slice(0, 8)}01`, to: filters.dateTo || todayDay() });
+      setRangeOpen(true);
       return;
     }
-    const start = value === 'this-month' ? `${end.slice(0, 8)}01` : value === 'last-month' ? localDay(new Date(now.getFullYear(), now.getMonth() - 1, 1)) : value === '7-days' ? localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)) : '';
-    const rangeEnd = value === 'last-month' ? localDay(new Date(now.getFullYear(), now.getMonth(), 0)) : end;
-    setFilters({ ...filters, dateFrom: start, dateTo: rangeEnd });
+    setRangeOpen(false);
+    setFilters({ ...filters, ...periodRange(value), period: value });
   };
+  const applyRange = (e: FormEvent) => {
+    e.preventDefault();
+    if (!draft.from || !draft.to || draft.from > draft.to) return;
+    setFilters({ ...filters, dateFrom: draft.from, dateTo: draft.to, period: 'range' });
+    setRangeOpen(false);
+  };
+  const clearFilters = () => { setRangeOpen(false); setFilters(defaultFilters()); };
+  const filtered = period !== DEFAULT_PERIOD || !!filters.branchId;
+  const periodLabel = periodOptions.find(o => o.value === period)?.label ?? 'Davr';
+  const scopeText = period === 'custom' ? 'Barcha davr' : filters.dateFrom === filters.dateTo ? date(filters.dateFrom) : `${date(filters.dateFrom)} — ${date(filters.dateTo)}`;
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`}>
       <Link href="/" className="brand-lockup brand-card" data-testid="link-brand"><BrandLogo /></Link>
@@ -136,13 +187,15 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
     </aside>
     {menuOpen && <button className="mobile-shade" onClick={() => setMenuOpen(false)} aria-label="Menyuni yopish" />}
     <main className="main-area">
-      <header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(!menuOpen)} data-testid="button-menu"><Menu size={20} /></button><div className="crumb"><span>Hisob markazi</span><ArrowRight size={13} /><strong>{items.find(n => n.href === location || (n.href !== '/' && location.startsWith(n.href)))?.label || 'Filial maʼlumoti'}</strong></div><div className="top-actions"><ThemeToggle /><FomLive /><SelectMenu caption="DAVR" ariaLabel="Davr" value={period} onChange={choosePeriod} options={periodOptions} align="right" testId="select-global-period" /><SelectMenu caption="FILIAL" ariaLabel="Filial" className="branch-menu" value={filters.branchId} onChange={branchId => setFilters({ ...filters, branchId })} options={branchOptions} align="right" testId="select-global-branch" /><span className="header-avatar">{(user?.firstName || 'M').slice(0, 1).toUpperCase()}</span></div></header>
-    {period === 'range' && <div className="active-scope date-range-bar" data-testid="bar-date-range"><CalendarDays size={14} /> Davr:
-      <input type="date" value={filters.dateFrom} max={filters.dateTo || undefined} onChange={e => setFilters({ ...filters, dateFrom: e.target.value })} aria-label="Boshlanish sanasi" data-testid="input-global-from" />
-      <span>—</span>
-      <input type="date" value={filters.dateTo} min={filters.dateFrom || undefined} max={today} onChange={e => setFilters({ ...filters, dateTo: e.target.value })} aria-label="Tugash sanasi" data-testid="input-global-to" />
-    </div>}
-    {selectedLabel && <div className="active-scope"><Filter size={13} /> Koʻrinish: <b>{selectedLabel}</b><button onClick={() => setFilters({ ...filters, branchId: '' })} data-testid="button-clear-branch">Filialni tozalash</button></div>}
+      <header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(!menuOpen)} data-testid="button-menu"><Menu size={20} /></button><div className="crumb"><span>Hisob markazi</span><ArrowRight size={13} /><strong>{items.find(n => n.href === location || (n.href !== '/' && location.startsWith(n.href)))?.label || 'Filial maʼlumoti'}</strong></div><div className="top-actions"><ThemeToggle /><FomLive /><SelectMenu caption="DAVR" ariaLabel="Davr" value={rangeOpen ? 'range' : period} onChange={choosePeriod} options={periodOptions} align="right" testId="select-global-period" /><SelectMenu caption="FILIAL" ariaLabel="Filial" className="branch-menu" value={filters.branchId} onChange={branchId => setFilters({ ...filters, branchId })} options={branchOptions} align="right" testId="select-global-branch" /><span className="header-avatar">{(user?.firstName || 'M').slice(0, 1).toUpperCase()}</span></div></header>
+    {rangeOpen && <form className="active-scope date-range-bar" onSubmit={applyRange} data-testid="bar-date-range"><CalendarDays size={14} /> Sanadan:
+      <input type="date" required value={draft.from} max={draft.to || undefined} onChange={e => setDraft({ ...draft, from: e.target.value })} aria-label="Boshlanish sanasi" data-testid="input-global-from" />
+      <span>sanagacha:</span>
+      <input type="date" required value={draft.to} min={draft.from || undefined} max={todayDay()} onChange={e => setDraft({ ...draft, to: e.target.value })} aria-label="Tugash sanasi" data-testid="input-global-to" />
+      <button type="submit" className="button primary small" disabled={!draft.from || !draft.to || draft.from > draft.to} data-testid="button-apply-range"><Check size={13} /> Tasdiqlash</button>
+      <button type="button" className="button secondary small" onClick={() => setRangeOpen(false)} data-testid="button-cancel-range">Bekor qilish</button>
+    </form>}
+    {filtered && !rangeOpen && <div className="active-scope" data-testid="bar-active-filter"><Filter size={13} /> Filtr: <b>{periodLabel}</b> · {scopeText}{selectedLabel && <> · <b>{selectedLabel}</b></>}<button onClick={clearFilters} data-testid="button-clear-filters">Tozalash</button></div>}
       <div className="content-area">{branches.some(b => b.source === 'demo') && location !== '/' && location !== '/profit' && location !== '/reports' && (!location.startsWith('/branches/') || location === '/branches') && <DataMode mode="demo" />}{children}</div>
       <footer className="app-footer"><span>PHARMEX <span className="footer-dot">/</span> Moliyaviy boshqaruv</span><span>Maʼlumotlar manbasi va yangilanish vaqti har bir boʻlimda koʻrsatiladi</span></footer>
     </main>
@@ -164,7 +217,7 @@ function DashboardPage({ filters }: { filters: Filters }) {
   const params = { dateFrom: filters.dateFrom || undefined, dateTo: filters.dateTo || undefined, branchId: filters.branchId ? Number(filters.branchId) : undefined };
   const q = useGetDashboard(params);
   const d = q.data;
-  return <><DataMode mode={d?.mode} /><PageHeading eyebrow="UMUMIY KOʻRINISH" title="Bosh dashboard" subtitle={`Moliyaviy holat • ${date(filters.dateFrom)} — ${date(filters.dateTo)}`} actions={<span className="updated-stamp"><Clock3 size={14} /> Yangilandi: {d ? date(d.updatedAt) : '—'}</span>} />
+  return <><DataMode mode={d?.mode} /><PageHeading eyebrow="UMUMIY KOʻRINISH" title="Bosh dashboard" subtitle={`Moliyaviy holat • ${filters.dateFrom ? `${date(filters.dateFrom)} — ${date(filters.dateTo)}` : 'barcha davr'}`} actions={<span className="updated-stamp"><Clock3 size={14} /> Yangilandi: {d ? dateTime(d.updatedAt) : '—'}</span>} />
     <DataState loading={q.isLoading} error={q.isError} empty={!q.isLoading && !q.isError && (!d || d.mode === 'empty')} retry={() => q.refetch()} />
     {d && d.mode !== 'empty' && <><div className="metric-grid">
       <Metric label="Sotuv hajmi" value={d.totals.sales} trend={d.completeness === 'complete' ? 'Hisobot toʻliq' : undefined} icon={ArrowUpRight} />
@@ -299,7 +352,8 @@ function ClerkCacheInvalidator() {
 }
 function AppRouter() {
   const [, setLocation] = useLocation();
-  const [filters, setFilters] = useState<Filters>({ dateFrom: monthStart, dateTo: today, branchId: '' });
+  const [filters, setFiltersState] = useState<Filters>(loadFilters);
+  const setFilters = (next: Filters) => { saveFilters(next); setFiltersState(next); };
   return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={appearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{
     signIn: { start: { title: 'Hisobingizga kiring', subtitle: 'Dorixona Hisob moliyaviy markaziga xush kelibsiz' } },
     signUp: { start: { title: 'Hisob yarating', subtitle: 'Guruhingiz moliyasini bir joyda boshqaring' } },

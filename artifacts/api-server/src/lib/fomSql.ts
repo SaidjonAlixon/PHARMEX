@@ -178,7 +178,7 @@ export function fomSqlStock(cfg: FomSqlConfig, timeoutMs: number) {
  * Columns: ID, DT doc type, N number, D date, F from department, T to department (ORG id),
  * R purpose, G good, Q quantity, C unit cost, P unit price.
  */
-export function fomSqlTransfers(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+export function fomSqlTransfers(cfg: FomSqlConfig, scope: FomScope, timeoutMs: number) {
   return queryRows(cfg, timeoutMs, `
     SELECT I.ID, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(10), I.DATA, 120) AS D,
            I.OTDEL AS F, I.ORG AS T, ISNULL(I.PURPOSE, '') AS R,
@@ -189,8 +189,8 @@ export function fomSqlTransfers(cfg: FomSqlConfig, from: Date, to: Date, timeout
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
     WHERE I.DOCTYPE IN (13, 15, 57) AND L.STATE IN (11, 12)
-      AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
-    ORDER BY I.ID, L.ID`, dateWindow(from, to));
+      AND ${inScope("I", scope)}
+    ORDER BY I.ID, L.ID`, bindScope(scope));
 }
 
 /**
@@ -198,14 +198,19 @@ export function fomSqlTransfers(cfg: FomSqlConfig, from: Date, to: Date, timeout
  * 24 bonus (retail receipts); PAYOUT: 40 encashment, 52 supplier payment, 56 other spending.
  * Columns: DIR in/out, DT doc type, F department, D day, C row count, S sum.
  */
-export function fomSqlPayments(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+export function fomSqlPayments(cfg: FomSqlConfig, scope: FomScope, timeoutMs: number) {
   const part = (table: string, dir: string, types: string) => `
     SELECT '${dir}' AS DIR, P.DOCTYPE AS DT, P.CASHBOX AS CB, ISNULL(B.NAME, '') AS CN, P.OTDEL AS F,
            CONVERT(varchar(10), P.DATA, 120) AS D, COUNT(*) AS C, CONVERT(varchar(40), SUM(P.SUMMA)) AS S
     FROM dbo.${table} P LEFT JOIN dbo.CASHBOX B ON B.ID = P.CASHBOX
-    WHERE P.DOCTYPE IN (${types}) AND P.DATA >= @from AND P.DATA < DATEADD(day, 1, @to)
+    WHERE P.DOCTYPE IN (${types}) AND ${
+      // Day totals: in change mode recompute every day that has a new or edited row.
+      scope.since
+        ? `P.DATA IN (SELECT DISTINCT X.DATA FROM dbo.${table} X WHERE ${inScope("X", scope)})`
+        : inScope("P", scope)
+    }
     GROUP BY P.DOCTYPE, P.CASHBOX, B.NAME, P.OTDEL, CONVERT(varchar(10), P.DATA, 120)`;
-  return queryRows(cfg, timeoutMs, `${part("PAYIN", "in", "2, 20, 21, 22, 23, 24")} UNION ALL ${part("PAYOUT", "out", "40, 52, 56")}`, dateWindow(from, to));
+  return queryRows(cfg, timeoutMs, `${part("PAYIN", "in", "2, 20, 21, 22, 23, 24")} UNION ALL ${part("PAYOUT", "out", "40, 52, 56")}`, bindScope(scope));
 }
 
 /**
@@ -214,7 +219,7 @@ export function fomSqlPayments(cfg: FomSqlConfig, from: Date, to: Date, timeoutM
  * Columns: ID, N, D, F department, O supplier ORG, PN / PD supplier invoice, DUE payment date,
  * R purpose, G, Q, C unit cost, V unit VAT, A / VA line cost / VAT, S series, E expiry.
  */
-export function fomSqlPurchases(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+export function fomSqlPurchases(cfg: FomSqlConfig, scope: FomScope, timeoutMs: number) {
   return queryRows(cfg, timeoutMs, `
     SELECT H.ID, H.NUMBER AS N, CONVERT(varchar(10), H.DATA, 120) AS D, H.OTDEL AS F, H.ORG AS O,
            ISNULL(H.SNUMBER, '') AS PN, CONVERT(varchar(10), H.SDATA, 120) AS PD, CONVERT(varchar(10), H.DATAOTS, 120) AS DUE,
@@ -224,14 +229,40 @@ export function fomSqlPurchases(cfg: FomSqlConfig, from: Date, to: Date, timeout
            CONVERT(varchar(40), CAST(L.KOL * L.PRICEPRIHNDS AS numeric(20, 2))) AS VA,
            ISNULL(L.SERIA, '') AS S, CONVERT(varchar(10), L.EXPDATA, 120) AS E
     FROM dbo.INCOME H JOIN dbo.INCOMELN L ON L.INCOME = H.ID
-    WHERE H.DOCTYPE = 1 AND H.STATE IN (3, 12) AND H.DATA >= @from AND H.DATA < DATEADD(day, 1, @to)
-    ORDER BY H.ID, L.ID`, dateWindow(from, to));
+    WHERE H.DOCTYPE = 1 AND H.STATE IN (3, 12) AND ${inScope("H", scope)}
+    ORDER BY H.ID, L.ID`, bindScope(scope));
 }
 
-const dateWindow = (from: Date, to: Date) => (request: sql.Request) => {
-  request.input("from", sql.DateTime, from);
-  request.input("to", sql.DateTime, to);
+/**
+ * Which documents a query reads: a day range (`from`..`to`, document date), or — when `since` is
+ * set — every document entered or edited at / after `since` (F-APTEKA clock) dated from `floor`.
+ * F-APTEKA times are local wall-clock; Dates here carry them as UTC fields (mssql useUTC).
+ */
+export interface FomScope {
+  from: Date;
+  to: Date;
+  since?: Date;
+  floor?: Date;
+}
+
+function inScope(alias: string, scope: FomScope) {
+  return scope.since
+    ? `${alias}.DATA >= @floor AND ISNULL(${alias}.DATACHANGE, ${alias}.DATAENTER) >= @since`
+    : `${alias}.DATA >= @from AND ${alias}.DATA < DATEADD(day, 1, @to)`;
+}
+
+const bindScope = (scope: FomScope) => (request: sql.Request) => {
+  request.input("from", sql.DateTime, scope.from);
+  request.input("to", sql.DateTime, scope.to);
+  request.input("since", sql.DateTime, scope.since ?? scope.from);
+  request.input("floor", sql.DateTime, scope.floor ?? scope.from);
 };
+
+/** F-APTEKA server clock (local wall-clock time), `yyyy-mm-ddThh:mm:ss`. */
+export async function fomSqlNow(cfg: FomSqlConfig, timeoutMs: number): Promise<string> {
+  const [row] = await queryRows(cfg, timeoutMs, "SELECT CONVERT(varchar(19), GETDATE(), 126) AS T");
+  return row?.T ?? "";
+}
 
 /**
  * Retail receipts (INVOICE 2) and retail returns (4, negative KOL), one row per line with the
@@ -239,7 +270,7 @@ const dateWindow = (from: Date, to: Date) => (request: sql.Request) => {
  * Columns: ID, DT, N, T entered at (local time), D day, F department, G good, Q, P, P1, V, C,
  * A line amount and CA line cost (KOL × price rounded to tiyin, KOL keeps 6 decimals).
  */
-export function fomSqlReceiptLines(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+export function fomSqlReceiptLines(cfg: FomSqlConfig, scope: FomScope, timeoutMs: number) {
   return queryRows(cfg, timeoutMs, `
     SELECT I.ID, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(19), I.DATAENTER, 126) AS T,
            CONVERT(varchar(10), I.DATA, 120) AS D, I.OTDEL AS F, IL.GOOD AS G,
@@ -251,18 +282,18 @@ export function fomSqlReceiptLines(cfg: FomSqlConfig, from: Date, to: Date, time
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
     WHERE I.DOCTYPE IN (2, 4) AND L.STATE IN (11, 12)
-      AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
-    ORDER BY I.ID, L.ID`, dateWindow(from, to));
+      AND ${inScope("I", scope)}
+    ORDER BY I.ID, L.ID`, bindScope(scope));
 }
 
 /** Payments of the receipts above, per receipt and cash box. Columns: ID receipt, DT, CB, CN, S sum. */
-export function fomSqlReceiptPayments(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+export function fomSqlReceiptPayments(cfg: FomSqlConfig, scope: FomScope, timeoutMs: number) {
   return queryRows(cfg, timeoutMs, `
     SELECT P.INVOICE AS ID, MAX(P.DOCTYPE) AS DT, P.CASHBOX AS CB, ISNULL(B.NAME, '') AS CN,
            CONVERT(varchar(40), SUM(P.SUMMA)) AS S
     FROM dbo.PAYIN P JOIN dbo.INVOICE I ON I.ID = P.INVOICE LEFT JOIN dbo.CASHBOX B ON B.ID = P.CASHBOX
-    WHERE I.DOCTYPE IN (2, 4) AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
-    GROUP BY P.INVOICE, P.CASHBOX, B.NAME`, dateWindow(from, to));
+    WHERE I.DOCTYPE IN (2, 4) AND ${inScope("I", scope)}
+    GROUP BY P.INVOICE, P.CASHBOX, B.NAME`, bindScope(scope));
 }
 
 /**
@@ -270,7 +301,7 @@ export function fomSqlReceiptPayments(cfg: FomSqlConfig, from: Date, to: Date, t
  * 12 supplier return, 17 expired return, 6 / 9 inventory shortage; INCOME 9 inventory surplus.
  * Columns: K key, DT, N, D, F department, O counterparty ORG, R purpose, G, Q, C unit cost.
  */
-export function fomSqlStockDocuments(cfg: FomSqlConfig, from: Date, to: Date, timeoutMs: number) {
+export function fomSqlStockDocuments(cfg: FomSqlConfig, scope: FomScope, timeoutMs: number) {
   return queryRows(cfg, timeoutMs, `
     SELECT 'inv:' + CONVERT(varchar(20), I.ID) AS K, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(10), I.DATA, 120) AS D,
            I.OTDEL AS F, I.ORG AS O, ISNULL(I.PURPOSE, '') AS R, IL.GOOD AS G,
@@ -280,15 +311,15 @@ export function fomSqlStockDocuments(cfg: FomSqlConfig, from: Date, to: Date, ti
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
     WHERE I.DOCTYPE IN (6, 9, 11, 12, 17, 58) AND L.STATE IN (11, 12)
-      AND I.DATA >= @from AND I.DATA < DATEADD(day, 1, @to)
+      AND ${inScope("I", scope)}
     UNION ALL
     SELECT 'inc:' + CONVERT(varchar(20), H.ID), 1009, H.NUMBER, CONVERT(varchar(10), H.DATA, 120),
            H.OTDEL, H.ORG, ISNULL(H.PURPOSE, ''), L.GOOD,
            CONVERT(varchar(40), L.KOL), CONVERT(varchar(40), L.PRICEPRIH),
            CONVERT(varchar(40), CAST(L.KOL * L.PRICEPRIH AS numeric(20, 2)))
     FROM dbo.INCOME H JOIN dbo.INCOMELN L ON L.INCOME = H.ID
-    WHERE H.DOCTYPE = 9 AND H.STATE = 12 AND H.DATA >= @from AND H.DATA < DATEADD(day, 1, @to)
-    ORDER BY 1`, dateWindow(from, to));
+    WHERE H.DOCTYPE = 9 AND H.STATE = 12 AND ${inScope("H", scope)}
+    ORDER BY 1`, bindScope(scope));
 }
 
 async function queryRows(

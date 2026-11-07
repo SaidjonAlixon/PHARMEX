@@ -8,7 +8,9 @@ import {
   useGetFomStatus, getGetFomStatusQueryKey, useTestFomConnection, useSyncFom, useGetFomSettings, getGetFomSettingsQueryKey, useSaveFomSettings,
 } from '@workspace/api-client-react';
 import type { FomReportState } from '@workspace/api-client-react';
-import { DataState, InfoGrid, KpiStrip, PageHeading, Panel, StatusBadge, TableWrap, apiErrorMessage, date, dateTime } from '@/components/kit';
+import {
+  DataState, InfoGrid, KpiStrip, PageHeading, Panel, StatusBadge, TableWrap, addDaysTo, apiErrorMessage, clockTime, date, dateTime, todayDay,
+} from '@/components/kit';
 import { useAccess } from '@/lib/access';
 
 const syncStatusText: Record<string, { label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' | 'info' }> = {
@@ -20,23 +22,19 @@ const syncStatusText: Record<string, { label: string; tone: 'good' | 'warn' | 'b
 };
 
 function isoDay(offsetDays = 0) {
-  const d = new Date(Date.now() + offsetDays * 86400000);
-  return d.toISOString().slice(0, 10);
+  return addDaysTo(todayDay(), offsetDays);
 }
 
-function ago(value: string | null | undefined) {
-  if (!value) return 'hali yoʻq';
-  const minutes = Math.floor((Date.now() - new Date(value).getTime()) / 60000);
-  if (minutes < 1) return 'hozirgina';
-  if (minutes < 60) return `${minutes} daq oldin`;
-  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} soat oldin`;
-  return date(value);
-}
-
-/** Topbar indicator; refreshes every page's data as soon as a new FOM import lands. */
+/**
+ * Topbar indicator and refresh button. “Yangilash” pulls new and edited documents from the
+ * pharmacy database now (admins / finance) and reloads every page's data; the global filter stays.
+ */
 export function FomLive() {
   const qc = useQueryClient();
-  const q = useGetFomStatus({ query: { queryKey: getGetFomStatusQueryKey(), refetchInterval: query => (query.state.data?.running ? 3_000 : 15_000) } });
+  const { canEdit } = useAccess();
+  const sync = useSyncFom();
+  const [asked, setAsked] = useState(false);
+  const q = useGetFomStatus({ query: { queryKey: getGetFomStatusQueryKey(), refetchInterval: query => (query.state.data?.running || asked ? 2_000 : 15_000) } });
   const seen = useRef<string | undefined>(undefined);
   const [, setTick] = useState(0);
   const s = q.data;
@@ -46,21 +44,37 @@ export function FomLive() {
   }, []);
   useEffect(() => {
     if (!s) return;
-    const key = `${s.lastSyncAt}|${s.site.lastAt}`;
-    if (seen.current !== undefined && seen.current !== key) qc.invalidateQueries();
+    // A finished run (success or error) changes the key; reload every page's data then.
+    const key = s.running ? seen.current : `${s.lastSyncAt}|${s.lastSyncStatus}|${s.site.lastAt}`;
+    if (seen.current !== undefined && key !== seen.current) {
+      void qc.invalidateQueries();
+      setAsked(false);
+    }
     seen.current = key;
   }, [s, qc]);
   if (!s || (!s.configured && !s.site.configured)) return null;
-  const latest = [s.lastSyncAt, s.site.lastAt].filter(Boolean).sort().pop() ?? null;
+  const latest = s.running ? null : [s.lastSyncAt, s.site.lastAt].filter(Boolean).sort().pop() ?? null;
   const sitePushing = !!s.site.lastAt && Date.now() - new Date(s.site.lastAt).getTime() < 30 * 60_000;
   const live = s.connected || sitePushing;
   // Auto sync runs every few seconds; only a long (initial / backfill) run shows its percentage.
   const longRun = s.running && (!s.lastSyncAt || Date.now() - new Date(s.lastSyncAt).getTime() > 2 * 60_000);
   const pct = longRun ? /(\d+)%\s*$/.exec(s.lastMessage ?? '')?.[1] : undefined;
   const tone = longRun ? 'running' : live ? 'live' : 'down';
-  return <Link href="/settings" className={`fom-live ${tone}`} title={s.lastMessage ?? 'FOM integratsiyasi'} data-testid="status-fom-live">
-    <span className="dot" /><b>FOM</b><small>{longRun ? (pct ? `yuklanmoqda ${pct}%` : 'yangilanmoqda…') : live ? ago(latest) : 'aloqa yoʻq'}</small>
-  </Link>;
+  const busy = asked || sync.isPending || longRun;
+  const refresh = () => {
+    setAsked(true);
+    if (!canEdit) { void qc.invalidateQueries(); setTimeout(() => setAsked(false), 800); return; }
+    // Already running (auto run): its completion reloads the data through the effect above.
+    sync.mutate({ data: {} }, { onSettled: () => void qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() }) });
+  };
+  return <div className="fom-refresh" data-testid="fom-refresh">
+    <Link href="/settings" className={`fom-live ${tone}`} title={s.lastMessage ?? 'FOM integratsiyasi'} data-testid="status-fom-live">
+      <span className="dot" /><b>FOM</b><small>{longRun ? (pct ? `yuklanmoqda ${pct}%` : 'yangilanmoqda…') : !live ? 'aloqa yoʻq' : latest ? `Yangilandi ${clockTime(latest)}` : 'yangilanmoqda…'}</small>
+    </Link>
+    <button type="button" className="fom-refresh-button" onClick={refresh} disabled={busy} title={latest ? `Oxirgi yangilanish: ${dateTime(latest)} (Toshkent vaqti). Bosing — apteka bazasidagi yangi maʼlumotlar hozir tortiladi.` : 'Yangilash'} data-testid="button-refresh-data">
+      <RefreshCw size={14} className={busy ? 'spin' : ''} /><span>{busy ? 'Yangilanmoqda' : 'Yangilash'}</span>
+    </button>
+  </div>;
 }
 
 function ReportStatus({ report, running }: { report: FomReportState; running: boolean }) {
@@ -248,8 +262,8 @@ export function SettingsPage() {
       ]} />
 
       <div className={pull ? 'split-grid' : undefined}>
-        {pull && <Panel title="Hisobotlar (REPORT.exe)" subtitle={status.lastSyncFrom ? `Oxirgi davr: ${date(status.lastSyncFrom)} — ${date(status.lastSyncTo)}` : 'Hali sinxronlanmagan'}>
-          <TableWrap><thead><tr><th>ID</th><th>Hisobot</th><th>Platformada</th><th className="num">Qator</th><th className="num">Import</th><th>Holat</th></tr></thead>
+        {pull && <Panel title="Manbalar (F-APTEKA bazasi)" subtitle={status.lastSyncAt ? `Oxirgi yangilanish: ${dateTime(status.lastSyncAt)} (Toshkent). Har safar faqat yangi va oʻzgargan hujjatlar olinadi; “Qator / Import” — shu yangilanishda.` : 'Hali sinxronlanmagan'}>
+          <TableWrap><thead><tr><th>ID</th><th>Manba</th><th>Platformada</th><th className="num">Qator</th><th className="num">Import</th><th>Holat</th></tr></thead>
             <tbody>{status.reports.map(report => <tr key={report.key} data-testid={`row-fom-report-${report.key}`}>
               <td><code>{report.reportId || 'SQL'}</code></td>
               <td><b>{report.label}</b>{report.dated && <small className="muted-line">davr boʻyicha</small>}{report.error && <small className="error-line">{report.error}</small>}{report.warning && <small className="error-line warn">{report.warning}</small>}</td>

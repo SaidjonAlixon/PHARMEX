@@ -2,6 +2,7 @@ import {
   FomSqlConnectionError,
   execFomSqlReport,
   fomSqlConfig,
+  fomSqlNow,
   fomSqlOrganizations,
   fomSqlPayments,
   fomSqlProcInfo,
@@ -12,6 +13,7 @@ import {
   fomSqlStockDocuments,
   fomSqlTransfers,
   fomSqlUrl,
+  type FomScope,
   type FomSqlConfig,
 } from "./fomSql";
 
@@ -167,30 +169,38 @@ async function fetchDirect(
 /** Organisations in report-189 shape straight from F-APTEKA's ORG table. */
 export const fetchFomOrganizationsDirect = (config: FomConfig) => fetchDirect(config, fomSqlOrganizations);
 
+/** F-APTEKA server clock as `yyyy-mm-ddThh:mm:ss` (local wall-clock), or null outside SQL mode. */
+export async function fetchFomSourceNow(config: FomConfig): Promise<string | null> {
+  const [row] = await fetchDirect(config, async (cfg, timeoutMs) => [{ T: await fomSqlNow(cfg, timeoutMs) }]);
+  return row?.T || null;
+}
+
+export type { FomScope };
+
 /** Current stock per department and good (see fomSqlStock). */
 export const fetchFomStockDirect = (config: FomConfig) => fetchDirect(config, fomSqlStock);
 
 /** Daily money totals per department and payment type (see fomSqlPayments). */
-export const fetchFomPaymentsDirect = (config: FomConfig, from: Date, to: Date) =>
-  fetchDirect(config, (cfg, timeoutMs) => fomSqlPayments(cfg, from, to, timeoutMs));
+export const fetchFomPaymentsDirect = (config: FomConfig, scope: FomScope) =>
+  fetchDirect(config, (cfg, timeoutMs) => fomSqlPayments(cfg, scope, timeoutMs));
 
 /** Retail receipts with their lines and payments (see fomSqlReceiptLines / fomSqlReceiptPayments). */
-export const fetchFomReceiptsDirect = async (config: FomConfig, from: Date, to: Date) => ({
-  lines: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptLines(cfg, from, to, timeoutMs)),
-  payments: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptPayments(cfg, from, to, timeoutMs)),
+export const fetchFomReceiptsDirect = async (config: FomConfig, scope: FomScope) => ({
+  lines: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptLines(cfg, scope, timeoutMs)),
+  payments: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptPayments(cfg, scope, timeoutMs)),
 });
 
 /** Supplier receipts into the warehouse, one row per line (see fomSqlPurchases). */
-export const fetchFomPurchasesDirect = (config: FomConfig, from: Date, to: Date) =>
-  fetchDirect(config, (cfg, timeoutMs) => fomSqlPurchases(cfg, from, to, timeoutMs));
+export const fetchFomPurchasesDirect = (config: FomConfig, scope: FomScope) =>
+  fetchDirect(config, (cfg, timeoutMs) => fomSqlPurchases(cfg, scope, timeoutMs));
 
 /** Write-offs, supplier returns and inventory documents (see fomSqlStockDocuments). */
-export const fetchFomStockDocumentsDirect = (config: FomConfig, from: Date, to: Date) =>
-  fetchDirect(config, (cfg, timeoutMs) => fomSqlStockDocuments(cfg, from, to, timeoutMs));
+export const fetchFomStockDocumentsDirect = (config: FomConfig, scope: FomScope) =>
+  fetchDirect(config, (cfg, timeoutMs) => fomSqlStockDocuments(cfg, scope, timeoutMs));
 
 /** Warehouse ↔ pharmacy moves, one row per line (see fomSqlTransfers). */
-export const fetchFomTransfersDirect = (config: FomConfig, from: Date, to: Date) =>
-  fetchDirect(config, (cfg, timeoutMs) => fomSqlTransfers(cfg, from, to, timeoutMs));
+export const fetchFomTransfersDirect = (config: FomConfig, scope: FomScope) =>
+  fetchDirect(config, (cfg, timeoutMs) => fomSqlTransfers(cfg, scope, timeoutMs));
 
 /** Report id to request for a section; null when the connected FOM version has no such report. */
 export async function fomReportIdFor(config: FomConfig, key: FomReportKey): Promise<number | null> {
