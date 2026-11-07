@@ -2,7 +2,7 @@ import sql from "mssql";
 
 /**
  * Direct SQL access to F-APTEKA's own dbo.P_GetReport_XML — the procedure ServiceReports wraps.
- * Enabled by FOM_SQL_HOST; the server must reach the pharmacy SQL Server (e.g. over Tailscale).
+ * Enabled by FOM_SQL_HOST; the server must reach the pharmacy SQL Server (router port forward).
  */
 export interface FomSqlConfig {
   server: string;
@@ -10,6 +10,7 @@ export interface FomSqlConfig {
   database: string;
   user: string;
   password: string;
+  encrypt: boolean;
 }
 
 export function fomSqlConfig(): FomSqlConfig | null {
@@ -21,6 +22,8 @@ export function fomSqlConfig(): FomSqlConfig | null {
     database: process.env.FOM_SQL_DATABASE?.trim() || "NGLOBAL",
     user: process.env.FOM_SQL_USER?.trim() || "",
     password: process.env.FOM_SQL_PASSWORD ?? "",
+    // The link crosses the internet; only very old SQL Servers without TLS 1.2 need FOM_SQL_ENCRYPT=false.
+    encrypt: process.env.FOM_SQL_ENCRYPT?.trim().toLowerCase() !== "false",
   };
 }
 
@@ -42,8 +45,8 @@ function pool(cfg: FomSqlConfig, timeoutMs: number): Promise<sql.ConnectionPool>
     connectionTimeout: 15_000,
     requestTimeout: timeoutMs,
     pool: { max: 2, min: 0, idleTimeoutMillis: 60_000 },
-    // Local F-APTEKA servers use a self-signed certificate (or none); traffic stays inside the VPN.
-    options: { encrypt: false, trustServerCertificate: true },
+    // F-APTEKA servers only have SQL Server's self-signed certificate.
+    options: { encrypt: cfg.encrypt, trustServerCertificate: true },
   })
     .connect()
     .catch((error: unknown) => {
