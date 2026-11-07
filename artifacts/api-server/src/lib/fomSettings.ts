@@ -38,7 +38,10 @@ export function scheduleFomSync(): void {
   if (timer) clearInterval(timer);
   firstRun = timer = null;
   const config = fomConfig();
-  if (!config.reportUrl || config.intervalMinutes <= 0) {
+  // FOM_SYNC_INTERVAL_SEC allows sub-minute polling; the saved / API setting is whole minutes.
+  const seconds = Number(process.env.FOM_SYNC_INTERVAL_SEC) || 0;
+  const everyMs = seconds > 0 ? seconds * 1000 : config.intervalMinutes * 60_000;
+  if (!config.reportUrl || everyMs <= 0) {
     logger.info("FOM auto sync disabled");
     return;
   }
@@ -47,6 +50,6 @@ export function scheduleFomSync(): void {
       logger.error({ err: error }, "FOM auto sync failed to start"),
     );
   firstRun = setTimeout(tick, 15_000);
-  timer = setInterval(tick, config.intervalMinutes * 60_000);
-  logger.info({ minutes: config.intervalMinutes }, "FOM auto sync enabled");
+  timer = setInterval(tick, everyMs);
+  logger.info({ seconds: everyMs / 1000 }, "FOM auto sync enabled");
 }

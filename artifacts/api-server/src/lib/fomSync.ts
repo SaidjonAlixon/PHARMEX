@@ -1256,6 +1256,8 @@ export async function importPayments(lookups: Lookups, rows: FomRow[]): Promise<
 // ---------------------------------------------------------------- orchestration
 
 let running: Promise<SyncDetails> | null = null;
+/** Set while the import row is being created, so two ticks cannot both pass the `running` check. */
+let starting = false;
 
 export function fomSyncRunning() {
   return running != null;
@@ -1322,19 +1324,24 @@ export interface SyncOptions {
 export async function startFomSync(options: SyncOptions): Promise<{ started: boolean; message: string }> {
   const config = fomConfig();
   if (!config.reportUrl) return { started: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
-  if (running) return { started: false, message: "Sinxronlash allaqachon bajarilmoqda." };
-  const [row] = await db
-    .insert(integrationImportsTable)
-    .values({ integration: "fom", status: "running", message: "Sinxronlash boshlandi…" })
-    .returning({ id: integrationImportsTable.id });
-  // Auto sync runs every few seconds; keep one day of history plus the last success.
-  await db.execute(sql`
-    delete from ${integrationImportsTable}
-    where integration = 'fom' and started_at < now() - interval '1 day'
-      and id <> coalesce((select max(id) from ${integrationImportsTable} where integration = 'fom' and status = 'success'), 0)`);
-  running = runFomSync(config, options, row.id).finally(() => {
-    running = null;
-  });
+  if (running || starting) return { started: false, message: "Sinxronlash allaqachon bajarilmoqda." };
+  starting = true;
+  try {
+    const [row] = await db
+      .insert(integrationImportsTable)
+      .values({ integration: "fom", status: "running", message: "Sinxronlash boshlandi…" })
+      .returning({ id: integrationImportsTable.id });
+    // Auto sync runs every few seconds; keep one day of history plus the last success.
+    await db.execute(sql`
+      delete from ${integrationImportsTable}
+      where integration = 'fom' and started_at < now() - interval '1 day'
+        and id <> coalesce((select max(id) from ${integrationImportsTable} where integration = 'fom' and status = 'success'), 0)`);
+    running = runFomSync(config, options, row.id).finally(() => {
+      running = null;
+    });
+  } finally {
+    starting = false;
+  }
   running.catch((error) => logger.error({ err: error }, "FOM sync failed"));
   return { started: true, message: "Sinxronlash boshlandi. Holat shu sahifada yangilanadi." };
 }
