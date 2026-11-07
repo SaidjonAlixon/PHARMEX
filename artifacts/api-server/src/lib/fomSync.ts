@@ -1374,7 +1374,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   // Until filials are known the dated work is estimated from the branches already imported.
   let estimated =
     windows(from, to).length *
-    (fomSqlMode(config) ? 2 * Math.max(1, lookups.branches.size) + 4 : 5 * Math.max(1, lookups.branches.size));
+    (fomSqlMode(config) ? 2 * Math.max(1, lookups.branches.size) + 120 : 5 * Math.max(1, lookups.branches.size));
   details.progress = { done: 0, total: (skipRefs ? 0 : 2) + 1 + estimated };
   let lastWrite = 0;
   const percent = () => Math.min(99, Math.floor((details.progress!.done * 100) / Math.max(1, details.progress!.total)));
@@ -1382,8 +1382,8 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     details.progress!.total += units - estimated;
     estimated = 0;
   };
-  const tick = async (label: string) => {
-    details.progress!.done += 1;
+  const tick = async (label: string, weight = 1) => {
+    details.progress!.done += weight;
     if (Date.now() - lastWrite < 2000) return;
     lastWrite = Date.now();
     await progress(`${label} · ${percent()}%`);
@@ -1538,10 +1538,12 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   // procedure reports (they aggregate per day and carry no cost).
   const replacedBySql = new Set<FomReportKey>(["supplierReturns", "writeOffs", "retailSales"]);
   const procReports = dated.filter((report) => !(sqlMode && replacedBySql.has(report.key)));
-  const direct: Array<{ key: FomReportKey; load: (start: Date, end: Date) => Promise<{ rows: number; imported: number }> }> = sqlMode
+  // `weight`: rough cost of one 30-day window relative to one procedure report call.
+  const direct: Array<{ key: FomReportKey; weight: number; load: (start: Date, end: Date) => Promise<{ rows: number; imported: number }> }> = sqlMode
     ? [
         {
           key: "receipts",
+          weight: 100,
           load: async (start, end) => {
             const data = await fetchFomReceiptsDirect(config, start, end);
             return { rows: data.lines.length, imported: await importReceipts(lookups, data.lines, data.payments) };
@@ -1549,6 +1551,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
         },
         {
           key: "stockDocuments",
+          weight: 3,
           load: async (start, end) => {
             const data = await fetchFomStockDocumentsDirect(config, start, end);
             return { rows: data.length, imported: await importDirectStockDocuments(lookups, data) };
@@ -1556,6 +1559,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
         },
         {
           key: "transfers",
+          weight: 14,
           load: async (start, end) => {
             const data = await fetchFomTransfersDirect(config, start, end);
             return { rows: data.length, imported: await importTransfers(lookups, data) };
@@ -1563,6 +1567,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
         },
         {
           key: "payments",
+          weight: 3,
           load: async (start, end) => {
             const data = await fetchFomPaymentsDirect(config, start, end);
             return { rows: data.length, imported: await importPayments(lookups, data) };
@@ -1571,7 +1576,10 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       ]
     : [];
   const ranges = windows(from, to);
-  plan(procReports.length * details.filials.length * ranges.length + direct.length * ranges.length);
+  plan(
+    procReports.length * details.filials.length * ranges.length +
+      direct.reduce((sum, step) => sum + step.weight, 0) * ranges.length,
+  );
 
   for (const report of procReports) {
     await run(report.key, async (warn) => {
@@ -1596,7 +1604,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
         const result = await step.load(start, end);
         rows += result.rows;
         imported += result.imported;
-        await tick(`${FOM_REPORTS[step.key].label} (${fomDay(end.toISOString())} gacha)`);
+        await tick(`${FOM_REPORTS[step.key].label} (${fomDay(end.toISOString())} gacha)`, step.weight);
       }
       return { rows, imported };
     });
