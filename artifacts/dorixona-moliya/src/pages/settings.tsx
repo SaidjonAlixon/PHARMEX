@@ -225,14 +225,14 @@ export function SettingsPage() {
           <span>{status.site.configured
             ? (status.site.lastMessage
               ? status.site.lastMessage
-              : 'Token sozlangan. PHARMEX-FOM-Agent.exe (tavsiya) yoki SITE.exe apteka kompyuterida ishlashi kerak.')
+              : 'Token sozlangan. SITE.exe apteka kompyuterida ishga tushgach, qoldiqlar shu yerga oʻzi keladi.')
             : 'FOM_SITE_TOKEN sozlanmagan: Vercel → Settings → Environment Variables ga qoʻshing va Redeploy qiling.'}</span></div>
         <StatusBadge tone={status.connected ? 'good' : status.site.configured ? 'warn' : 'bad'}>{status.connected ? 'Maʼlumot kelyapti' : status.site.configured ? 'Kutilmoqda' : 'Token yoʻq'}</StatusBadge>
       </div>}
       {message && <div className={`notice ${message.tone}`} data-testid="status-fom-message">{message.text}</div>}
 
       {isAdmin && pull && <FomConnectPanel onMessage={setMessage} />}
-      {!pull && <div className="notice info" data-testid="status-fom-site-mode">Vercel serveridan REPORT.exe ga ulanib boʻlmaydi. Maʼlumot apteka kompyuteridagi <b>PHARMEX-FOM-Agent.exe</b> orqali keladi (yoki FOM texnigi SITE.exe ni sozlaydi).</div>}
+      {!pull && <div className="notice info" data-testid="status-fom-site-mode">Bu serverdan REPORT.exe ga ulanib boʻlmaydi. Qoldiqlar SITE.exe orqali qabul qilinadi.</div>}
 
       <KpiStrip items={[
         { label: 'Filiallar', value: status.totals.branches, count: true, icon: Building2 },

@@ -1,5 +1,4 @@
 import { timingSafeEqual } from "node:crypto";
-import { gunzipSync } from "node:zlib";
 import { and, count, desc, eq, isNotNull, ne } from "drizzle-orm";
 import express, { Router, type IRouter, type Request } from "express";
 import {
@@ -31,14 +30,11 @@ import {
   fomSavedConfig,
   parseFilialIds,
   parseFomXml,
-  type FomReportKey,
 } from "../lib/fomClient";
 import { saveFomSettings } from "../lib/fomSettings";
 import {
   fomSyncRunning,
-  importAgentReport,
   importSitePush,
-  fomRowDiagnostics,
   requestFomBackfill,
   runFomStep,
   startFomSync,
@@ -82,10 +78,9 @@ async function countWhere(query: Promise<Array<{ value: number }>>) {
 
 async function readStatus() {
   const config = fomConfig();
-  const [lastImport, siteImport, agentImport, lastTestRow] = await Promise.all([
+  const [lastImport, siteImport, lastTestRow] = await Promise.all([
     latestImport("fom"),
     latestImport("fom-site"),
-    latestImport("fom-agent"),
     db
       .select()
       .from(integrationSettingsTable)
@@ -115,22 +110,10 @@ async function readStatus() {
       (lastImport.status === "running" && Object.values(details?.reports ?? {}).some((r) => r && !r.error))
     : null;
   const siteAt = siteImport?.completedAt ?? siteImport?.startedAt ?? null;
-  const agentAt = agentImport?.completedAt ?? agentImport?.startedAt ?? null;
   const sitePushing =
     siteImport?.status === "success" && !!siteAt && Date.now() - siteAt.getTime() < 30 * 60_000;
-  const agentPushing =
-    agentImport?.status === "success" && !!agentAt && Date.now() - agentAt.getTime() < 30 * 60_000;
   const pulling = lastTest && (!syncAt || new Date(lastTest.at) > syncAt) ? lastTest.ok : Boolean(syncOk);
-  const connected = pulling || sitePushing || agentPushing;
-
-  const inboundAt = [siteAt, agentAt].filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0] ?? null;
-  const inboundImport =
-    inboundAt && agentAt && inboundAt.getTime() === agentAt.getTime()
-      ? agentImport
-      : inboundAt && siteAt && inboundAt.getTime() === siteAt.getTime()
-        ? siteImport
-        : siteImport ?? agentImport;
-  const inboundVia = inboundImport?.integration === "fom-agent" ? "agent" : inboundImport ? "site" : null;
+  const connected = pulling || sitePushing;
 
   const [branches, products, counterparties, stockLines, purchases, sales, stockDocuments] =
     await Promise.all([
@@ -183,12 +166,10 @@ async function readStatus() {
     site: {
       configured: Boolean(token),
       path: token ? `/api/fom/site/${token.slice(0, 4)}…${token.slice(-4)}` : null,
-      lastAt: inboundAt,
-      lastStatus: inboundImport?.status ?? null,
-      lastMessage: inboundImport
-        ? `${inboundVia === "agent" ? "Agent" : "SITE.exe"}: ${inboundImport.message ?? ""}`.trim()
-        : null,
-      lastRecords: inboundImport?.importedRecords ?? 0,
+      lastAt: siteAt,
+      lastStatus: siteImport?.status ?? null,
+      lastMessage: siteImport?.message ?? null,
+      lastRecords: siteImport?.importedRecords ?? 0,
     },
     totals: { branches, products, counterparties, stockLines, purchases, sales, stockDocuments },
   });
@@ -447,10 +428,6 @@ fomSiteRouter.post(
   },
 );
 
-// ---------------------------------------------------------------- On-prem Windows agent (pulls REPORT.exe locally, pushes here)
-
-const AGENT_REPORTS = new Set(Object.keys(FOM_REPORTS));
-
 // ---------------------------------------------------------------- Scheduled pull step (external cron / Vercel Cron)
 
 fomSiteRouter.all(["/fom/tick", "/fom/tick/:token"], async (req, res): Promise<void> => {
@@ -466,113 +443,3 @@ fomSiteRouter.all(["/fom/tick", "/fom/tick/:token"], async (req, res): Promise<v
   const step = await runFomStep({ trigger: "auto", budgetMs: 50_000 });
   res.status(step.ok ? 200 : 502).json(step);
 });
-
-fomSiteRouter.get(["/fom/agent/ping", "/fom/agent/:token/ping"], async (req, res): Promise<void> => {
-  const expected = fomConfig().siteToken;
-  if (!expected) {
-    res.status(503).json({ ok: false, error: "Agent token sozlanmagan (FOM_SITE_TOKEN)." });
-    return;
-  }
-  if (!sameToken(tokenFrom(req), expected)) {
-    res.status(401).json({ ok: false, error: "Invalid token" });
-    return;
-  }
-  res.json({
-    ok: true,
-    reports: Object.values(FOM_REPORTS).map((r) => ({ key: r.key, id: r.id, dated: r.dated, label: r.label })),
-  });
-});
-
-fomSiteRouter.post(
-  ["/fom/agent/report", "/fom/agent/:token/report"],
-  express.json({ limit: "4.5mb" }),
-  async (req, res): Promise<void> => {
-    const expected = fomConfig().siteToken;
-    if (!expected) {
-      res.status(503).json({ ok: false, error: "Agent token sozlanmagan (FOM_SITE_TOKEN)." });
-      return;
-    }
-    if (!sameToken(tokenFrom(req), expected)) {
-      res.status(401).json({ ok: false, error: "Invalid token" });
-      return;
-    }
-    const body = (req.body ?? {}) as {
-      report?: string;
-      filialId?: string;
-      xml?: string;
-      /** gzip + base64 XML: Vercel caps request bodies at 4.5 MB */
-      xmlGz?: string;
-      rows?: unknown;
-      fomId?: string;
-      ch?: string;
-      pharmacyName?: string;
-    };
-    const report = String(body.report ?? "").trim() as FomReportKey;
-    const filialId = String(body.filialId ?? "1").trim() || "1";
-    const fomId = String(body.fomId ?? "").trim();
-    const ch = String(body.ch ?? "").trim();
-    const pharmacyName = String(body.pharmacyName ?? "").trim();
-    if (!AGENT_REPORTS.has(report)) {
-      res.status(400).json({ ok: false, error: `Nomaʼlum hisobot: ${report}` });
-      return;
-    }
-    const startedAt = new Date();
-    try {
-      const xml =
-        typeof body.xmlGz === "string" && body.xmlGz
-          ? gunzipSync(Buffer.from(body.xmlGz, "base64")).toString("utf8")
-          : typeof body.xml === "string"
-            ? body.xml
-            : "";
-      const rows = Array.isArray(body.rows) ? (body.rows as Record<string, string>[]) : parseFomXml(xml);
-      if (rows.length === 0) {
-        res.json({ ok: true, report, filialId, fomId: fomId || null, rows: 0, imported: 0, message: "Boʻsh hisobot." });
-        return;
-      }
-      const result = await importAgentReport({ report, filialId, rows });
-      const who = [fomId && `Fom_ID ${fomId}`, ch && `CH ${ch}`, pharmacyName].filter(Boolean).join(" · ");
-      const skipped = Math.max(0, rows.length - (result.imported || 0));
-      const diagnostics = fomRowDiagnostics(rows);
-      await db.insert(integrationImportsTable).values({
-        integration: "fom-agent",
-        status: "success",
-        startedAt,
-        completedAt: new Date(),
-        importedRecords: result.imported,
-        message: `Agent: ${FOM_REPORTS[report].label} · filial ${filialId}${who ? ` · ${who}` : ""} · ${rows.length} qator → ${result.imported} import.`,
-        details: JSON.stringify({
-          report,
-          filialId,
-          fomId: fomId || null,
-          ch: ch || null,
-          pharmacyName: pharmacyName || null,
-          rows: rows.length,
-          imported: result.imported,
-          skipped,
-          sampleKeys: rows.slice(0, 3).map((row) => Object.keys(row).sort().join(",")),
-          diagnostics,
-        }),
-      });
-      res.json({
-        ok: true,
-        report,
-        filialId,
-        fomId: fomId || null,
-        rows: rows.length,
-        imported: result.imported,
-        skipped,
-        sampleKeys: rows.slice(0, 2).map((row) => Object.keys(row).sort()),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await db.insert(integrationImportsTable).values({
-        integration: "fom-agent",
-        status: "error",
-        startedAt,
-        completedAt: new Date(),
-        message: `Agent: ${message}`.slice(0, 500),
-      });
-      res.status(400).json({ ok: false, error: message });
-    }
-  },
-);

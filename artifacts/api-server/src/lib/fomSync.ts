@@ -405,22 +405,6 @@ interface Doc {
   lines: Line[];
 }
 
-/** Why document rows would be dropped by `groupDocs`, plus raw samples, for checking a FOM server's real format. */
-export function fomRowDiagnostics(rows: FomRow[]) {
-  let noProduct = 0;
-  let zeroQty = 0;
-  let noDate = 0;
-  for (const row of rows) {
-    if (!row.G) noProduct++;
-    else if (qtyMilli(row.Q) === 0n) zeroQty++;
-    if (!fomDateValue(row.D)) noDate++;
-  }
-  const sample = rows.slice(0, 2).map((row) =>
-    Object.fromEntries(Object.entries(row).map(([key, value]) => [key, String(value).slice(0, 60)])),
-  );
-  return { noProduct, zeroQty, noDate, sample };
-}
-
 function toLine(row: FomRow): Line | null {
   if (!row.G) return null;
   const qty = qtyMilli(row.Q);
@@ -1275,68 +1259,4 @@ export async function importSitePush(rows: FomRow[]): Promise<{ products: number
     })),
   ]);
   return { products, batches };
-}
-
-/**
- * Import one REPORT.exe payload pushed by the on-prem PHARMEX FOM Agent.
- * The agent runs on the pharmacy PC (localhost:8084) and posts rows here.
- */
-export async function importAgentReport(input: {
-  report: FomReportKey;
-  filialId: string;
-  rows: FomRow[];
-}): Promise<{ imported: number }> {
-  const lookups = await loadLookups();
-  const { report, filialId, rows } = input;
-  switch (report) {
-    case "organizations":
-      return { imported: await importOrganizations(lookups, rows) };
-    case "catalog":
-      return {
-        imported: await importCatalog(
-          lookups,
-          rows.map((row) => ({
-            fomId: row.I,
-            name: row.N ?? "",
-            manufacturer: row.P,
-            unit: row.E,
-            ikpu: row.C,
-          })),
-        ),
-      };
-    case "stock":
-      return {
-        imported: await importStockSnapshot(lookups, [
-          rows
-            .filter((row) => row.G)
-            .map((row) => ({
-              branchFomId: row.O?.trim() || filialId,
-              productFomId: row.G,
-              quantity: row.Q,
-              retailPrice: row.P,
-              expiry: fomDay(row.E),
-            })),
-        ]),
-      };
-    case "purchases":
-      return { imported: await importPurchases(lookups, groupDocs(rows, "p", filialId, docKey)) };
-    case "supplierReturns":
-      return {
-        imported: await importStockDocuments(lookups, groupDocs(rows, "sr", filialId, docKey), "supplier_return"),
-      };
-    case "writeOffs":
-      return {
-        imported: await importStockDocuments(
-          lookups,
-          groupDocs(rows, "wo", filialId, (row) => fomDay(row.D) ?? row.D ?? ""),
-          "write_off",
-        ),
-      };
-    case "retailSales":
-      return { imported: await importSales(lookups, groupDocs(rows, "rs", filialId, docKey), "retail") };
-    case "insuranceSales":
-      return { imported: await importSales(lookups, groupDocs(rows, "is", filialId, docKey), "insurance") };
-    default:
-      throw new FomError(`Nomaʼlum hisobot: ${report}`);
-  }
 }
