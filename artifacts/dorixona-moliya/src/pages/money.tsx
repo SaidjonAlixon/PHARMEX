@@ -101,7 +101,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
 
     {tab === 'register' && <Panel title="Kassa hisoboti" subtitle="Har bir kassa va bank hisobi boʻyicha davr boshi, harakat va davr oxiri qoldigʻi">
       <DataState loading={registerQ.isLoading} error={registerQ.isError} empty={!registerQ.isLoading && !registerQ.isError && !register.length} retry={() => registerQ.refetch()} emptyText="Hali kassa yoki bank hisobi yoʻq. “Hisob ochish” tugmasi orqali filial kassasini yarating." />
-      {!!register.length && <TableWrap><thead><tr><th>HISOB</th><th>FILIAL</th><th className="num">BOSHLANGʻICH</th><th className="num">KIRIM</th><th className="num">CHIQIM</th><th className="num">YAKUNIY</th><th className="num">SAVDO TUSHUMI</th><th className="num">INKASSATSIYA</th><th className="num">OP.</th><th /></tr></thead>
+      {!!register.length && <TableWrap><thead><tr><th>HISOB</th><th>FILIAL</th><th className="num">BOSHLANGʻICH, SOʻM</th><th className="num">KIRIM, SOʻM</th><th className="num">CHIQIM, SOʻM</th><th className="num">YAKUNIY, SOʻM</th><th className="num">SAVDO TUSHUMI, SOʻM</th><th className="num">INKASSATSIYA, SOʻM</th><th className="num">OP.</th><th /></tr></thead>
         <tbody>{register.map(r => <tr key={r.accountId} data-testid={`row-register-${r.accountId}`}>
           <td className="cell-strong"><span className={`account-kind ${r.kind}`}>{r.kind === 'cash' ? <Wallet size={13} /> : <Landmark size={13} />}</span> {r.accountName}<small>{r.kind === 'cash' ? 'Naqd kassa' : 'Bank hisobi'}</small></td>
           <td>{r.branchName}</td>
@@ -166,7 +166,7 @@ function AccountFilter({ value, onChange }: { value: string; onChange: (v: strin
 }
 
 function TransactionsTable({ rows }: { rows: MoneyTransaction[] }) {
-  return <TableWrap><thead><tr><th>SANA-VAQT</th><th>OPERATSIYA</th><th>HISOB</th><th>FILIAL</th><th>HAMKOR</th><th>HUJJAT / IZOH</th><th className="num">KIRIM</th><th className="num">CHIQIM</th></tr></thead>
+  return <TableWrap><thead><tr><th>SANA-VAQT</th><th>OPERATSIYA</th><th>HISOB</th><th>FILIAL</th><th>HAMKOR</th><th>HUJJAT / IZOH</th><th className="num">KIRIM, SOʻM</th><th className="num">CHIQIM, SOʻM</th></tr></thead>
     <tbody>{rows.map(t => <tr key={t.id} data-testid={`row-transaction-${t.id}`}>
       <td>{dateTime(t.date)}<small>{t.createdBy || sourceText(t.source)}</small></td>
       <td><span className={`money-type ${t.direction}`}>{moneyTypeLabels[t.type] ?? t.type}</span>{t.category && <small>{t.category}</small>}</td>

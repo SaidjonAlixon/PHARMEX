@@ -38,15 +38,20 @@ export function clockTime(value?: string | Date | null) {
   return `${p.h}:${p.mi}:${p.s}`;
 }
 
+// Uzbek notation: space between thousands, comma before tiyin (39 500 · 14 000,03), so a
+// thousands separator can never be read as a decimal point.
+const moneyFormat = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 export function money(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === '') return '—';
   const n = Number(value);
   if (!Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('uz-UZ', { maximumFractionDigits: 2 }).format(n);
+  const text = moneyFormat.format(n).replace(/\u00a0|\u202f/g, ' ');
+  // Tiyin are shown as two digits (14 000,30), never one.
+  return /,\d$/.test(text) ? `${text}0` : text;
 }
 export function qty(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === '') return '—';
-  return new Intl.NumberFormat('uz-UZ', { maximumFractionDigits: 3 }).format(Number(value));
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(Number(value)).replace(/\u00a0|\u202f/g, ' ');
 }
 // Browsers ship no short Uzbek month names (Chromium prints "M10"), so they are spelled out here.
 const MONTHS = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avg', 'sen', 'okt', 'noy', 'dek'];
@@ -66,7 +71,10 @@ export function date(value?: string | null) {
 export function dateTime(value?: string | null) {
   if (!value) return '—';
   const f = fields(value);
-  return f ? `${f.d} ${MONTHS[Number(f.m) - 1]} ${f.y}, ${f.h}:${f.mi}` : value;
+  if (!f) return value;
+  // Day-level documents (daily cash totals, F-APTEKA documents without a time) sit at midnight.
+  const atMidnight = f.h === '00' && f.mi === '00' && (!('s' in f) || f.s === '00');
+  return atMidnight ? `${f.d} ${MONTHS[Number(f.m) - 1]} ${f.y}` : `${f.d} ${MONTHS[Number(f.m) - 1]} ${f.y}, ${f.h}:${f.mi}`;
 }
 export function sourceText(value?: string) { return value === 'demo' ? 'Sinov maʼlumoti' : value === 'fom' ? 'FOM' : value === 'manual' ? 'Qoʻlda kiritilgan' : '—'; }
 

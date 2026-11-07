@@ -99,6 +99,14 @@ function qtyMilli(value: string | undefined): bigint {
   return match[1] === "-" ? -milli : milli;
 }
 
+const LOCAL_OFFSET_MS = (Number(process.env.APP_TZ_OFFSET_MIN ?? 300) || 0) * 60_000;
+
+/** An F-APTEKA document day (no time) as the start of that day in Tashkent. */
+function fomLocalDay(value: string | undefined): Date | null {
+  const day = fomDateValue(value);
+  return day ? new Date(day.getTime() - LOCAL_OFFSET_MS) : null;
+}
+
 const flag = (value: string | undefined) => value?.trim() === "1" || value?.trim().toLowerCase() === "true";
 
 // ---------------------------------------------------------------- lookups
@@ -503,7 +511,7 @@ function groupDocs(
   const docs = new Map<string, Doc>();
   for (const row of rows) {
     const line = toLine(row);
-    const date = fomDateValue(row.D);
+    const date = fomLocalDay(row.D);
     if (!line || !date) continue;
     const key = keyOf(row);
     let doc = docs.get(key);
@@ -848,7 +856,7 @@ const transferLabels: Record<string, string> = {
 export async function importTransfers(lookups: Lookups, rows: FomRow[]): Promise<number> {
   const docs = new Map<string, { head: FomRow; date: Date; lines: Array<{ productFomId: string; qty: bigint; amount: bigint; unitCost: bigint }> }>();
   for (const row of rows) {
-    const date = fomDateValue(row.D);
+    const date = fomLocalDay(row.D);
     const qty = qtyMilli(row.Q);
     if (!row.ID || !row.G || !row.F || !row.T || row.F === row.T || !date || qty <= 0n) continue;
     const amount = moneyCents(fomNumber(row.A));
@@ -975,7 +983,7 @@ const FOM_TZ = process.env.FOM_TZ?.trim() || "+05:00";
 /** F-APTEKA stores local wall-clock time; `T` is `yyyy-mm-ddThh:mm:ss`. */
 function localTime(t: string | undefined, day: string | undefined): Date | null {
   if (t && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(t)) return new Date(`${t}${FOM_TZ}`);
-  return fomDateValue(day);
+  return fomLocalDay(day);
 }
 
 /**
@@ -1134,7 +1142,7 @@ export async function importDirectPurchases(lookups: Lookups, rows: FomRow[]): P
   type PurchaseLine = { productFomId: string; qty: bigint; amount: bigint; vat: bigint; unit: bigint; expiry: string | null };
   const docs = new Map<string, { head: FomRow; date: Date; lines: PurchaseLine[] }>();
   for (const row of rows) {
-    const date = fomDateValue(row.D);
+    const date = fomLocalDay(row.D);
     const qty = qtyMilli(row.Q);
     if (!row.ID || !row.G || !row.F || !date || qty === 0n) continue;
     const doc = docs.get(row.ID) ?? { head: row, date, lines: [] };
@@ -1275,7 +1283,7 @@ const directDocs: Record<string, { docType: string; movement: string; reason: st
 export async function importDirectStockDocuments(lookups: Lookups, rows: FomRow[]): Promise<number> {
   const docs = new Map<string, { head: FomRow; date: Date; lines: Array<{ productFomId: string; qty: bigint; amount: bigint; unitCost: bigint }> }>();
   for (const row of rows) {
-    const date = fomDateValue(row.D);
+    const date = fomLocalDay(row.D);
     let qty = qtyMilli(row.Q);
     let amount = moneyCents(fomNumber(row.A));
     if (qty < 0n) qty = -qty;
@@ -1407,7 +1415,7 @@ export async function importPayments(lookups: Lookups, rows: FomRow[]): Promise<
       direction = direction === "in" ? "out" : "in";
     }
     values.push({
-      date: fomDateValue(row.D)!,
+      date: fomLocalDay(row.D)!,
       type: spec.type,
       category: spec.category,
       amount: centsMoney(cents),
