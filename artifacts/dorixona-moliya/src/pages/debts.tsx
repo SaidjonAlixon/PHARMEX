@@ -71,7 +71,7 @@ export function DebtsPage({ filters }: { filters: Filters }) {
       <button className={kind === 'receivable' ? 'selected' : ''} onClick={() => { setKind('receivable'); setCounterparty(null); }} data-testid="tab-receivables"><ArrowDownLeft size={15} /> Bizdan qarzdorlar (debitorlar)</button>
     </div>
     <Panel title={view === 'documents' ? (counterparty ? `${counterparty.name} — qarz hujjatlari` : kind === 'payable' ? 'Yetkazib beruvchilarga qarzlar' : 'Mijozlar qarzlari') : kind === 'payable' ? 'Yetkazib beruvchilar kesimida' : 'Mijozlar kesimida'}
-      subtitle={view === 'documents' ? `${debts.length} ta hujjat · qoldiq ${money(listTotal)} soʻm` : 'Hamkorni bosib uning hujjatlarini koʻring'}
+      subtitle={view === 'documents' ? `${debts.length} ta hujjat · qoldiq ${money(listTotal)}` : 'Hamkorni bosib uning hujjatlarini koʻring'}
       action={<div className="toolbar">
         <Chips value={view} onChange={v => { setView(v); setCounterparty(null); }} options={[{ id: 'documents', label: 'Hujjatlar' }, { id: 'counterparties', label: 'Hamkorlar' }]} />
         <Chips value={status} onChange={setStatus} options={[{ id: 'open', label: 'Ochiq' }, { id: 'overdue', label: 'Muddati oʻtgan' }, { id: 'closed', label: 'Yopilgan' }, { id: 'all', label: 'Barchasi' }]} />

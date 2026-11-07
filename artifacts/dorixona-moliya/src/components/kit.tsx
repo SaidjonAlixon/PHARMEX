@@ -47,7 +47,8 @@ export function money(value: string | number | null | undefined) {
   if (!Number.isFinite(n)) return '—';
   const text = moneyFormat.format(n).replace(/\u00a0|\u202f/g, ' ');
   // Tiyin are shown as two digits (14 000,30), never one.
-  return /,\d$/.test(text) ? `${text}0` : text;
+  const amount = /,\d$/.test(text) ? `${text}0` : text;
+  return `${amount} soʻm`;
 }
 export function qty(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === '') return '—';
@@ -142,13 +143,13 @@ export function fitFigure(value: string | number | null | undefined, count = fal
   if (value === null || value === undefined || value === '') return { text: '—', title: undefined, cls: '' };
   const n = Number(value);
   const text = count || !Number.isFinite(n) ? String(value) : Math.abs(n) >= 1_000_000 ? money(Math.round(n)) : money(n);
-  const title = count || !Number.isFinite(n) ? undefined : `${money(n)} soʻm`;
-  return { text, title, cls: text.length > 14 ? 'fit-sm' : text.length > 10 ? 'fit-md' : '' };
+  const title = count || !Number.isFinite(n) ? undefined : money(n);
+  return { text, title, cls: text.length > 18 ? 'fit-sm' : text.length > 13 ? 'fit-md' : '' };
 }
 
-export function Metric({ label, value, unit = 'soʻm', trend, icon: Icon }: { label: string; value: string | null | undefined; unit?: string; trend?: string; icon: LucideIcon }) {
+export function Metric({ label, value, unit, trend, icon: Icon }: { label: string; value: string | null | undefined; unit?: string; trend?: string; icon: LucideIcon }) {
   const f = fitFigure(value);
-  return <div className="metric-card"><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={17} /></span></div><div className={`metric-value ${f.cls}`} title={f.title}>{f.text}</div><div className="metric-foot"><span>{value == null ? 'Maʼlumot yetarli emas' : unit}</span>{trend && <span className="positive">{trend}</span>}</div></div>;
+  return <div className="metric-card"><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={17} /></span></div><div className={`metric-value ${f.cls}`} title={f.title}>{f.text}</div><div className="metric-foot"><span>{value == null ? 'Maʼlumot yetarli emas' : unit || '\u00a0'}</span>{trend && <span className="positive">{trend}</span>}</div></div>;
 }
 export function TableWrap({ children }: { children: ReactNode }) { return <div className="table-scroll"><table>{children}</table></div>; }
 
@@ -160,7 +161,7 @@ export function KpiStrip({ items }: { items: Kpi[] }) {
     return <div className={`kpi ${item.tone || ''}`} key={item.label}>
       <div className="kpi-label">{Icon && <Icon size={14} />}<span>{item.label}</span></div>
       <b className={f.cls} title={f.title}>{f.text}</b>
-      <small>{item.hint ?? (item.count ? 'ta' : 'soʻm')}</small>
+      <small>{item.hint ?? (item.count ? 'ta' : '\u00a0')}</small>
     </div>;
   })}</div>;
 }
@@ -210,7 +211,7 @@ export function InfoGrid({ items }: { items: { label: string; value: ReactNode }
 }
 
 export function Totals({ rows }: { rows: { label: string; value: string | number | null | undefined; strong?: boolean; tone?: 'good' | 'bad' }[] }) {
-  return <div className="totals">{rows.map(row => <div key={row.label} className={row.strong ? 'strong' : ''}><span>{row.label}</span><b className={row.tone === 'good' ? 'positive' : row.tone === 'bad' ? 'negative' : ''}>{money(row.value)} soʻm</b></div>)}</div>;
+  return <div className="totals">{rows.map(row => <div key={row.label} className={row.strong ? 'strong' : ''}><span>{row.label}</span><b className={row.tone === 'good' ? 'positive' : row.tone === 'bad' ? 'negative' : ''}>{money(row.value)}</b></div>)}</div>;
 }
 
 export function FormError({ error }: { error: unknown }) {
@@ -231,7 +232,7 @@ export function AccountSelect({ value, onChange, label = 'Kassa / bank hisobi', 
   const list = accounts.filter(a => (!kind || a.kind === kind) && (!branchId || a.branchId == null || String(a.branchId) === branchId));
   return <label>{label}<select required={required} value={value} onChange={e => onChange(e.target.value)}>
     <option value="">{required ? 'Hisobni tanlang' : emptyLabel}</option>
-    {list.map(a => <option key={a.id} value={a.id}>{a.kind === 'cash' ? 'Kassa' : 'Bank'} · {a.name} · {a.branchName} — {money(a.balance)} soʻm</option>)}
+    {list.map(a => <option key={a.id} value={a.id}>{a.kind === 'cash' ? 'Kassa' : 'Bank'} · {a.name} · {a.branchName} — {money(a.balance)}</option>)}
   </select></label>;
 }
 
@@ -282,7 +283,7 @@ export function ProductPicker({ branchId, onPick, onlyInStock, placeholder = 'Ma
     {open && <div className="picker-list">
       {matches.length ? matches.map(p => <button type="button" key={p.id} onClick={() => pick(p)}>
         <span><b>{p.name}</b><small>{[p.code, p.barcode, p.manufacturer, p.fomId && `FOM ${p.fomId}`].filter(Boolean).join(' · ') || p.group}</small></span>
-        <span className="picker-meta">{p.available != null && <em className={p.available > 0 ? 'positive' : 'negative'}>{qty(p.available)} {p.unit}</em>}<small>{money(p.retailPrice)} soʻm</small></span>
+        <span className="picker-meta">{p.available != null && <em className={p.available > 0 ? 'positive' : 'negative'}>{qty(p.available)} {p.unit}</em>}<small>{money(p.retailPrice)}</small></span>
       </button>) : <div className="inline-empty">{onlyInStock ? 'Bu filialda qoldigʻi bor mahsulot topilmadi' : 'Mahsulot topilmadi — avval “Maʼlumotnomalar”da qoʻshing'}</div>}
     </div>}
   </div>;

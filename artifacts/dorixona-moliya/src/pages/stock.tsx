@@ -158,10 +158,10 @@ function ProductCard({ id, onClose }: { id: number; onClose: () => void }) {
         { label: 'IKPU (MXIK)', value: d.product.ikpu ? <span className="mono">{d.product.ikpu}</span> : '—' },
         { label: 'Shtrix-kod', value: d.product.barcode || '—' },
         { label: 'Guruh', value: d.product.group || '—' },
-        { label: 'Sotuv narxi', value: `${money(d.product.retailPrice)} soʻm` },
-        { label: 'Oʻrtacha tannarx', value: d.product.costPrice ? `${money(d.product.costPrice)} soʻm` : '—' },
+        { label: 'Sotuv narxi', value: `${money(d.product.retailPrice)}` },
+        { label: 'Oʻrtacha tannarx', value: d.product.costPrice ? `${money(d.product.costPrice)}` : '—' },
         { label: 'Jami qoldiq', value: qty(total) },
-        { label: 'Zaxira qiymati', value: `${money(value)} soʻm` },
+        { label: 'Zaxira qiymati', value: `${money(value)}` },
       ]} />
       <h3 className="subhead">Filial va omborlar kesimida</h3>
       <TableWrap><thead><tr><th>FILIAL / OMBOR</th><th className="num">MIQDOR</th><th className="num">TANNARX</th><th className="num">QIYMAT</th><th>YAROQLILIK</th></tr></thead>

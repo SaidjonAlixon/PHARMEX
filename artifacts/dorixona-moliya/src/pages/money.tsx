@@ -101,7 +101,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
 
     {tab === 'register' && <Panel title="Kassa hisoboti" subtitle="Har bir kassa va bank hisobi boʻyicha davr boshi, harakat va davr oxiri qoldigʻi">
       <DataState loading={registerQ.isLoading} error={registerQ.isError} empty={!registerQ.isLoading && !registerQ.isError && !register.length} retry={() => registerQ.refetch()} emptyText="Hali kassa yoki bank hisobi yoʻq. “Hisob ochish” tugmasi orqali filial kassasini yarating." />
-      {!!register.length && <TableWrap><thead><tr><th>HISOB</th><th>FILIAL</th><th className="num">BOSHLANGʻICH, SOʻM</th><th className="num">KIRIM, SOʻM</th><th className="num">CHIQIM, SOʻM</th><th className="num">YAKUNIY, SOʻM</th><th className="num">SAVDO TUSHUMI, SOʻM</th><th className="num">INKASSATSIYA, SOʻM</th><th className="num">OP.</th><th /></tr></thead>
+      {!!register.length && <TableWrap><thead><tr><th>HISOB</th><th>FILIAL</th><th className="num">BOSHLANGʻICH</th><th className="num">KIRIM</th><th className="num">CHIQIM</th><th className="num">YAKUNIY</th><th className="num">SAVDO TUSHUMI</th><th className="num">INKASSATSIYA</th><th className="num">OP.</th><th /></tr></thead>
         <tbody>{register.map(r => <tr key={r.accountId} data-testid={`row-register-${r.accountId}`}>
           <td className="cell-strong"><span className={`account-kind ${r.kind}`}>{r.kind === 'cash' ? <Wallet size={13} /> : <Landmark size={13} />}</span> {r.accountName}<small>{r.kind === 'cash' ? 'Naqd kassa' : 'Bank hisobi'}</small></td>
           <td>{r.branchName}</td>
@@ -139,13 +139,13 @@ export function MoneyPage({ filters }: { filters: Filters }) {
         <DataState loading={expensesQ.isLoading} error={expensesQ.isError} empty={!expensesQ.isLoading && !expensesQ.isError && !(expensesQ.data || []).length} retry={() => expensesQ.refetch()} />
         {!!expensesQ.data?.length && <TableWrap><thead><tr><th>SANA</th><th>KATEGORIYA</th><th>FILIAL</th><th>IZOH</th><th className="num">SUMMA</th></tr></thead><tbody>{expensesQ.data.map(x => <tr key={x.id}><td>{date(x.date)}<small>{sourceText(x.source)}</small></td><td className="cell-strong">{x.category}</td><td>{x.branchName}</td><td>{x.description || '—'}</td><td className="num negative">{money(x.amount)}</td></tr>)}</tbody></TableWrap>}
       </Panel>
-      <Panel title="Turlar boʻyicha" subtitle={`Jami ${money(expenseTotal)} soʻm`}>
-        {expenseByCategory.length ? <div className="breakdown-list">{expenseByCategory.map(([c, v]) => <div className="breakdown-row" key={c}><div><span>{c}</span><b>{money(round2(v))} soʻm</b></div><div className="bar-track"><i style={{ width: `${Math.max(3, v / (expenseByCategory[0][1] || 1) * 100)}%` }} /></div></div>)}</div> : <div className="inline-empty">Xarajat yoʻq</div>}
+      <Panel title="Turlar boʻyicha" subtitle={`Jami ${money(expenseTotal)}`}>
+        {expenseByCategory.length ? <div className="breakdown-list">{expenseByCategory.map(([c, v]) => <div className="breakdown-row" key={c}><div><span>{c}</span><b>{money(round2(v))}</b></div><div className="bar-track"><i style={{ width: `${Math.max(3, v / (expenseByCategory[0][1] || 1) * 100)}%` }} /></div></div>)}</div> : <div className="inline-empty">Xarajat yoʻq</div>}
       </Panel>
     </div>}
 
     {tab === 'owners' && <Panel title="Egalar kiritgan va olgan mablagʻ" subtitle="Taʼsischilar hisobidan kiritilgan kapital va olingan dividend / shaxsiy ehtiyoj" action={canEdit && <div className="toolbar"><button className="button secondary small" onClick={() => setOperation({ type: 'owner_in' })}><ArrowDownLeft size={13} /> Kiritildi</button><button className="button secondary small" onClick={() => setOperation({ type: 'owner_out' })}><ArrowUpRight size={13} /> Olindi</button></div>}>
-      <div className="mini-metrics"><div><span>Kiritilgan</span><b className="positive">{money(ownerIn)} soʻm</b></div><div><span>Olingan</span><b className="negative">{money(ownerOut)} soʻm</b></div><div><span>Sof</span><b>{money(round2(ownerIn - ownerOut))} soʻm</b></div></div>
+      <div className="mini-metrics"><div><span>Kiritilgan</span><b className="positive">{money(ownerIn)}</b></div><div><span>Olingan</span><b className="negative">{money(ownerOut)}</b></div><div><span>Sof</span><b>{money(round2(ownerIn - ownerOut))}</b></div></div>
       <DataState loading={ownersQ.isLoading} error={ownersQ.isError} empty={!ownersQ.isLoading && !ownersQ.isError && !owners.length} retry={() => ownersQ.refetch()} emptyText="Bu davrda egalar mablagʻi harakati yoʻq." />
       {!!owners.length && <TransactionsTable rows={owners} />}
     </Panel>}
@@ -166,7 +166,7 @@ function AccountFilter({ value, onChange }: { value: string; onChange: (v: strin
 }
 
 function TransactionsTable({ rows }: { rows: MoneyTransaction[] }) {
-  return <TableWrap><thead><tr><th>SANA-VAQT</th><th>OPERATSIYA</th><th>HISOB</th><th>FILIAL</th><th>HAMKOR</th><th>HUJJAT / IZOH</th><th className="num">KIRIM, SOʻM</th><th className="num">CHIQIM, SOʻM</th></tr></thead>
+  return <TableWrap><thead><tr><th>SANA-VAQT</th><th>OPERATSIYA</th><th>HISOB</th><th>FILIAL</th><th>HAMKOR</th><th>HUJJAT / IZOH</th><th className="num">KIRIM</th><th className="num">CHIQIM</th></tr></thead>
     <tbody>{rows.map(t => <tr key={t.id} data-testid={`row-transaction-${t.id}`}>
       <td>{dateTime(t.date)}<small>{t.createdBy || sourceText(t.source)}</small></td>
       <td><span className={`money-type ${t.direction}`}>{moneyTypeLabels[t.type] ?? t.type}</span>{t.category && <small>{t.category}</small>}</td>

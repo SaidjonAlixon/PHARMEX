@@ -215,7 +215,7 @@ function NewPurchaseModal({ defaultBranch, onClose, onCreated }: { defaultBranch
         ]} />
       </div>
       <FormError error={localError || create.error} />
-      <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Bekor qilish</button><button className="button primary" disabled={create.isPending || !lines.length} data-testid="button-save-purchase">{create.isPending ? 'Saqlanmoqda…' : `Kirimni saqlash · ${money(total)} soʻm`}</button></div>
+      <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Bekor qilish</button><button className="button primary" disabled={create.isPending || !lines.length} data-testid="button-save-purchase">{create.isPending ? 'Saqlanmoqda…' : `Kirimni saqlash · ${money(total)}`}</button></div>
     </form>
   </Modal>;
 }

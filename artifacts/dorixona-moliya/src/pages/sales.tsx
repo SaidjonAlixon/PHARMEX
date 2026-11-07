@@ -68,7 +68,7 @@ export function SalesPage({ filters }: { filters: Filters }) {
     <PageHeading eyebrow="SAVDO · ПРОДАЖА" title="Savdolar" subtitle="Cheklar, toʻlov turlari, chegirma, QQS, tannarx va yalpi foyda; bekor qilish va qaytarishlar" actions={canEdit && <button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-receipt"><Plus size={16} /> Yangi chek</button>} />
     <KpiStrip items={[
       { label: 'Cheklar', value: stats.count, count: true, icon: ReceiptIcon, hint: `${stats.voided} ta bekor qilingan` },
-      { label: 'Sof savdo', value: round2(stats.net), icon: ShoppingCart, tone: 'good', hint: `Yalpi ${money(stats.gross)} soʻm` },
+      { label: 'Sof savdo', value: round2(stats.net), icon: ShoppingCart, tone: 'good', hint: `Yalpi ${money(stats.gross)}` },
       { label: 'Qaytarishlar', value: round2(stats.returns), icon: Undo2, tone: stats.returns ? 'warn' : undefined, hint: `${stats.returnCount} ta hujjat` },
       { label: 'Chegirmalar', value: round2(stats.discount), icon: Percent },
       { label: 'QQS (narx ichida)', value: round2(stats.vat), icon: HandCoins },
@@ -77,7 +77,7 @@ export function SalesPage({ filters }: { filters: Filters }) {
     ]} />
     <div className="split-grid">
       <Panel title="Toʻlov turlari" subtitle="Kassa va toʻlov tizimi boʻyicha sof tushum (qaytarishlar ayirilgan)">
-        {channels.length ? <div className="breakdown-list">{channels.map(c => <div className="breakdown-row" key={`${c.name}|${c.method}`}><div><span className="pay-label">{c.method === 'card' ? <CreditCard size={13} /> : <Banknote size={13} />} {c.name || paymentLabels[c.method] || c.method}<small> · {paymentLabels[c.method] ?? c.method} · {c.count.toLocaleString('ru-RU')} ta</small></span><b>{money(c.amount)} soʻm</b></div><div className="bar-track"><i style={{ width: `${Math.max(3, Math.abs(num(c.amount)) / channelMax * 100)}%` }} /></div></div>)}</div> : <div className="inline-empty">{summaryQ.isLoading ? 'Yuklanmoqda…' : 'Toʻlovlar yoʻq'}</div>}
+        {channels.length ? <div className="breakdown-list">{channels.map(c => <div className="breakdown-row" key={`${c.name}|${c.method}`}><div><span className="pay-label">{c.method === 'card' ? <CreditCard size={13} /> : <Banknote size={13} />} {c.name || paymentLabels[c.method] || c.method}<small> · {paymentLabels[c.method] ?? c.method} · {c.count.toLocaleString('ru-RU')} ta</small></span><b>{money(c.amount)}</b></div><div className="bar-track"><i style={{ width: `${Math.max(3, Math.abs(num(c.amount)) / channelMax * 100)}%` }} /></div></div>)}</div> : <div className="inline-empty">{summaryQ.isLoading ? 'Yuklanmoqda…' : 'Toʻlovlar yoʻq'}</div>}
       </Panel>
       <Panel title="Qanday ishlaydi" subtitle="Hujjatlar zanjiri">
         <ul className="hint-list">
@@ -154,7 +154,7 @@ export function ReceiptDrawer({ id, onClose, onOpen }: { id: number; onClose: ()
       <div className="detail-columns">
         <div>
           <h3 className="subhead">Toʻlovlar</h3>
-          <div className="pay-list">{r.payments.map((p, i) => <div key={i}><span className={`pay-chip ${p.method}`}>{paymentLabels[p.method] ?? p.method}</span><span>{p.accountName || '—'}</span><b>{money(p.amount)} soʻm</b></div>)}</div>
+          <div className="pay-list">{r.payments.map((p, i) => <div key={i}><span className={`pay-chip ${p.method}`}>{paymentLabels[p.method] ?? p.method}</span><span>{p.accountName || '—'}</span><b>{money(p.amount)}</b></div>)}</div>
         </div>
         <Totals rows={[
           { label: 'Summa (chegirmagacha)', value: r.grossAmount },
@@ -215,7 +215,7 @@ function ReturnModal({ detail, onClose, onDone }: { detail: ReceiptDetail; onClo
   return <Modal eyebrow="MIJOZDAN QAYTARISH · ВОЗВРАТ ОТ ПОКУПАТЕЛЯ" title={`Chek ${detail.receipt.receiptNo}`} onClose={onClose} busy={ret.isPending} size="lg">
     <form className="form-stack" onSubmit={submit}>
       <TableWrap><thead><tr><th>MAHSULOT</th><th className="num">SOTILGAN</th><th className="num">QAYTGAN</th><th className="num">MUMKIN</th><th className="num">QAYTARISH</th><th className="num">SUMMA</th></tr></thead>
-        <tbody>{lines.map(l => <tr key={l.id}><td className="cell-strong">{l.productName}<small>{money(l.unitPrice)} soʻm / {l.unit}</small></td><td className="num">{qty(l.quantity)}</td><td className="num">{qty(l.returnedQuantity)}</td><td className="num">{qty(l.remaining)}</td><td className="num"><input className="cell-input" type="number" min={0} max={l.remaining} step="0.001" disabled={l.remaining <= 0} value={quantities[l.id] ?? ''} onChange={e => setQuantities({ ...quantities, [l.id]: e.target.value })} placeholder="0" /></td><td className="num">{l.refund ? money(l.refund) : '—'}</td></tr>)}</tbody></TableWrap>
+        <tbody>{lines.map(l => <tr key={l.id}><td className="cell-strong">{l.productName}<small>{money(l.unitPrice)} / {l.unit}</small></td><td className="num">{qty(l.quantity)}</td><td className="num">{qty(l.returnedQuantity)}</td><td className="num">{qty(l.remaining)}</td><td className="num"><input className="cell-input" type="number" min={0} max={l.remaining} step="0.001" disabled={l.remaining <= 0} value={quantities[l.id] ?? ''} onChange={e => setQuantities({ ...quantities, [l.id]: e.target.value })} placeholder="0" /></td><td className="num">{l.refund ? money(l.refund) : '—'}</td></tr>)}</tbody></TableWrap>
       <div className="form-grid">
         <label>Qaytarish usuli<select value={refundMethod} onChange={e => setRefundMethod(e.target.value as PaymentMethod)}>{(['cash', 'card', 'transfer', 'other'] as const).map(m => <option key={m} value={m}>{paymentLabels[m]} orqali pul qaytarish</option>)}{hasCredit && <option value="credit">Nasiya qarzidan ayirish</option>}</select></label>
         {refundMethod !== 'credit' && <AccountSelect value={accountId} onChange={setAccountId} branchId={String(detail.receipt.branchId)} kind={refundMethod === 'cash' ? 'cash' : refundMethod === 'other' ? undefined : 'bank'} label="Qaysi hisobdan" />}
@@ -329,7 +329,7 @@ function NewReceiptModal({ defaultBranch, onClose, onCreated }: { defaultBranch:
         ]} />
       </div>
       <FormError error={localError || create.error} />
-      <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Bekor qilish</button><button className="button primary" disabled={create.isPending || !lines.length} data-testid="button-save-receipt">{create.isPending ? 'Saqlanmoqda…' : `Chekni yopish · ${money(total)} soʻm`}</button></div>
+      <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Bekor qilish</button><button className="button primary" disabled={create.isPending || !lines.length} data-testid="button-save-receipt">{create.isPending ? 'Saqlanmoqda…' : `Chekni yopish · ${money(total)}`}</button></div>
     </form>
   </Modal>;
 }
