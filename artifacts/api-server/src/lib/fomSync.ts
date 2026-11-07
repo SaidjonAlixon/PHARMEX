@@ -986,7 +986,7 @@ function unitFor(amount: bigint, qty: bigint, fallback: bigint) {
 
 /** Rows from fomSqlReceiptLines / fomSqlReceiptPayments: one sale (or return) per F-APTEKA receipt. */
 export async function importReceipts(lookups: Lookups, lines: FomRow[], payments: FomRow[]): Promise<number> {
-  type ReceiptLine = { productFomId: string; qty: bigint; unit: bigint; amount: bigint; vatRate: number; costAmount: bigint; cost: bigint };
+  type ReceiptLine = { productFomId: string; qty: bigint; unit: bigint; amount: bigint; discount: bigint; vatRate: number; costAmount: bigint; cost: bigint };
   const receipts = new Map<string, { head: FomRow; at: Date; lines: ReceiptLine[] }>();
   for (const row of lines) {
     const at = localTime(row.T, row.D);
@@ -1005,6 +1005,7 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
       qty,
       unit: before > net ? before : net,
       amount: sign * moneyCents(fomNumber(row.A)),
+      discount: sign * moneyCents(fomNumber(row.DA)),
       vatRate: net - vat > 0n ? Math.round(Number((vat * 10000n) / (net - vat)) / 100) : 0,
       costAmount: sign * moneyCents(fomNumber(row.CA)),
       cost: moneyCents(fomNumber(row.C)),
@@ -1078,8 +1079,13 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
         receipt.lines.forEach((line, lineIndex) => {
           const productId = lookups.products.get(line.productFomId)!.id;
           const quantity = milliQuantity(line.qty);
-          const unitPrice = centsMoney(line.unit);
-          // Discount closes the gap to F-APTEKA's exact line amount (chegirma + quantity rounding).
+          // Fractional packs (KOL beyond three decimals) take the unit price that reproduces
+          // F-APTEKA's exact line value; whole quantities keep the list price.
+          const listValue = line.amount + line.discount;
+          const unitPrice = centsMoney(
+            extendedMoney(centsMoney(line.unit), quantity) === listValue ? line.unit : unitFor(listValue, line.qty, line.unit),
+          );
+          // Real chegirma, plus at most a few tiyin of quantity rounding, so totals stay exact.
           const discount = extendedMoney(unitPrice, quantity) - line.amount;
           const unitCost = centsMoney(unitFor(line.costAmount, line.qty, line.cost));
           items.push({
@@ -1204,7 +1210,10 @@ export async function importDirectPurchases(lookups: Lookups, rows: FomRow[]): P
         doc.lines.forEach((line, lineIndex) => {
           const product = lookups.products.get(line.productFomId)!;
           const quantity = milliQuantity(line.qty);
-          const unitCost = centsMoney(line.unit);
+          // As for receipts: fractional quantities take the unit cost that reproduces the line value.
+          const unitCost = centsMoney(
+            extendedMoney(centsMoney(line.unit), quantity) === line.amount ? line.unit : unitFor(line.amount, line.qty, line.unit),
+          );
           const net = line.amount - line.vat;
           items.push({
             purchaseId,

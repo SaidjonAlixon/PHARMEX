@@ -268,7 +268,7 @@ export async function fomSqlNow(cfg: FomSqlConfig, timeoutMs: number): Promise<s
  * Retail receipts (INVOICE 2) and retail returns (4, negative KOL), one row per line with the
  * batch cost. PRICE is after discount, PRICE1 before it; NDS is per unit.
  * Columns: ID, DT, N, T entered at (local time), D day, F department, G good, Q, P, P1, V, C,
- * A line amount and CA line cost (KOL × price rounded to tiyin, KOL keeps 6 decimals).
+ * A line amount, DA line discount and CA line cost (KOL × price rounded to tiyin, KOL keeps 6 decimals).
  */
 export function fomSqlReceiptLines(cfg: FomSqlConfig, scope: FomScope, timeoutMs: number) {
   return queryRows(cfg, timeoutMs, `
@@ -277,6 +277,7 @@ export function fomSqlReceiptLines(cfg: FomSqlConfig, scope: FomScope, timeoutMs
            CONVERT(varchar(40), L.KOL) AS Q, CONVERT(varchar(40), L.PRICE) AS P, CONVERT(varchar(40), L.PRICE1) AS P1,
            CONVERT(varchar(40), L.NDS) AS V, CONVERT(varchar(40), IL.PRICEPRIH) AS C,
            CONVERT(varchar(40), CAST(L.KOL * L.PRICE AS numeric(20, 2))) AS A,
+           CONVERT(varchar(40), CAST(L.KOL * CASE WHEN L.PRICE1 > L.PRICE THEN L.PRICE1 - L.PRICE ELSE 0 END AS numeric(20, 2))) AS DA,
            CONVERT(varchar(40), CAST(L.KOL * IL.PRICEPRIH AS numeric(20, 2))) AS CA
     FROM dbo.INVOICE I
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
