@@ -189,7 +189,7 @@ export function fomSqlTransfers(cfg: FomSqlConfig, scope: FomScope, timeoutMs: n
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
     WHERE I.DOCTYPE IN (13, 15, 57) AND L.STATE IN (11, 12)
-      AND ${inScope("I", scope)}
+      AND ${inScope("I", scope, "inv")}
     ORDER BY I.ID, L.ID`, bindScope(scope));
 }
 
@@ -204,9 +204,10 @@ export function fomSqlPayments(cfg: FomSqlConfig, scope: FomScope, timeoutMs: nu
            CONVERT(varchar(10), P.DATA, 120) AS D, COUNT(*) AS C, CONVERT(varchar(40), SUM(P.SUMMA)) AS S
     FROM dbo.${table} P LEFT JOIN dbo.CASHBOX B ON B.ID = P.CASHBOX
     WHERE P.DOCTYPE IN (${types}) AND ${
-      // Day totals: in change mode recompute every day that has a new or edited row.
+      // Day totals: in change mode recompute every day with a new or edited row, and the recent
+      // days, whose rows may still be arriving from the pharmacies.
       scope.since
-        ? `P.DATA IN (SELECT DISTINCT X.DATA FROM dbo.${table} X WHERE ${inScope("X", scope)})`
+        ? `(P.DATA >= @recent OR P.DATA IN (SELECT DISTINCT X.DATA FROM dbo.${table} X WHERE ${inScope("X", scope)}))`
         : inScope("P", scope)
     }
     GROUP BY P.DOCTYPE, P.CASHBOX, B.NAME, P.OTDEL, CONVERT(varchar(10), P.DATA, 120)`;
@@ -229,7 +230,7 @@ export function fomSqlPurchases(cfg: FomSqlConfig, scope: FomScope, timeoutMs: n
            CONVERT(varchar(40), CAST(L.KOL * L.PRICEPRIHNDS AS numeric(20, 2))) AS VA,
            ISNULL(L.SERIA, '') AS S, CONVERT(varchar(10), L.EXPDATA, 120) AS E
     FROM dbo.INCOME H JOIN dbo.INCOMELN L ON L.INCOME = H.ID
-    WHERE H.DOCTYPE = 1 AND H.STATE IN (3, 12) AND ${inScope("H", scope)}
+    WHERE H.DOCTYPE = 1 AND H.STATE IN (3, 12) AND ${inScope("H", scope, "inc")}
     ORDER BY H.ID, L.ID`, bindScope(scope));
 }
 
@@ -243,12 +244,21 @@ export interface FomScope {
   to: Date;
   since?: Date;
   floor?: Date;
+  /**
+   * Change mode: documents to read whatever their timestamps. Pharmacies' rows reach this
+   * database late but keep their till time, so a time window alone misses them.
+   */
+  missing?: { inv: string[]; inc: string[] };
+  /** Change mode: money day totals from this day on are always recomputed (late rows). */
+  recent?: Date;
 }
 
-function inScope(alias: string, scope: FomScope) {
-  return scope.since
-    ? `${alias}.DATA >= @floor AND ISNULL(${alias}.DATACHANGE, ${alias}.DATAENTER) >= @since`
-    : `${alias}.DATA >= @from AND ${alias}.DATA < DATEADD(day, 1, @to)`;
+/** `table`: whose missing ids apply — INVOICE ("inv") or INCOME ("inc"). */
+function inScope(alias: string, scope: FomScope, table?: "inv" | "inc") {
+  if (!scope.since) return `${alias}.DATA >= @from AND ${alias}.DATA < DATEADD(day, 1, @to)`;
+  const changed = `(${alias}.DATA >= @floor AND ISNULL(${alias}.DATACHANGE, ${alias}.DATAENTER) >= @since)`;
+  const ids = table ? (scope.missing?.[table] ?? []).filter((id) => /^\d+$/.test(id)) : [];
+  return ids.length ? `(${changed} OR ${alias}.ID IN (${ids.join(", ")}))` : changed;
 }
 
 const bindScope = (scope: FomScope) => (request: sql.Request) => {
@@ -256,7 +266,23 @@ const bindScope = (scope: FomScope) => (request: sql.Request) => {
   request.input("to", sql.DateTime, scope.to);
   request.input("since", sql.DateTime, scope.since ?? scope.from);
   request.input("floor", sql.DateTime, scope.floor ?? scope.from);
+  request.input("recent", sql.DateTime, scope.recent ?? scope.since ?? scope.from);
 };
+
+/**
+ * Posted documents dated from `floor`, ids only: compared with what PHARMEX holds to find rows
+ * that reached F-APTEKA's database after the change window had passed them.
+ * Columns: T inv / inc, ID.
+ */
+export function fomSqlRecentDocIds(cfg: FomSqlConfig, floor: Date, timeoutMs: number) {
+  return queryRows(cfg, timeoutMs, `
+    SELECT 'inv' AS T, I.ID FROM dbo.INVOICE I
+    WHERE I.DATA >= @floor AND I.STATE IN (11, 12) AND I.DOCTYPE IN (2, 4, 6, 9, 11, 12, 13, 15, 17, 57, 58)
+    UNION ALL
+    SELECT 'inc', H.ID FROM dbo.INCOME H
+    WHERE H.DATA >= @floor AND ((H.DOCTYPE = 1 AND H.STATE IN (3, 12)) OR (H.DOCTYPE = 9 AND H.STATE = 12))`,
+    (request) => request.input("floor", sql.DateTime, floor));
+}
 
 /** F-APTEKA server clock (local wall-clock time), `yyyy-mm-ddThh:mm:ss`. */
 export async function fomSqlNow(cfg: FomSqlConfig, timeoutMs: number): Promise<string> {
@@ -283,7 +309,7 @@ export function fomSqlReceiptLines(cfg: FomSqlConfig, scope: FomScope, timeoutMs
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
     WHERE I.DOCTYPE IN (2, 4) AND L.STATE IN (11, 12)
-      AND ${inScope("I", scope)}
+      AND ${inScope("I", scope, "inv")}
     ORDER BY I.ID, L.ID`, bindScope(scope));
 }
 
@@ -293,7 +319,7 @@ export function fomSqlReceiptPayments(cfg: FomSqlConfig, scope: FomScope, timeou
     SELECT P.INVOICE AS ID, MAX(P.DOCTYPE) AS DT, P.CASHBOX AS CB, ISNULL(B.NAME, '') AS CN,
            CONVERT(varchar(40), SUM(P.SUMMA)) AS S
     FROM dbo.PAYIN P JOIN dbo.INVOICE I ON I.ID = P.INVOICE LEFT JOIN dbo.CASHBOX B ON B.ID = P.CASHBOX
-    WHERE I.DOCTYPE IN (2, 4) AND ${inScope("I", scope)}
+    WHERE I.DOCTYPE IN (2, 4) AND ${inScope("I", scope, "inv")}
     GROUP BY P.INVOICE, P.CASHBOX, B.NAME`, bindScope(scope));
 }
 
@@ -312,14 +338,14 @@ export function fomSqlStockDocuments(cfg: FomSqlConfig, scope: FomScope, timeout
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
     JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
     WHERE I.DOCTYPE IN (6, 9, 11, 12, 17, 58) AND L.STATE IN (11, 12)
-      AND ${inScope("I", scope)}
+      AND ${inScope("I", scope, "inv")}
     UNION ALL
     SELECT 'inc:' + CONVERT(varchar(20), H.ID), 1009, H.NUMBER, CONVERT(varchar(10), H.DATA, 120),
            H.OTDEL, H.ORG, ISNULL(H.PURPOSE, ''), L.GOOD,
            CONVERT(varchar(40), L.KOL), CONVERT(varchar(40), L.PRICEPRIH),
            CONVERT(varchar(40), CAST(L.KOL * L.PRICEPRIH AS numeric(20, 2)))
     FROM dbo.INCOME H JOIN dbo.INCOMELN L ON L.INCOME = H.ID
-    WHERE H.DOCTYPE = 9 AND H.STATE = 12 AND ${inScope("H", scope)}
+    WHERE H.DOCTYPE = 9 AND H.STATE = 12 AND ${inScope("H", scope, "inc")}
     ORDER BY 1`, bindScope(scope));
 }
 

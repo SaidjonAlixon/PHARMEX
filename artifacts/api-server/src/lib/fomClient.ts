@@ -9,6 +9,7 @@ import {
   fomSqlPurchases,
   fomSqlReceiptLines,
   fomSqlReceiptPayments,
+  fomSqlRecentDocIds,
   fomSqlStock,
   fomSqlStockDocuments,
   fomSqlTransfers,
@@ -176,6 +177,10 @@ export async function fetchFomSourceNow(config: FomConfig): Promise<string | nul
 }
 
 export type { FomScope };
+
+/** Ids of posted F-APTEKA documents dated from `floor` (see fomSqlRecentDocIds). */
+export const fetchFomRecentDocIds = (config: FomConfig, floor: Date) =>
+  fetchDirect(config, (cfg, timeoutMs) => fomSqlRecentDocIds(cfg, floor, timeoutMs));
 
 /** Current stock per department and good (see fomSqlStock). */
 export const fetchFomStockDirect = (config: FomConfig) => fetchDirect(config, fomSqlStock);

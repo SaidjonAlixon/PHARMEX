@@ -34,6 +34,7 @@ import {
   fomDateValue,
   fomDay,
   fomNumber,
+  fetchFomRecentDocIds,
   fetchFomSourceNow,
   type FomConfig,
   type FomReportKey,
@@ -75,6 +76,8 @@ export interface SyncDetails {
   sourceAt?: string | null;
   /** Change mode: documents entered / edited at or after this F-APTEKA time were read. */
   since?: string | null;
+  /** Change mode: documents that arrived in F-APTEKA late and were fetched by id. */
+  late?: number;
   /** Work units done / planned in this run (one report window each). */
   progress?: { done: number; total: number };
   reports: Partial<Record<FomReportKey | "site", ReportOutcome>>;
@@ -1568,6 +1571,39 @@ export async function startFomSync(options: SyncOptions): Promise<{ started: boo
 
 /** F-APTEKA edits that commit a little after the clock reading must not slip between two runs. */
 const CHANGE_OVERLAP_MS = 2 * 60_000;
+/** Days of documents whose ids are compared each run, to catch rows the pharmacies deliver late. */
+const RECONCILE_DAYS = Number(process.env.FOM_RECONCILE_DAYS) || 7;
+/** Upper bound of late documents fetched by id in one run (the rest follow on the next runs). */
+const MISSING_BATCH = 1500;
+
+/**
+ * F-APTEKA document ids (from fomSqlRecentDocIds) that PHARMEX does not hold yet. Receipts are
+ * `chk:ID`, transfers `tr:ID`, other stock documents `doc:inv:ID` / `doc:inc:ID`, purchases `inc:ID`.
+ */
+async function missingDocuments(rows: FomRow[], from: Date): Promise<{ inv: string[]; inc: string[] }> {
+  const since = new Date(from.getTime() - DAY_MS);
+  const [sales, docs, purchases] = await Promise.all([
+    db.select({ id: salesTable.sourceId }).from(salesTable)
+      .where(and(eq(salesTable.source, SOURCE), sql`${salesTable.soldAt} >= ${since}`)),
+    db.select({ id: stockDocumentsTable.sourceId }).from(stockDocumentsTable)
+      .where(and(eq(stockDocumentsTable.source, SOURCE), sql`${stockDocumentsTable.occurredAt} >= ${since}`)),
+    db.select({ id: purchasesTable.sourceId }).from(purchasesTable)
+      .where(and(eq(purchasesTable.source, SOURCE), sql`${purchasesTable.receivedAt} >= ${since}`)),
+  ]);
+  const have = { inv: new Set<string>(), inc: new Set<string>() };
+  for (const { id } of [...sales, ...docs, ...purchases]) {
+    const m = /^(?:chk|tr|doc:inv):(\d+)$/.exec(id ?? "") ?? null;
+    if (m) have.inv.add(m[1]!);
+    const n = /^(?:inc|doc:inc):(\d+)$/.exec(id ?? "");
+    if (n) have.inc.add(n[1]!);
+  }
+  const missing = { inv: [] as string[], inc: [] as string[] };
+  for (const row of rows) {
+    const table = row.T === "inc" ? "inc" : "inv";
+    if (row.ID && !have[table].has(row.ID)) missing[table].push(row.ID);
+  }
+  return { inv: missing.inv.slice(0, MISSING_BATCH), inc: missing.inc.slice(0, MISSING_BATCH) };
+}
 
 /** Where the previous run's change window ended (F-APTEKA clock, UTC-labelled local time). */
 function changesSince(previous: SyncDetails): Date | null {
@@ -1829,6 +1865,18 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       ]
     : [];
   const ranges: Array<[Date, Date]> = since ? [[from, to]] : windows(from, to);
+  // Change mode: documents that reached F-APTEKA after the window passed them (late pharmacy rows).
+  let missing: { inv: string[]; inc: string[] } = { inv: [], inc: [] };
+  const recent = new Date(today.getTime() - DAY_MS);
+  if (since && !fatal) {
+    try {
+      const reconcileFrom = new Date(Math.max(floor.getTime(), today.getTime() - RECONCILE_DAYS * DAY_MS));
+      missing = await missingDocuments(await fetchFomRecentDocIds(config, reconcileFrom), reconcileFrom);
+      details.late = missing.inv.length + missing.inc.length;
+    } catch (error) {
+      logger.warn({ err: error }, "FOM late-document check failed");
+    }
+  }
   plan(
     procReports.length * details.filials.length * ranges.length +
       direct.reduce((sum, step) => sum + step.weight, 0) * ranges.length,
@@ -1854,7 +1902,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       let rows = 0;
       let imported = 0;
       for (const [start, end] of ranges) {
-        const result = await step.load(since ? { from: start, to: end, since, floor } : { from: start, to: end });
+        const result = await step.load(since ? { from: start, to: end, since, floor, missing, recent } : { from: start, to: end });
         rows += result.rows;
         imported += result.imported;
         await tick(
@@ -1892,7 +1940,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       ? `${fetched.length - errors.length}/${fetched.length} manba yuklandi, ${errors.length} tasida xatolik (${scope}).`
       : since
         ? total
-          ? `${total.toLocaleString("ru-RU")} ta yangi/oʻzgargan yozuv qoʻshildi (${scope}).${lastText}`
+          ? `${total.toLocaleString("ru-RU")} ta yangi/oʻzgargan yozuv qoʻshildi${details.late ? `, shundan ${details.late} ta hujjat apteka bazasiga kechikib kelgan` : ""} (${scope}).${lastText}`
           : `Apteka bazasida yangi maʼlumot yoʻq (${scope}).${lastText}`
         : `${fetched.length} manba yuklandi: ${total.toLocaleString("ru-RU")} yozuv (${scope}).${lastText}`;
   await db
