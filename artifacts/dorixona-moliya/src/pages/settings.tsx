@@ -2,14 +2,12 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import {
-  Activity, AlertCircle, Boxes, Building2, Check, Circle, Copy, Eye, EyeOff, FileText, Loader2, PackageSearch, PlugZap, Receipt, RefreshCw, Save, ShieldCheck, Truck, Users, X,
+  Activity, AlertCircle, Boxes, Building2, Check, FileText, PackageSearch, Receipt, RefreshCw, Truck, Users,
 } from 'lucide-react';
-import {
-  useGetFomStatus, getGetFomStatusQueryKey, useTestFomConnection, useSyncFom, useGetFomSettings, getGetFomSettingsQueryKey, useSaveFomSettings,
-} from '@workspace/api-client-react';
+import { useGetFomStatus, getGetFomStatusQueryKey, useTestFomConnection, useSyncFom } from '@workspace/api-client-react';
 import type { FomReportState } from '@workspace/api-client-react';
 import {
-  DataState, InfoGrid, KpiStrip, PageHeading, Panel, StatusBadge, TableWrap, addDaysTo, apiErrorMessage, clockTime, date, dateTime, todayDay,
+  DataState, KpiStrip, PageHeading, Panel, StatusBadge, TableWrap, addDaysTo, apiErrorMessage, clockTime, dateTime, todayDay,
 } from '@/components/kit';
 import { useAccess } from '@/lib/access';
 import { toast } from '@/hooks/use-toast';
@@ -113,115 +111,14 @@ function ReportStatus({ report, running }: { report: FomReportState; running: bo
   return <StatusBadge tone="good">Yuklandi</StatusBadge>;
 }
 
-type ConnectForm = { protocol: 'http' | 'https'; host: string; port: string; filialIds: string; intervalMinutes: string; initialDays: string; timeoutSeconds: string; apiToken: string; clearApiToken: boolean };
-type StepState = 'idle' | 'busy' | 'ok' | 'fail';
-const stepIcon = (s: StepState) => s === 'busy' ? <Loader2 size={14} className="spin" /> : s === 'ok' ? <Check size={14} /> : s === 'fail' ? <X size={14} /> : <Circle size={10} />;
-
-function FomConnectPanel({ onMessage }: { onMessage: (m: { tone: 'success' | 'error'; text: string } | null) => void }) {
-  const qc = useQueryClient();
-  const settingsQ = useGetFomSettings();
-  const save = useSaveFomSettings();
-  const test = useTestFomConnection();
-  const sync = useSyncFom();
-  const [form, setForm] = useState<ConnectForm | null>(null);
-  const [steps, setSteps] = useState<{ save: StepState; test: StepState; sync: StepState } | null>(null);
-  const [showToken, setShowToken] = useState(false);
-  const s = settingsQ.data;
-
-  useEffect(() => {
-    if (!s || form) return;
-    setForm({
-      protocol: s.protocol, host: s.host, port: s.port ? String(s.port) : '', filialIds: s.filialIds.join(', '),
-      intervalMinutes: String(s.intervalMinutes), initialDays: String(s.initialDays), timeoutSeconds: String(s.timeoutSeconds), apiToken: '', clearApiToken: false,
-    });
-  }, [s, form]);
-
-  if (settingsQ.isError) return <Panel title="FOM ulanishi (REPORT.exe)" subtitle="Sozlamalarni faqat administrator koʻra oladi"><div className="notice error">Ulanish sozlamalarini yuklab boʻlmadi.</div></Panel>;
-  if (!form || !s) return <Panel title="FOM ulanishi (REPORT.exe)"><DataState loading empty={false} error={false} retry={() => settingsQ.refetch()} /></Panel>;
-
-  const set = (patch: Partial<ConnectForm>) => setForm({ ...form, ...patch });
-  const onHost = (raw: string) => {
-    const match = /^\s*(https?):\/\/([^/:\s]+)(?::(\d+))?/i.exec(raw);
-    if (match) set({ protocol: match[1].toLowerCase() as 'http' | 'https', host: match[2], port: match[3] ?? form.port });
-    else set({ host: raw.replace(/\s+/g, '') });
-  };
-  const busy = save.isPending || test.isPending || sync.isPending;
-  const preview = form.host ? `${form.protocol}://${form.host}${form.port ? `:${form.port}` : ''}/P_GetReport_XML` : '—';
-
-  const submit = async (e: FormEvent, connect: boolean) => {
-    e.preventDefault();
-    onMessage(null);
-    setSteps(connect ? { save: 'busy', test: 'idle', sync: 'idle' } : null);
-    try {
-      const saved = await save.mutateAsync({ data: {
-        protocol: form.protocol, host: form.host.trim(), port: form.port ? Number(form.port) : null, filialIds: form.filialIds,
-        intervalMinutes: Number(form.intervalMinutes) || 0, initialDays: Number(form.initialDays) || 90, timeoutSeconds: Number(form.timeoutSeconds) || 120,
-        ...(form.apiToken.trim() ? { apiToken: form.apiToken.trim() } : {}), ...(form.clearApiToken ? { clearApiToken: true } : {}),
-      } });
-      qc.setQueryData(getGetFomSettingsQueryKey(), saved);
-      setForm({ ...form, apiToken: '', clearApiToken: false });
-      void qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() });
-      if (!connect) { onMessage({ tone: 'success', text: 'Sozlamalar saqlandi.' }); return; }
-      setSteps({ save: 'ok', test: 'busy', sync: 'idle' });
-      const tested = await test.mutateAsync();
-      if (tested.status !== 'success') {
-        setSteps({ save: 'ok', test: 'fail', sync: 'idle' });
-        onMessage({ tone: 'error', text: `Saqlandi, lekin FOM serveriga ulanib boʻlmadi: ${tested.message}` });
-        void qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() });
-        return;
-      }
-      setSteps({ save: 'ok', test: 'ok', sync: 'busy' });
-      const started = await sync.mutateAsync({ data: {} });
-      setSteps({ save: 'ok', test: 'ok', sync: started.status === 'error' ? 'fail' : 'ok' });
-      onMessage({ tone: started.status === 'error' ? 'error' : 'success', text: `${tested.message} ${started.message}` });
-      void qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() });
-    } catch (error) {
-      setSteps(prev => prev && { save: prev.save === 'busy' ? 'fail' : prev.save, test: prev.test === 'busy' ? 'fail' : prev.test, sync: prev.sync === 'busy' ? 'fail' : prev.sync });
-      onMessage({ tone: 'error', text: apiErrorMessage(error, 'Sozlamalarni saqlab boʻlmadi.') });
-    }
-  };
-
-  const sourceBadge = s.source === 'saved' ? <StatusBadge tone="good">Saqlangan{s.updatedAt ? ` · ${dateTime(s.updatedAt)}` : ''}</StatusBadge> : s.source === 'env' ? <StatusBadge tone="info">Server .env dan</StatusBadge> : <StatusBadge tone="warn">Kiritilmagan</StatusBadge>;
-  return <Panel title="FOM ulanishi (ServiceReports)" subtitle="Aptekaning tashqi (ochiq) IP manzili va routerda ochilgan portni kiriting, soʻng «Saqlash va ulash» ni bosing" action={sourceBadge} className="fom-connect">
-    <form className="form-stack" onSubmit={e => submit(e, true)}>
-      <div className="form-grid four">
-        <label className="f-proto">Protokol<select value={form.protocol} onChange={e => set({ protocol: e.target.value as 'http' | 'https' })} data-testid="select-fom-protocol"><option value="http">http://</option><option value="https">https://</option></select></label>
-        <label className="span-2">Server IP manzili<input required value={form.host} onChange={e => onHost(e.target.value)} placeholder="aptekaning ochiq IP si, masalan 84.54.70.12" autoComplete="off" spellCheck={false} data-testid="input-fom-host" /></label>
-        <label className="f-port">Port<input type="number" min={1} max={65535} value={form.port} onChange={e => set({ port: e.target.value })} placeholder="8084" data-testid="input-fom-port" /></label>
-        <label className="span-2">Filial ID lari (pFilial_id)<input value={form.filialIds} onChange={e => set({ filialIds: e.target.value })} placeholder="1, 2, 3 — boʻsh qolsa avtomatik aniqlanadi" data-testid="input-fom-filials" /></label>
-        <label>Avto-yangilash (daqiqa)<input type="number" min={0} max={1440} required value={form.intervalMinutes} onChange={e => set({ intervalMinutes: e.target.value })} data-testid="input-fom-interval" /></label>
-        <label>Birinchi tortish (kun)<input type="number" min={1} max={3650} required value={form.initialDays} onChange={e => set({ initialDays: e.target.value })} data-testid="input-fom-days" /></label>
-        <label className="span-2"><span>Kirish tokeni <span className="optional">· ixtiyoriy, faqat FOM talab qilsa</span></span>
-          <div className="secret-input"><input type={showToken ? 'text' : 'password'} value={form.apiToken} onChange={e => set({ apiToken: e.target.value, clearApiToken: false })} placeholder={s.apiTokenSet ? `Saqlangan (${s.apiTokenHint}) — oʻzgartirish uchun yangisini kiriting` : 'Token yoʻq'} autoComplete="new-password" data-testid="input-fom-token" />
-            <button type="button" className="icon-button" onClick={() => setShowToken(v => !v)} title={showToken ? 'Yashirish' : 'Koʻrsatish'}>{showToken ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>
-          {s.apiTokenSet && <span className="check-line"><input type="checkbox" checked={form.clearApiToken} onChange={e => set({ clearApiToken: e.target.checked, apiToken: '' })} /> Saqlangan tokenni oʻchirish</span>}
-        </label>
-        <label>Kutish vaqti (soniya)<input type="number" min={5} max={600} required value={form.timeoutSeconds} onChange={e => set({ timeoutSeconds: e.target.value })} data-testid="input-fom-timeout" /></label>
-        <div className="connect-preview"><span>Soʻrov manzili</span><code>{preview}</code></div>
-      </div>
-      {steps && <div className="connect-steps" data-testid="status-fom-steps">
-        <span className={steps.save}>{stepIcon(steps.save)} Saqlash</span><i />
-        <span className={steps.test}>{stepIcon(steps.test)} Serverga ulanish</span><i />
-        <span className={steps.sync}>{stepIcon(steps.sync)} Maʼlumot tortish</span>
-      </div>}
-      <div className="connect-actions">
-        <p className="field-hint"><ShieldCheck size={14} /> Maʼlumotlar serverda saqlanadi; token brauzerga qaytarilmaydi. 192.168.x.x kabi ichki IP internetdan koʻrinmaydi — routerdagi tashqi (WAN) IP ni kiriting.</p>
-        <button type="button" className="button secondary" disabled={busy || !form.host} onClick={e => submit(e, false)} data-testid="button-fom-save"><Save size={15} />Saqlash</button>
-        <button className="button primary" disabled={busy || !form.host} data-testid="button-fom-connect"><PlugZap size={15} />{busy ? 'Ulanmoqda…' : 'Saqlash va ulash'}</button>
-      </div>
-    </form>
-  </Panel>;
-}
-
 export function SettingsPage() {
   const qc = useQueryClient();
-  const { canEdit, isAdmin } = useAccess();
+  const { canEdit } = useAccess();
   const q = useGetFomStatus({ query: { queryKey: getGetFomStatusQueryKey(), refetchInterval: query => (query.state.data?.running ? 1500 : false) } });
   const test = useTestFomConnection();
   const sync = useSyncFom();
   const [range, setRange] = useState({ from: isoDay(-30), to: isoDay() });
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
-  const [copied, setCopied] = useState(false);
   const wasRunning = useRef(false);
   const status = q.data;
   const pull = status?.reportAvailable !== false;
@@ -247,14 +144,10 @@ export function SettingsPage() {
       onError: error => setMessage({ tone: 'error', text: apiErrorMessage(error, 'Sinxronlash boshlanmadi.') }),
     });
   };
-  const copySetup = (text: string) => { void navigator.clipboard?.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };
-
   const syncState = status ? syncStatusText[status.running ? 'running' : status.lastSyncStatus] ?? syncStatusText.not_started : null;
-  const origin = /^(localhost|127\.|192\.168\.)/.test(window.location.hostname) ? 'https://<domen>' : window.location.origin;
-  const setupIni = status?.site.path ? `[CONNECT]\nSERVER=LocalHost\nBASE=NAPTSKLAD\n[SERVER]\nURL=${origin}/api/fom/site/<FOM_SITE_TOKEN>\nTOCING=<FOM_SITE_TOKEN>` : '';
 
   return <>
-    <PageHeading eyebrow="INTEGRATSIYA" title="FOM (F-APTEKA) maʼlumotlari" subtitle="REPORT.exe orqali hisobotlarni tortish, SITE.exe orqali qoldiqlarni qabul qilish va import holati" actions={canEdit && status && pull && <div className="heading-button-group">
+    <PageHeading eyebrow="INTEGRATSIYA" title="FOM (F-APTEKA) maʼlumotlari" subtitle="Apteka kompyuteridagi F-APTEKA bazasidan maʼlumot olish va import holati" actions={canEdit && status && pull && <div className="heading-button-group">
       <button className="button secondary" onClick={runTest} disabled={!status.configured || test.isPending} data-testid="button-test-fom"><Activity size={15} />{test.isPending ? 'Tekshirilmoqda…' : 'Ulanishni sinash'}</button>
       <button className="button primary" onClick={() => runSync(undefined, true)} disabled={!status.configured || status.running || sync.isPending} data-testid="button-sync-fom"><RefreshCw size={15} className={status.running ? 'spin' : ''} />{status.running ? 'Sinxronlanmoqda…' : 'Yangilash'}</button>
     </div>} />
@@ -262,8 +155,8 @@ export function SettingsPage() {
     {status && <>
       {pull ? <div className={`integration-banner ${status.connected ? 'connected' : 'disconnected'}`} data-testid="status-fom-connection">
         <div className="integration-icon">{status.connected ? <Check size={20} /> : <AlertCircle size={20} />}</div>
-        <div><span className="eyebrow">REPORT.EXE SERVERI</span><b>{status.baseUrl ?? 'Server manzili kiritilmagan — pastdagi formani toʻldiring'}</b>
-          <span>Filiallar (pFilial_id): {status.filialIds.length ? `${status.filialIds.join(', ')} — jami ${status.filialIds.length} ta` : 'avtomatik aniqlanadi'} · Real vaqt: {status.intervalMinutes > 0 ? `har ${status.intervalMinutes} daqiqada hujjatlar va qoldiqlar, har ${status.refsIntervalMinutes} daqiqada maʼlumotnomalar` : 'avto-sinxron oʻchirilgan'}{status.refsAt ? ` · maʼlumotnomalar: ${dateTime(status.refsAt)}` : ''}</span></div>
+        <div><span className="eyebrow">APTEKA BAZASI (F-APTEKA)</span><b>{status.connected ? 'Apteka kompyuteri orqali ulangan' : status.configured ? 'Apteka kompyuteri bilan aloqa yoʻq — kompyuter yoqilgan va internetga ulanganini tekshiring' : 'Ulanish sozlanmagan'}</b>
+          <span>Filiallar: {status.filialIds.length ? `jami ${status.filialIds.length} ta` : 'avtomatik aniqlanadi'} · {status.intervalMinutes > 0 ? 'yangi hujjatlar avtomatik qoʻshilib boradi' : 'avto-yangilanish oʻchirilgan'}{status.refsAt ? ` · maʼlumotnomalar: ${dateTime(status.refsAt)}` : ''}</span></div>
         <StatusBadge tone={status.connected ? 'good' : status.configured ? 'bad' : 'warn'}>{status.connected ? 'Ulangan' : status.configured ? 'Javob yoʻq' : 'Sozlanmagan'}</StatusBadge>
       </div> : <div className={`integration-banner ${status.connected ? 'connected' : 'disconnected'}`} data-testid="status-fom-connection">
         <div className="integration-icon">{status.connected ? <Check size={20} /> : <AlertCircle size={20} />}</div>
@@ -276,9 +169,6 @@ export function SettingsPage() {
         <StatusBadge tone={status.connected ? 'good' : status.site.configured ? 'warn' : 'bad'}>{status.connected ? 'Maʼlumot kelyapti' : status.site.configured ? 'Kutilmoqda' : 'Token yoʻq'}</StatusBadge>
       </div>}
       {message && <div className={`notice ${message.tone}`} data-testid="status-fom-message">{message.text}</div>}
-
-      {isAdmin && pull && <FomConnectPanel onMessage={setMessage} />}
-      {!pull && <div className="notice info" data-testid="status-fom-site-mode">Bu serverdan REPORT.exe ga ulanib boʻlmaydi. Qoldiqlar SITE.exe orqali qabul qilinadi.</div>}
 
       <KpiStrip items={[
         { label: 'Filiallar', value: status.totals.branches, count: true, icon: Building2 },
@@ -316,18 +206,6 @@ export function SettingsPage() {
             </form>}
             <p className="field-hint">Takroriy tortish dublikat yaratmaydi: hujjatlar FOM ID boʻyicha yangilanadi.</p>
           </Panel>}
-
-          <Panel title="Qoldiqlarni qabul qilish (SITE.exe)" subtitle="FOM texnigi SETUP.ini ga shu manzil va tokenni yozadi">
-            <InfoGrid items={[
-              { label: 'Holat', value: status.site.configured ? <StatusBadge tone="good">Token sozlangan</StatusBadge> : <StatusBadge tone="warn">FOM_SITE_TOKEN yoʻq</StatusBadge> },
-              { label: 'Qabul manzili', value: <span className="mono">{status.site.path ?? '—'}</span> },
-              { label: 'Oxirgi qabul', value: status.site.lastAt ? dateTime(status.site.lastAt) : 'Hali kelmagan' },
-              { label: 'Qatorlar', value: status.site.lastRecords.toLocaleString('uz-UZ') },
-            ]} />
-            {status.site.lastMessage && <div className={`notice ${status.site.lastStatus === 'error' ? 'error' : 'info'}`}>{status.site.lastMessage}</div>}
-            {canEdit && setupIni && <div className="code-block"><pre>{setupIni}</pre><button type="button" className="icon-button" onClick={() => copySetup(setupIni)} title="Nusxalash">{copied ? <Check size={15} /> : <Copy size={15} />}</button></div>}
-            <p className="field-hint"><ShieldCheck size={14} /> SITE.exe tokeni faqat server muhitida (env) saqlanadi, brauzerga toʻliq chiqarilmaydi.</p>
-          </Panel>
         </div>
       </div>
     </>}
