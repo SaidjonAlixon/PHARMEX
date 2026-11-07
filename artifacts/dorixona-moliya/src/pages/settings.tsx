@@ -12,6 +12,7 @@ import {
   DataState, InfoGrid, KpiStrip, PageHeading, Panel, StatusBadge, TableWrap, addDaysTo, apiErrorMessage, clockTime, date, dateTime, todayDay,
 } from '@/components/kit';
 import { useAccess } from '@/lib/access';
+import { toast } from '@/hooks/use-toast';
 
 const syncStatusText: Record<string, { label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' | 'info' }> = {
   success: { label: 'Muvaffaqiyatli', tone: 'good' },
@@ -33,8 +34,10 @@ export function FomLive() {
   const qc = useQueryClient();
   const { canEdit } = useAccess();
   const sync = useSyncFom();
-  const [asked, setAsked] = useState(false);
-  const q = useGetFomStatus({ query: { queryKey: getGetFomStatusQueryKey(), refetchInterval: query => (query.state.data?.running || asked ? 2_000 : 15_000) } });
+  // Time of the click while a refresh is pending; done once a run that ended after it is reported.
+  const [askedAt, setAskedAt] = useState<number | null>(null);
+  const asked = askedAt != null;
+  const q = useGetFomStatus({ query: { queryKey: getGetFomStatusQueryKey(), refetchInterval: query => (asked ? 1_000 : query.state.data?.running ? 3_000 : 15_000) } });
   const seen = useRef<string | undefined>(undefined);
   const [, setTick] = useState(0);
   const s = q.data;
@@ -46,12 +49,25 @@ export function FomLive() {
     if (!s) return;
     // A finished run (success or error) changes the key; reload every page's data then.
     const key = s.running ? seen.current : `${s.lastSyncAt}|${s.lastSyncStatus}|${s.site.lastAt}`;
-    if (seen.current !== undefined && key !== seen.current) {
-      void qc.invalidateQueries();
-      setAsked(false);
-    }
+    if (seen.current !== undefined && key !== seen.current) void qc.invalidateQueries();
     seen.current = key;
-  }, [s, qc]);
+    // The server reports `running` until the run asked for (queued behind an auto run if need be) ends.
+    if (askedAt != null && !s.running && s.lastSyncAt && new Date(s.lastSyncAt).getTime() >= askedAt - 1_000) {
+      setAskedAt(null);
+      void qc.invalidateQueries();
+      toast({
+        title: s.lastSyncStatus === 'error' ? 'Yangilashda xatolik' : `Yangilandi: ${clockTime(s.lastSyncAt)}`,
+        description: s.lastMessage ?? undefined,
+        variant: s.lastSyncStatus === 'error' ? 'destructive' : undefined,
+      });
+    }
+  }, [s, qc, askedAt]);
+  useEffect(() => {
+    if (askedAt == null) return;
+    // Never leave the button spinning if the server went away mid-run.
+    const timer = setTimeout(() => setAskedAt(null), 3 * 60_000);
+    return () => clearTimeout(timer);
+  }, [askedAt]);
   if (!s || (!s.configured && !s.site.configured)) return null;
   const latest = s.running ? null : [s.lastSyncAt, s.site.lastAt].filter(Boolean).sort().pop() ?? null;
   const sitePushing = !!s.site.lastAt && Date.now() - new Date(s.site.lastAt).getTime() < 30 * 60_000;
@@ -62,10 +78,20 @@ export function FomLive() {
   const tone = longRun ? 'running' : live ? 'live' : 'down';
   const busy = asked || sync.isPending || longRun;
   const refresh = () => {
-    setAsked(true);
-    if (!canEdit) { void qc.invalidateQueries(); setTimeout(() => setAsked(false), 800); return; }
-    // Already running (auto run): its completion reloads the data through the effect above.
-    sync.mutate({ data: {} }, { onSettled: () => void qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() }) });
+    if (!canEdit) {
+      // Viewers cannot start a pull; reload what the server already has.
+      void qc.invalidateQueries();
+      toast({ title: 'Maʼlumotlar qayta yuklandi', description: latest ? `Apteka bazasidan oxirgi yangilanish: ${dateTime(latest)}` : undefined });
+      return;
+    }
+    setAskedAt(Date.now());
+    sync.mutate({ data: {} }, {
+      onSuccess: result => {
+        if (result.status === 'error') { setAskedAt(null); toast({ title: 'Yangilab boʻlmadi', description: result.message, variant: 'destructive' }); }
+        void qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() });
+      },
+      onError: error => { setAskedAt(null); toast({ title: 'Yangilab boʻlmadi', description: apiErrorMessage(error), variant: 'destructive' }); },
+    });
   };
   return <div className="fom-refresh" data-testid="fom-refresh">
     <Link href="/settings" className={`fom-live ${tone}`} title={s.lastMessage ?? 'FOM integratsiyasi'} data-testid="status-fom-live">

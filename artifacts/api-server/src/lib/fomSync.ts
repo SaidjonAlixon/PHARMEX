@@ -1439,9 +1439,29 @@ export const SQL_REPLACED_REPORTS = new Set<FomReportKey>(["purchases", "supplie
 let running: Promise<SyncDetails> | null = null;
 /** Set while the import row is being created, so two ticks cannot both pass the `running` check. */
 let starting = false;
+/** A manual refresh asked for while another run was in progress. */
+let queued: SyncOptions | null = null;
 
+const TZ_OFFSET_MS = (Number(process.env.APP_TZ_OFFSET_MIN ?? 300) || 0) * 60_000;
+
+/** “ДАРХОН ФИЛИАЛ 20:19, …”: each branch's latest imported receipt today (Tashkent time). */
+async function latestReceipts(): Promise<string> {
+  const startOfDay = new Date(new Date(dateOnly(new Date())).getTime() - TZ_OFFSET_MS);
+  const rows = await db
+    .select({ name: branchesTable.name, last: sql<Date>`max(${salesTable.soldAt})` })
+    .from(salesTable)
+    .innerJoin(branchesTable, eq(branchesTable.id, salesTable.branchId))
+    .where(and(eq(salesTable.source, SOURCE), sql`${salesTable.soldAt} >= ${startOfDay}`))
+    .groupBy(branchesTable.name)
+    .orderBy(branchesTable.name);
+  return rows
+    .map((row) => `${row.name} ${new Date(new Date(row.last).getTime() + TZ_OFFSET_MS).toISOString().slice(11, 16)}`)
+    .join(", ");
+}
+
+/** True from the moment a run is requested until it (and any queued manual run) has finished. */
 export function fomSyncRunning() {
-  return running != null;
+  return running != null || starting || queued != null;
 }
 
 function windows(from: Date, to: Date): Array<[Date, Date]> {
@@ -1505,7 +1525,14 @@ export interface SyncOptions {
 export async function startFomSync(options: SyncOptions): Promise<{ started: boolean; message: string }> {
   const config = fomConfig();
   if (!config.reportUrl) return { started: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
-  if (running || starting) return { started: false, message: "Sinxronlash allaqachon bajarilmoqda." };
+  if (running || starting) {
+    // A manual refresh must read up to the moment it was asked for: run once more right after.
+    if (options.trigger === "manual") {
+      queued = options;
+      return { started: true, message: "Joriy yangilanish tugashi bilan apteka bazasi yana oʻqiladi." };
+    }
+    return { started: false, message: "Sinxronlash allaqachon bajarilmoqda." };
+  }
   starting = true;
   try {
     const [row] = await db
@@ -1519,6 +1546,9 @@ export async function startFomSync(options: SyncOptions): Promise<{ started: boo
         and id <> coalesce((select max(id) from ${integrationImportsTable} where integration = 'fom' and status = 'success'), 0)`);
     running = runFomSync(config, options, row.id).finally(() => {
       running = null;
+      const next = queued;
+      queued = null;
+      if (next) void startFomSync(next).catch((error) => logger.error({ err: error }, "Queued FOM sync failed to start"));
     });
   } finally {
     starting = false;
@@ -1570,7 +1600,8 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   };
   const lookups = await loadLookups();
   let fatal: string | null = null;
-  const skipRefs = options.trigger === "auto" && refsAreFresh(config, previous);
+  // Reference books change rarely: only a range sync (or the hourly refresh) re-reads them.
+  const skipRefs = !options.from && !options.to && refsAreFresh(config, previous);
 
   const progress = async (message: string) => {
     await db
@@ -1842,17 +1873,19 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     .reduce((sum, [, outcome]) => sum + (outcome?.imported ?? 0), 0);
   const status = errors.length === fetched.length ? "error" : "success";
   const scope = since
-    ? `${details.filials.length} filial, F-APTEKA ${since.toISOString().slice(11, 19)} dan beri`
+    ? `F-APTEKA ${(sourceNow ?? "").slice(11, 19) || since.toISOString().slice(11, 19)} gacha`
     : `${details.filials.length} filial, ${details.from} — ${details.to}`;
+  const last = await latestReceipts().catch(() => "");
+  const lastText = last ? ` Bugungi oxirgi cheklar: ${last}.` : "";
   const message = fatal
     ? fatal
     : errors.length
       ? `${fetched.length - errors.length}/${fetched.length} manba yuklandi, ${errors.length} tasida xatolik (${scope}).`
       : since
         ? total
-          ? `Yangi va oʻzgargan: ${total.toLocaleString("ru-RU")} yozuv qoʻshildi (${scope}).`
-          : `Yangi maʼlumot yoʻq, hammasi joyida (${scope}).`
-        : `${fetched.length} manba yuklandi: ${total.toLocaleString("ru-RU")} yozuv (${scope}).`;
+          ? `${total.toLocaleString("ru-RU")} ta yangi/oʻzgargan yozuv qoʻshildi (${scope}).${lastText}`
+          : `Apteka bazasida yangi maʼlumot yoʻq (${scope}).${lastText}`
+        : `${fetched.length} manba yuklandi: ${total.toLocaleString("ru-RU")} yozuv (${scope}).${lastText}`;
   await db
     .update(integrationImportsTable)
     .set({ status, message, importedRecords: total, completedAt: new Date(), details: JSON.stringify(details) })

@@ -171,8 +171,9 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   };
   const clearFilters = () => { setRangeOpen(false); setFilters(defaultFilters()); };
   const filtered = period !== DEFAULT_PERIOD || !!filters.branchId;
-  const periodLabel = periodOptions.find(o => o.value === period)?.label ?? 'Davr';
   const scopeText = period === 'custom' ? 'Barcha davr' : filters.dateFrom === filters.dateTo ? date(filters.dateFrom) : `${date(filters.dateFrom)} — ${date(filters.dateTo)}`;
+  // Pages without dated data do not show the period bar.
+  const showPeriod = !['/settings', '/users', '/catalog'].some(path => location === path || location.startsWith(`${path}/`));
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`}>
       <Link href="/" className="brand-lockup brand-card" data-testid="link-brand"><BrandLogo /></Link>
@@ -187,16 +188,24 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
     </aside>
     {menuOpen && <button className="mobile-shade" onClick={() => setMenuOpen(false)} aria-label="Menyuni yopish" />}
     <main className="main-area">
-      <header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(!menuOpen)} data-testid="button-menu"><Menu size={20} /></button><div className="crumb"><span>Hisob markazi</span><ArrowRight size={13} /><strong>{items.find(n => n.href === location || (n.href !== '/' && location.startsWith(n.href)))?.label || 'Filial maʼlumoti'}</strong></div><div className="top-actions"><ThemeToggle /><FomLive /><SelectMenu caption="DAVR" ariaLabel="Davr" value={rangeOpen ? 'range' : period} onChange={choosePeriod} options={periodOptions} align="right" testId="select-global-period" /><SelectMenu caption="FILIAL" ariaLabel="Filial" className="branch-menu" value={filters.branchId} onChange={branchId => setFilters({ ...filters, branchId })} options={branchOptions} align="right" testId="select-global-branch" /><span className="header-avatar">{(user?.firstName || 'M').slice(0, 1).toUpperCase()}</span></div></header>
-    {rangeOpen && <form className="active-scope date-range-bar" onSubmit={applyRange} data-testid="bar-date-range"><CalendarDays size={14} /> Sanadan:
-      <input type="date" required value={draft.from} max={draft.to || undefined} onChange={e => setDraft({ ...draft, from: e.target.value })} aria-label="Boshlanish sanasi" data-testid="input-global-from" />
-      <span>sanagacha:</span>
-      <input type="date" required value={draft.to} min={draft.from || undefined} max={todayDay()} onChange={e => setDraft({ ...draft, to: e.target.value })} aria-label="Tugash sanasi" data-testid="input-global-to" />
-      <button type="submit" className="button primary small" disabled={!draft.from || !draft.to || draft.from > draft.to} data-testid="button-apply-range"><Check size={13} /> Tasdiqlash</button>
-      <button type="button" className="button secondary small" onClick={() => setRangeOpen(false)} data-testid="button-cancel-range">Bekor qilish</button>
-    </form>}
-    {filtered && !rangeOpen && <div className="active-scope" data-testid="bar-active-filter"><Filter size={13} /> Filtr: <b>{periodLabel}</b> · {scopeText}{selectedLabel && <> · <b>{selectedLabel}</b></>}<button onClick={clearFilters} data-testid="button-clear-filters">Tozalash</button></div>}
-      <div className="content-area">{branches.some(b => b.source === 'demo') && location !== '/' && location !== '/profit' && location !== '/reports' && (!location.startsWith('/branches/') || location === '/branches') && <DataMode mode="demo" />}{children}</div>
+      <header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(!menuOpen)} data-testid="button-menu"><Menu size={20} /></button><div className="crumb"><span>Hisob markazi</span><ArrowRight size={13} /><strong>{items.find(n => n.href === location || (n.href !== '/' && location.startsWith(n.href)))?.label || 'Filial maʼlumoti'}</strong></div><div className="top-actions"><ThemeToggle /><FomLive /><SelectMenu caption="FILIAL" ariaLabel="Filial" className="branch-menu" value={filters.branchId} onChange={branchId => setFilters({ ...filters, branchId })} options={branchOptions} align="right" testId="select-global-branch" /><span className="header-avatar">{(user?.firstName || 'M').slice(0, 1).toUpperCase()}</span></div></header>
+      <div className="content-area">
+      {showPeriod && <section className="period-bar" aria-label="Davr filtri" data-testid="bar-period">
+        <div className="period-head"><CalendarDays size={15} /><b>Davr</b><span className="period-scope">{scopeText}{selectedLabel && <> · {selectedLabel}</>}</span>
+          {filtered && <button type="button" className="period-clear" onClick={clearFilters} data-testid="button-clear-filters"><X size={13} /> Tozalash</button>}
+        </div>
+        <div className="period-chips" role="group">{periodOptions.map(option => {
+          const Icon = option.icon;
+          const active = rangeOpen ? option.value === 'range' : option.value === period;
+          return <button key={option.value} type="button" className={active ? 'selected' : ''} onClick={() => choosePeriod(option.value)} title={option.hint} data-testid={`period-${option.value}`}>{Icon && <Icon size={14} />}{option.label}</button>;
+        })}</div>
+        {rangeOpen && <form className="period-range" onSubmit={applyRange} data-testid="bar-date-range">
+          <label>Sanadan<input type="date" required value={draft.from} max={draft.to || undefined} onChange={e => setDraft({ ...draft, from: e.target.value })} data-testid="input-global-from" /></label>
+          <label>sanagacha<input type="date" required value={draft.to} min={draft.from || undefined} max={todayDay()} onChange={e => setDraft({ ...draft, to: e.target.value })} data-testid="input-global-to" /></label>
+          <button type="submit" className="button primary small" disabled={!draft.from || !draft.to || draft.from > draft.to} data-testid="button-apply-range"><Check size={13} /> Tasdiqlash</button>
+          <button type="button" className="button secondary small" onClick={() => setRangeOpen(false)} data-testid="button-cancel-range">Bekor qilish</button>
+        </form>}
+      </section>}{branches.some(b => b.source === 'demo') && location !== '/' && location !== '/profit' && location !== '/reports' && (!location.startsWith('/branches/') || location === '/branches') && <DataMode mode="demo" />}{children}</div>
       <footer className="app-footer"><span>PHARMEX <span className="footer-dot">/</span> Moliyaviy boshqaruv</span><span>Maʼlumotlar manbasi va yangilanish vaqti har bir boʻlimda koʻrsatiladi</span></footer>
     </main>
   </div>;
