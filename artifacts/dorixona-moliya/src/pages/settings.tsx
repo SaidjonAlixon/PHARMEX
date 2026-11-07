@@ -39,6 +39,7 @@ export function FomLive() {
   const asked = askedAt != null;
   const q = useGetFomStatus({ query: { queryKey: getGetFomStatusQueryKey(), refetchInterval: query => (asked ? 1_000 : query.state.data?.running ? 3_000 : 15_000) } });
   const seen = useRef<string | undefined>(undefined);
+  const lastDone = useRef<string | null>(null);
   const [, setTick] = useState(0);
   const s = q.data;
   useEffect(() => {
@@ -68,8 +69,10 @@ export function FomLive() {
     const timer = setTimeout(() => setAskedAt(null), 3 * 60_000);
     return () => clearTimeout(timer);
   }, [askedAt]);
+  // While a run is in progress `lastSyncAt` is its start; keep showing the last finished run.
+  if (s && !s.running && s.lastSyncAt) lastDone.current = s.lastSyncAt;
   if (!s || (!s.configured && !s.site.configured)) return null;
-  const latest = s.running ? null : [s.lastSyncAt, s.site.lastAt].filter(Boolean).sort().pop() ?? null;
+  const latest = [lastDone.current, s.site.lastAt].filter(Boolean).sort().pop() ?? null;
   const sitePushing = !!s.site.lastAt && Date.now() - new Date(s.site.lastAt).getTime() < 30 * 60_000;
   const live = s.connected || sitePushing;
   // Auto sync runs every few seconds; only a long (initial / backfill) run shows its percentage.
