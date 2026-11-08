@@ -8,7 +8,7 @@ import {
   date, money, num, round2, stockStatus, type Filters,
 } from '@/components/kit';
 import { ProductCard } from '@/pages/stock';
-import { ExpiryCell, QtyCell } from '@/pages/warehouse-shared';
+import { ExpiryCell, QtyCell, expiryDaysOf } from '@/pages/warehouse-shared';
 
 export function WarehousePage({ filters }: { filters: Filters }) {
   const [search, setSearch] = useState('');
@@ -47,30 +47,31 @@ export function WarehousePage({ filters }: { filters: Filters }) {
     return rows.filter(r => warehouseIds.has(r.branchId));
   }, [invQ.data, activeWarehouseId, warehouseIds]);
 
-  const dayMs = 86400000;
-  const stats = useMemo(() => {
-    const now = Date.now();
-    return {
-      stockValue: round2(inventory.reduce((s, i) => s + num(i.value), 0)),
-      positions: inventory.filter(i => i.quantity > 0).length,
-      zero: inventory.filter(i => i.quantity <= 0).length,
-      expiring: inventory.filter(i => {
-        if (!(i.quantity > 0 && i.expiryDate)) return false;
-        const d = new Date(`${i.expiryDate}T00:00:00`).getTime() - now;
-        return d >= 0 && d <= 90 * dayMs;
-      }).length,
-      expired: inventory.filter(i => i.quantity > 0 && i.expiryDate && new Date(`${i.expiryDate}T00:00:00`).getTime() < now).length,
-    };
-  }, [inventory]);
+  const stats = useMemo(() => ({
+    stockValue: round2(inventory.reduce((s, i) => s + num(i.value), 0)),
+    positions: inventory.filter(i => i.quantity > 0).length,
+    zero: inventory.filter(i => i.quantity <= 0).length,
+    expiring: inventory.filter(i => {
+      if (!(i.quantity > 0 && i.expiryDate)) return false;
+      const d = expiryDaysOf(i.expiryDate);
+      return d != null && d >= 0 && d <= 90;
+    }).length,
+    expired: inventory.filter(i => {
+      if (!(i.quantity > 0 && i.expiryDate)) return false;
+      const d = expiryDaysOf(i.expiryDate);
+      return d != null && d < 0;
+    }).length,
+  }), [inventory]);
 
   const rows = inventory.filter(i => {
     if (stockFilter === 'all') return true;
     if (stockFilter === 'in') return i.quantity > 0;
     if (stockFilter === 'zero') return i.quantity <= 0;
-    if (!i.expiryDate || i.quantity <= 0) return false;
-    const left = new Date(`${i.expiryDate}T00:00:00`).getTime() - Date.now();
-    if (stockFilter === 'expired') return left < 0;
-    return left >= 0 && left <= 90 * dayMs;
+    if (!(i.quantity > 0 && i.expiryDate)) return false;
+    const d = expiryDaysOf(i.expiryDate);
+    if (d == null) return false;
+    if (stockFilter === 'expired') return d < 0;
+    return d >= 0 && d <= 90;
   });
 
   const topSellers = insightsQ.data?.topSellers || [];

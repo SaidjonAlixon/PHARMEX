@@ -14,6 +14,7 @@ import {
 } from '@/components/kit';
 import { movementLabels, stockDocLabels, writeOffReasons } from '@/lib/labels';
 import { useAccess } from '@/lib/access';
+import { ExpiryCell, expiryDaysOf } from '@/pages/warehouse-shared';
 
 type Tab = 'balances' | 'all' | StockDocType;
 type NewDoc = 'transfer' | 'write_off' | 'supplier_return' | 'inventory_count';
@@ -21,14 +22,6 @@ type NewDoc = 'transfer' | 'write_off' | 'supplier_return' | 'inventory_count';
 const docIcons: Record<string, typeof Boxes> = {
   transfer: ArrowLeftRight, write_off: FileMinus2, supplier_return: Truck, customer_return: Undo2, inventory_count: ClipboardCheck,
 };
-
-function expiryBadge(value?: string | null) {
-  if (!value) return null;
-  const days = Math.floor((new Date(value).getTime() - Date.now()) / 86400000);
-  if (days < 0) return <StatusBadge tone="bad">Muddati oʻtgan</StatusBadge>;
-  if (days <= 90) return <StatusBadge tone="warn">{days} kun qoldi</StatusBadge>;
-  return null;
-}
 
 function branchLabel(name: string | null | undefined, kind: string | null | undefined) {
   if (!name) return '—';
@@ -57,7 +50,11 @@ export function StockPage({ filters, productId }: { filters: Filters; productId?
       stockValue: round2(inventory.reduce((s, i) => s + num(i.value), 0)),
       positions: inventory.filter(i => i.quantity > 0).length,
       zero: inventory.filter(i => i.quantity <= 0).length,
-      expiring: inventory.filter(i => i.quantity > 0 && i.expiryDate && new Date(i.expiryDate).getTime() - Date.now() <= 90 * 86400000).length,
+      expiring: inventory.filter(i => {
+        if (!(i.quantity > 0 && i.expiryDate)) return false;
+        const d = expiryDaysOf(i.expiryDate);
+        return d != null && d >= 0 && d <= 90;
+      }).length,
       transfers: count('transfer'), transferValue: value('transfer'),
       writeOff: value('write_off'), writeOffCount: count('write_off'),
       supplierReturn: value('supplier_return'), supplierReturnCount: count('supplier_return'),
@@ -70,7 +67,14 @@ export function StockPage({ filters, productId }: { filters: Filters; productId?
 
   const term = search.trim().toLowerCase();
   const docRows = docs.filter(d => (tab === 'all' || d.docType === tab) && (!term || `${d.documentNo} ${d.counterpartyName} ${d.reason} ${d.branchName} ${d.toBranchName ?? ''}`.toLowerCase().includes(term)));
-  const stockRows = inventory.filter(i => stockFilter === 'all' ? true : stockFilter === 'in' ? i.quantity > 0 : stockFilter === 'zero' ? i.quantity <= 0 : i.quantity > 0 && !!i.expiryDate && new Date(i.expiryDate).getTime() - Date.now() <= 90 * 86400000);
+  const stockRows = inventory.filter(i => {
+    if (stockFilter === 'all') return true;
+    if (stockFilter === 'in') return i.quantity > 0;
+    if (stockFilter === 'zero') return i.quantity <= 0;
+    if (!(i.quantity > 0 && i.expiryDate)) return false;
+    const d = expiryDaysOf(i.expiryDate);
+    return d != null && d >= 0 && d <= 90;
+  });
 
   const tabs: { id: Tab; label: string; icon: typeof Boxes; count?: number }[] = [
     { id: 'all', label: 'Barcha hujjatlar', icon: FileMinus2, count: docs.length },
@@ -113,7 +117,7 @@ export function StockPage({ filters, productId }: { filters: Filters; productId?
           <td className="num">{money(x.costPrice)}</td>
           <td className="num">{money(x.retailPrice)}</td>
           <td className="num">{money(x.value)}</td>
-          <td>{date(x.expiryDate)} {expiryBadge(x.expiryDate)}</td>
+          <td><ExpiryCell value={x.expiryDate} /></td>
         </tr>;
         })}</tbody></TableWrap>}
     </Panel> : <Panel title={tab === 'all' ? 'Tovar harakati hujjatlari' : stockDocLabels[tab]} subtitle="Qatorni bosib hujjat tarkibini koʻring" action={<SearchBox value={search} onChange={setSearch} placeholder="Hujjat, filial, sabab, hamkor" />}>
@@ -168,7 +172,7 @@ export function ProductCard({ id, onClose }: { id: number; onClose: () => void }
       ]} />
       <h3 className="subhead">Filial va omborlar kesimida</h3>
       <TableWrap><thead><tr><th>FILIAL / OMBOR</th><th className="num">MIQDOR</th><th>HOLAT</th><th className="num">TANNARX</th><th className="num">QIYMAT</th><th>YAROQLILIK</th></tr></thead>
-        <tbody>{d.branchBalances.map((b, i) => { const st = stockStatus(b.quantity); return <tr key={`${b.branchId}-${i}`}><td className="cell-strong">{b.branchName}</td><td className={`num ${b.quantity <= 0 ? 'negative' : b.quantity < 1 ? 'warn-qty' : ''}`}>{qty(b.quantity)}&nbsp;{unitLabel(b.unit)}</td><td><StatusBadge tone={st.tone}>{st.label}</StatusBadge></td><td className="num">{money(b.costPrice)}</td><td className="num">{money(b.value)}</td><td>{date(b.expiryDate)} {expiryBadge(b.expiryDate)}</td></tr>; })}</tbody></TableWrap>
+        <tbody>{d.branchBalances.map((b, i) => { const st = stockStatus(b.quantity); return <tr key={`${b.branchId}-${i}`}><td className="cell-strong">{b.branchName}</td><td className={`num ${b.quantity <= 0 ? 'negative' : b.quantity < 1 ? 'warn-qty' : ''}`}>{qty(b.quantity)}&nbsp;{unitLabel(b.unit)}</td><td><StatusBadge tone={st.tone}>{st.label}</StatusBadge></td><td className="num">{money(b.costPrice)}</td><td className="num">{money(b.value)}</td><td><ExpiryCell value={b.expiryDate} /></td></tr>; })}</tbody></TableWrap>
     </>}
   </Drawer>;
 }

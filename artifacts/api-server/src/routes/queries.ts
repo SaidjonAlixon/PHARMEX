@@ -297,12 +297,12 @@ export async function loadWarehouseInsights(filters: QueryFilters) {
                 (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${lastDay}T00:00:00Z`)) / 86400000,
               ),
             );
+      const expiryDay = item.expiryDate ? String(item.expiryDate).slice(0, 10) : null;
       const expiryDays =
-        item.expiryDate == null
+        expiryDay == null || !/^\d{4}-\d{2}-\d{2}$/.test(expiryDay)
           ? null
           : Math.round(
-              (Date.parse(`${item.expiryDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) /
-                86400000,
+              (Date.parse(`${expiryDay}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000,
             );
       return {
         productId: item.productId,

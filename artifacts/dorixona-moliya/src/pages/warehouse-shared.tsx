@@ -1,16 +1,42 @@
 import { StatusBadge, date, qty, unitLabel } from '@/components/kit';
 
-export function expiryDaysOf(value?: string | null) {
-  if (!value) return null;
-  return Math.floor((new Date(`${value}T00:00:00`).getTime() - Date.now()) / 86400000);
+/** Calendar day YYYY-MM-DD from API date / ISO / Date. */
+export function expiryDay(value?: string | Date | null): string | null {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return value.toISOString().slice(0, 10);
+  }
+  const s = String(value).trim();
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(s);
+  return m ? m[1] : null;
 }
 
-export function expiryBadge(value?: string | null, expiryDays?: number | null) {
+/** Days from today (Tashkent calendar) to expiry: negative = already expired. */
+export function expiryDaysOf(value?: string | Date | null): number | null {
+  const day = expiryDay(value);
+  if (!day) return null;
+  const today = new Date();
+  // Compare calendar days in local offset used by the app (UTC+5).
+  const tz = 5 * 60 * 60 * 1000;
+  const todayDay = new Date(today.getTime() + tz).toISOString().slice(0, 10);
+  const a = Date.parse(`${todayDay}T00:00:00Z`);
+  const b = Date.parse(`${day}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+export function expiryBadge(value?: string | Date | null, expiryDays?: number | null) {
   const days = expiryDays ?? expiryDaysOf(value);
-  if (days == null) return null;
-  if (days < 0) return <StatusBadge tone="bad">Muddati oʻtgan · {Math.abs(days)} kun</StatusBadge>;
-  if (days <= 90) return <StatusBadge tone="warn">{days} kun qoldi</StatusBadge>;
-  return <StatusBadge tone="good">Yaroqli</StatusBadge>;
+  if (days == null || !Number.isFinite(days)) return null;
+  if (days < 0) {
+    const n = Math.abs(days);
+    return <StatusBadge tone="bad">Muddati oʻtgan · {n} kun</StatusBadge>;
+  }
+  if (days === 0) return <StatusBadge tone="warn">Muddati bugun tugaydi</StatusBadge>;
+  if (days <= 30) return <StatusBadge tone="warn">Muddati {days} kun qoldi</StatusBadge>;
+  if (days <= 90) return <StatusBadge tone="warn">Muddati {days} kun qoldi</StatusBadge>;
+  return <StatusBadge tone="good">Muddati {days} kun qoldi</StatusBadge>;
 }
 
 export function daysAgoLabel(days: number | null | undefined) {
@@ -31,12 +57,14 @@ export function QtyCell({ quantity, unit }: { quantity: number; unit?: string | 
   );
 }
 
-export function ExpiryCell({ value, days }: { value?: string | null; days?: number | null }) {
-  if (!value) return <span className="muted">—</span>;
+export function ExpiryCell({ value, days }: { value?: string | Date | null; days?: number | null }) {
+  const day = expiryDay(value);
+  if (!day) return <span className="muted">—</span>;
+  const d = days ?? expiryDaysOf(day);
   return (
     <div className="expiry-cell">
-      <span>{date(value)}</span>
-      {expiryBadge(value, days)}
+      <span>{date(day)}</span>
+      {expiryBadge(day, d)}
     </div>
   );
 }
