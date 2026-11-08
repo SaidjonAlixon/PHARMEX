@@ -28,7 +28,7 @@ const HEADERS = [
   '1 dona tannarx',
   '1 dona sotuv',
   'Qoldiq qiymati',
-  'Qoʻyilgan narx jami',
+  'Sotuv narxi jami',
   'Olinadigan foyda',
   'Yaroqlilik sanasi',
   'Yaroqlilik holati',
@@ -209,7 +209,7 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
   const summaryRowNum = ws.addRow([]).number;
   ws.mergeCells(summaryRowNum, 1, summaryRowNum, HEADERS.length);
   const summary = ws.getCell(summaryRowNum, 1);
-  summary.value = `Jami summa (soʻm):  Tannarx ${som(costTotal)}    |    Qoʻyilgan narx ${som(retailTotal)}    |    Olinadigan foyda ${som(profitTotal)}`;
+  summary.value = `Jami summa (soʻm):  Tannarx ${som(costTotal)}    |    Sotuv narxi ${som(retailTotal)}    |    Olinadigan foyda ${som(profitTotal)}`;
   summary.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF0A5F6B' } };
   summary.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F7FA' } };
   summary.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: false };
@@ -224,7 +224,7 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
   const noteRow = ws.addRow([]);
   ws.mergeCells(noteRow.number, 1, noteRow.number, HEADERS.length);
   const note = ws.getCell(noteRow.number, 1);
-  note.value = 'Izoh: Qoldiq qiymati = qoldiq × tannarx. Qoʻyilgan narx jami = qoldiq × sotuv narxi. Olinadigan foyda = (sotuv − tannarx) × qoldiq. Barcha summalar soʻmda.';
+  note.value = 'Izoh: Qoldiq qiymati = qoldiq × tannarx. Sotuv narxi jami = qoldiq × 1 dona sotuv. Olinadigan foyda = (sotuv − tannarx) × qoldiq. Barcha summalar soʻmda.';
   note.font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF6B7C8A' } };
   note.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
   ws.getRow(noteRow.number).height = 28;

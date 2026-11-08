@@ -46,7 +46,7 @@ function metaRow(ws: ExcelJS.Worksheet, text: string, cols: number) {
 }
 
 function fillExpirySheet(ws: ExcelJS.Worksheet, title: string, rows: ExpiryDashItem[], periodLabel: string) {
-  const headers = ['#', 'Mahsulot', 'Ombor', 'Qoldiq', 'Tannarx jami', 'Qoʻyilgan narx', 'Olinadigan foyda', 'Yaroqlilik', 'Holat'];
+  const headers = ['#', 'Mahsulot', 'Ombor', 'Qoldiq', 'Tannarx jami', 'Sotuv narxi', 'Olinadigan foyda', 'Yaroqlilik', 'Holat'];
   const widths = [5, 40, 14, 10, 16, 16, 16, 14, 22];
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
   ws.views = [{ state: 'frozen', ySplit: 2 }];
