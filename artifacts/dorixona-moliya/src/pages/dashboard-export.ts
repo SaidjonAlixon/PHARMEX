@@ -45,12 +45,47 @@ function metaRow(ws: ExcelJS.Worksheet, text: string, cols: number) {
   ws.getRow(1).height = 20;
 }
 
+function addTotalRow(ws: ExcelJS.Worksheet, values: unknown[], rightFrom = 2) {
+  const row = ws.addRow(values);
+  row.height = 24;
+  row.eachCell((cell, col) => {
+    cell.border = thin;
+    cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF13306E' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F7FA' } };
+    cell.alignment = {
+      vertical: 'middle',
+      horizontal: col >= rightFrom ? 'right' : 'left',
+    };
+  });
+  return row;
+}
+
 function fillExpirySheet(ws: ExcelJS.Worksheet, title: string, rows: ExpiryDashItem[], periodLabel: string) {
   const headers = ['#', 'Mahsulot', 'Ombor', 'Qoldiq', 'Tannarx jami', 'Sotuv narxi', 'Olinadigan foyda', 'Yaroqlilik', 'Holat'];
   const widths = [5, 40, 14, 10, 16, 16, 16, 14, 22];
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
   ws.views = [{ state: 'frozen', ySplit: 2 }];
-  metaRow(ws, `Bosh dashboard · ${title} · Davr: ${periodLabel} · ${rows.length} ta`, headers.length);
+
+  let qtySum = 0;
+  let costSum = 0;
+  let retailSum = 0;
+  let profitSum = 0;
+  for (const x of rows) {
+    qtySum += num(x.quantity);
+    costSum += num(x.value);
+    retailSum += num(retailValueOf(x));
+    profitSum += num(profitOf(x));
+  }
+  qtySum = round2(qtySum);
+  costSum = round2(costSum);
+  retailSum = round2(retailSum);
+  profitSum = round2(profitSum);
+
+  metaRow(
+    ws,
+    `Bosh dashboard · ${title} · Davr: ${periodLabel} · ${rows.length} ta · Jami tannarx ${money(costSum)} · Sotuv ${money(retailSum)} · Foyda ${money(profitSum)}`,
+    headers.length,
+  );
   const hr = ws.getRow(2);
   headers.forEach((h, i) => { hr.getCell(i + 1).value = h; });
   styleHeader(hr, headers.length);
@@ -85,6 +120,18 @@ function fillExpirySheet(ws: ExcelJS.Worksheet, title: string, rows: ExpiryDashI
       }
     });
   });
+
+  addTotalRow(ws, [
+    '',
+    `JAMI · ${rows.length} ta`,
+    '',
+    qtySum,
+    money(costSum),
+    money(retailSum),
+    money(profitSum),
+    '',
+    '',
+  ], 4);
 }
 
 export async function exportDashboardExcel(opts: {
@@ -133,16 +180,23 @@ export async function exportDashboardExcel(opts: {
     const hr = ws.getRow(2);
     ['Sana', 'Savdo', 'Tannarx', 'Foyda'].forEach((h, i) => { hr.getCell(i + 1).value = h; });
     styleHeader(hr, 4);
+    let salesSum = 0;
+    let costSum = 0;
+    let profitSum = 0;
     d.salesTrend.forEach((p, i) => {
       const profit = p.grossProfit != null && p.grossProfit !== ''
         ? p.grossProfit
         : String(Math.max(0, (Number(p.sales) || 0) - (Number(p.cost) || 0)));
+      salesSum += num(p.sales);
+      costSum += num(p.cost);
+      profitSum += num(profit);
       const row = ws.addRow([p.label, money(p.sales), money(p.cost), money(profit)]);
       row.eachCell(cell => paint(cell, i % 2 ? 'FFF3F8FB' : 'FFFFFFFF'));
       row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
       row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right' };
       row.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
     });
+    addTotalRow(ws, ['JAMI', money(round2(salesSum)), money(round2(costSum)), money(round2(profitSum))]);
   }
 
   // Branches
@@ -154,13 +208,22 @@ export async function exportDashboardExcel(opts: {
     const hr = ws.getRow(2);
     headers.forEach((h, i) => { hr.getCell(i + 1).value = h; });
     styleHeader(hr, headers.length);
+    let salesSum = 0;
+    let grossSum = 0;
+    let netSum = 0;
+    let cashSum = 0;
     d.branchComparison.forEach((b, i) => {
+      salesSum += num(b.sales);
+      grossSum += num(b.grossProfit);
+      netSum += num(b.netProfit);
+      cashSum += num(b.cashBalance);
       const row = ws.addRow([b.name, money(b.sales), money(b.grossProfit), money(b.netProfit), money(b.cashBalance)]);
       row.eachCell((cell, col) => {
         paint(cell, i % 2 ? 'FFF3F8FB' : 'FFFFFFFF');
         if (col > 1) cell.alignment = { vertical: 'middle', horizontal: 'right' };
       });
     });
+    addTotalRow(ws, ['JAMI', money(round2(salesSum)), money(round2(grossSum)), money(round2(netSum)), money(round2(cashSum))]);
   }
 
   // Top products
@@ -172,13 +235,20 @@ export async function exportDashboardExcel(opts: {
     const hr = ws.getRow(2);
     headers.forEach((h, i) => { hr.getCell(i + 1).value = h; });
     styleHeader(hr, headers.length);
+    let qtySum = 0;
+    let salesSum = 0;
+    let profitSum = 0;
     d.topProducts.forEach((p, i) => {
+      qtySum += num(p.quantity);
+      salesSum += num(p.sales);
+      profitSum += num(p.grossProfit);
       const row = ws.addRow([p.name, p.quantity, money(p.sales), money(p.grossProfit)]);
       row.eachCell((cell, col) => {
         paint(cell, i % 2 ? 'FFF3F8FB' : 'FFFFFFFF');
         if (col > 1) cell.alignment = { vertical: 'middle', horizontal: 'right' };
       });
     });
+    addTotalRow(ws, [`JAMI · ${d.topProducts.length} ta`, round2(qtySum), money(round2(salesSum)), money(round2(profitSum))]);
   }
 
   // Money flow
@@ -189,13 +259,18 @@ export async function exportDashboardExcel(opts: {
     const hr = ws.getRow(2);
     ['Tur', 'Tushum', 'Chiqim'].forEach((h, i) => { hr.getCell(i + 1).value = h; });
     styleHeader(hr, 3);
+    let inSum = 0;
+    let outSum = 0;
     d.moneyFlow.forEach((p, i) => {
+      inSum += num(p.inflow);
+      outSum += num(p.outflow);
       const row = ws.addRow([p.label, money(p.inflow), money(p.outflow)]);
       row.eachCell((cell, col) => {
         paint(cell, i % 2 ? 'FFF3F8FB' : 'FFFFFFFF');
         if (col > 1) cell.alignment = { vertical: 'middle', horizontal: 'right' };
       });
     });
+    addTotalRow(ws, ['JAMI', money(round2(inSum)), money(round2(outSum))]);
   }
 
   fillExpirySheet(wb.addWorksheet(sheetName('Muddati yaqin')), 'Muddati yaqin tovarlar', expiring, periodLabel);
