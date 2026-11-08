@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import {
-  ArrowRight, Download, PackageSearch, TrendingDown, TrendingUp,
+  ArrowRight, Boxes, Download, PackageSearch, Scale, TrendingDown, TrendingUp, Warehouse,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { useGetWarehouseInsights, useListBranches, useListInventory } from '@workspace/api-client-react';
 import type { InventoryItem } from '@workspace/api-client-react';
 import {
-  Chips, DataState, Drawer, InfoGrid, PageHeading, Panel, SearchBox, StatusBadge, TableWrap,
+  Chips, DataState, Drawer, InfoGrid, KpiStrip, PageHeading, Panel, SearchBox, StatusBadge, TableWrap,
   date, money, num, qty, round2, stockStatus, type Filters,
 } from '@/components/kit';
 import { ProductCard } from '@/pages/stock';
@@ -198,7 +198,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
     <PageHeading
       eyebrow="OMBOR · СКЛАД"
       title="Ombor"
-      subtitle={`${warehouseTitle} · har bir boʻlimning jami summasi kartada. Filtrni tanlang yoki Excel yuklab oling. Davr: ${periodLabel}.`}
+      subtitle={`${warehouseTitle} · filtrni tanlang — yuqoridagi raqamlar shu boʻlimga yangilanadi. Davr: ${periodLabel}.`}
       actions={
         <button
           type="button"
@@ -212,42 +212,46 @@ export function WarehousePage({ filters }: { filters: Filters }) {
       }
     />
 
-    <div className="warehouse-cat-grid" data-testid="warehouse-category-cards">
-      {([
-        { id: 'in' as const, tone: '', title: 'Qoldiq bor', hint: 'Ombordagi faol tovarlar' },
-        { id: 'expiring' as const, tone: 'warn', title: 'Muddati yaqin', hint: '90 kungacha tugaydi' },
-        { id: 'expired' as const, tone: 'bad', title: 'Muddati oʻtgan', hint: 'Yaroqsiz qoldiq — jami summa' },
-        { id: 'all' as const, tone: '', title: 'Barchasi', hint: 'Barcha boʻlimlar birga' },
-      ]).map(card => {
-        const s = buckets.sums[card.id];
-        const active = stockFilter === card.id;
-        return (
-          <button
-            type="button"
-            key={card.id}
-            className={`warehouse-cat-card ${card.tone} ${active ? 'is-active' : ''}`}
-            onClick={() => setStockFilter(card.id)}
-            data-testid={`card-warehouse-${card.id}`}
-          >
-            <div className="warehouse-cat-top">
-              <b>{card.title}</b>
-              <em>{s.count} ta</em>
-            </div>
-            <p>{card.hint}</p>
-            <div className="warehouse-cat-money">
-              <div>
-                <span>Tannarx jami</span>
-                <strong>{money(s.costTotal)}</strong>
-              </div>
-              <div>
-                <span>Olinadigan foyda</span>
-                <strong className={s.profitTotal < 0 ? 'negative' : ''}>{money(s.profitTotal)}</strong>
-              </div>
-            </div>
-          </button>
-        );
-      })}
-    </div>
+    <KpiStrip items={[
+      {
+        label: 'Ombordagi qiymat',
+        value: view.costTotal,
+        icon: Boxes,
+        hint: `${sectionTitle} · ${view.count} ta pozitsiya`,
+        tone: stockFilter === 'expired' ? 'bad' : stockFilter === 'expiring' ? 'warn' : undefined,
+        onClick: () => setTotalsOpen(true),
+        testId: 'kpi-warehouse-value',
+      },
+      {
+        label: 'Pozitsiyalar',
+        value: view.count,
+        count: true,
+        icon: PackageSearch,
+        hint: stockFilter === 'in' || stockFilter === 'all' ? 'Qoldiq > 0 / tanlangan' : sectionTitle,
+        onClick: () => setTotalsOpen(true),
+        testId: 'kpi-warehouse-count',
+      },
+      {
+        label: 'Muddati yaqin',
+        value: buckets.sums.expiring.count,
+        count: true,
+        icon: Warehouse,
+        tone: buckets.sums.expiring.count ? 'warn' : undefined,
+        hint: `${money(buckets.sums.expiring.costTotal)} · 90 kungacha`,
+        onClick: () => setStockFilter('expiring'),
+        testId: 'kpi-warehouse-expiring',
+      },
+      {
+        label: 'Muddati oʻtgan',
+        value: buckets.sums.expired.count,
+        count: true,
+        icon: PackageSearch,
+        tone: buckets.sums.expired.count ? 'bad' : undefined,
+        hint: `${money(buckets.sums.expired.costTotal)} · yaroqsiz qoldiq`,
+        onClick: () => setStockFilter('expired'),
+        testId: 'kpi-warehouse-expired',
+      },
+    ]} />
 
     <div className="warehouse-teaser">
       <div className="warehouse-teaser-card">
@@ -355,11 +359,11 @@ export function WarehousePage({ filters }: { filters: Filters }) {
 
       <div className={`warehouse-active-banner ${stockFilter === 'expired' ? 'bad' : stockFilter === 'expiring' ? 'warn' : ''}`} data-testid="warehouse-active-banner">
         <div className="warehouse-active-main">
-          <PackageSearch size={18} />
+          <Scale size={18} />
           <div>
-            <b>{sectionTitle}</b>
+            <b>Tanlangan: {sectionTitle}</b>
             <p>
-              {view.count} ta mahsulot · tannarx jami <strong>{money(view.costTotal)}</strong>
+              {view.count} ta · qiymat <strong>{money(view.costTotal)}</strong>
               {' '}· olinadigan foyda <strong>{money(view.profitTotal)}</strong>
             </p>
           </div>
