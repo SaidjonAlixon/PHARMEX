@@ -101,13 +101,45 @@ function Switch({ checked, onChange, disabled, label }: { checked: boolean; onCh
   return <button type="button" role="switch" aria-checked={checked} aria-label={label} className={`acc-switch ${checked ? 'on' : ''}`} disabled={disabled} onClick={() => onChange(!checked)} data-testid="switch-auto-approve"><i /></button>;
 }
 
-async function copyText(text: string) {
+function copyTextFallback(text: string) {
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.setAttribute('readonly', '');
+  el.style.position = 'fixed';
+  el.style.top = '0';
+  el.style.left = '0';
+  el.style.width = '1px';
+  el.style.height = '1px';
+  el.style.padding = '0';
+  el.style.border = 'none';
+  el.style.outline = 'none';
+  el.style.boxShadow = 'none';
+  el.style.background = 'transparent';
+  el.style.opacity = '0';
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+  el.setSelectionRange(0, text.length);
+  let ok = false;
   try {
-    await navigator.clipboard.writeText(text);
-    return true;
+    ok = document.execCommand('copy');
   } catch {
-    return false;
+    ok = false;
   }
+  document.body.removeChild(el);
+  return ok;
+}
+
+async function copyText(text: string) {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      /* fall through */
+    }
+  }
+  return copyTextFallback(text);
 }
 
 function CredentialsCard({
@@ -118,11 +150,16 @@ function CredentialsCard({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState<'login' | 'password' | 'both' | null>(null);
+  const [copyError, setCopyError] = useState(false);
   const both = `Login: ${credentials.username}\nParol: ${credentials.password}`;
   const mark = async (kind: 'login' | 'password' | 'both', value: string) => {
-    if (await copyText(value)) {
+    setCopyError(false);
+    const ok = await copyText(value);
+    if (ok) {
       setCopied(kind);
-      setTimeout(() => setCopied(null), 1800);
+      setTimeout(() => setCopied(null), 2000);
+    } else {
+      setCopyError(true);
     }
   };
   return (
@@ -132,7 +169,13 @@ function CredentialsCard({
         <label>
           Login
           <div className="acc-cred-row">
-            <input readOnly value={credentials.username} data-testid="input-cred-username" />
+            <input
+              readOnly
+              value={credentials.username}
+              data-testid="input-cred-username"
+              onFocus={e => e.currentTarget.select()}
+              onClick={e => e.currentTarget.select()}
+            />
             <button type="button" className="button secondary" onClick={() => void mark('login', credentials.username)}>
               <Copy size={14} /> {copied === 'login' ? 'Nusxa olindi' : 'Nusxa'}
             </button>
@@ -141,12 +184,19 @@ function CredentialsCard({
         <label>
           Parol
           <div className="acc-cred-row">
-            <input readOnly value={credentials.password} data-testid="input-cred-password" />
+            <input
+              readOnly
+              value={credentials.password}
+              data-testid="input-cred-password"
+              onFocus={e => e.currentTarget.select()}
+              onClick={e => e.currentTarget.select()}
+            />
             <button type="button" className="button secondary" onClick={() => void mark('password', credentials.password)}>
               <Copy size={14} /> {copied === 'password' ? 'Nusxa olindi' : 'Nusxa'}
             </button>
           </div>
         </label>
+        {copyError && <div className="notice error">Nusxa olinmadi. Maydonni bosing (matn tanlanadi) va Ctrl+C qiling.</div>}
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={() => void mark('both', both)}>
             <Copy size={15} /> {copied === 'both' ? 'Ikkalasi nusxa olindi' : 'Login + parol nusxa'}
