@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import {
   Activity, AlertCircle, ArrowDownLeft, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Boxes, Building2,
   Check, ChevronDown, CircleHelp, ClipboardList, Clock3, Download, FileBarChart2, Filter, HandCoins, LogOut,
-  Menu, PackageSearch, Plus, RefreshCw, Search, Settings2, ShieldCheck, ShoppingCart, Truck, Wallet, X,
+  Menu, PackageSearch, Plus, RefreshCw, Search, Settings2, ShieldCheck, ShoppingCart, Truck, Wallet, Warehouse, X,
   CalendarCheck, CalendarDays, CalendarClock, CalendarRange, Infinity as InfinityIcon, Layers, Store, UserCog
 } from 'lucide-react';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
@@ -27,6 +27,7 @@ import NotFound from '@/pages/not-found';
 import { SalesPage } from '@/pages/sales';
 import { PurchasesPage } from '@/pages/purchases';
 import { StockPage } from '@/pages/stock';
+import { WarehousePage } from '@/pages/warehouse';
 import { MoneyPage } from '@/pages/money';
 import { DebtsPage } from '@/pages/debts';
 import { CatalogPage } from '@/pages/catalog';
@@ -77,6 +78,7 @@ const navItems = [
   { href: '/branches', label: 'Filiallar', icon: Building2 },
   { href: '/sales', label: 'Savdolar', icon: ShoppingCart },
   { href: '/purchases', label: 'Kirim', icon: Truck },
+  { href: '/warehouse', label: 'Ombor', icon: Warehouse },
   { href: '/stock', label: 'Tovar harakati', icon: ArrowLeftRight },
   { href: '/finance', label: 'Pul operatsiyalari', icon: Wallet },
   { href: '/debts', label: 'Qarzlar', icon: HandCoins },
@@ -334,6 +336,7 @@ function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: 
     <Route path="/branches/:id">{params => <><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><BranchDetailPage id={Number(params.id)} filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></>}</Route>
     <Route path="/sales"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><SalesPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/purchases"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PurchasesPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
+    <Route path="/warehouse"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><WarehousePage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/stock"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><StockPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/stock/product/:id">{params => <><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><StockPage key={params.id} filters={filters} productId={Number(params.id)} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></>}</Route>
     <Route path="/trade"><Redirect to="/sales" /></Route>

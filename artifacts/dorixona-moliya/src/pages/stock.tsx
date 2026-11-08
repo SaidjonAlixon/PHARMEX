@@ -144,7 +144,7 @@ function DocumentTable({ rows, onOpen }: { rows: StockDocument[]; onOpen: (id: n
     })}</tbody></TableWrap>;
 }
 
-function ProductCard({ id, onClose }: { id: number; onClose: () => void }) {
+export function ProductCard({ id, onClose }: { id: number; onClose: () => void }) {
   const params = { productId: id };
   const q = useGetProduct(params, { query: { queryKey: getGetProductQueryKey(params) } });
   const d = q.data;
