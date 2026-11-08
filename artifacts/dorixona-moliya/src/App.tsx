@@ -202,18 +202,11 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
               const role = access.role ? roleLabel(access.role) : '';
               const name = (user?.fullName || '').trim();
               const login = user?.username || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Foydalanuvchi';
-              const title = name && name.toLowerCase() !== role.toLowerCase() && name.toLowerCase() !== login.toLowerCase()
+              const title = name && name.toLowerCase() !== role.toLowerCase() && name.toLowerCase() !== 'admin' && name.toLowerCase() !== login.toLowerCase()
                 ? name
                 : login;
               return <>
-                <div className="profile-line">
-                  <b title={title}>{title}</b>
-                  {access.role && (
-                    <i className={`profile-role role-${access.role}`} data-testid="text-user-role">
-                      {access.role === 'admin' ? 'Admin' : roleLabel(access.role)}
-                    </i>
-                  )}
-                </div>
+                <b title={title} data-testid="text-user-role">{title}</b>
                 {user?.primaryEmailAddress?.emailAddress && user.primaryEmailAddress.emailAddress !== title && (
                   <span title={user.primaryEmailAddress.emailAddress}>{user.primaryEmailAddress.emailAddress}</span>
                 )}

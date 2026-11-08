@@ -734,11 +734,8 @@ body { background: var(--wash); }
   box-shadow: 0 3px 8px rgba(15,179,199,.25);
 }
 .profile-text { gap: 1px; min-width: 0; }
-.profile-line {
-  display: flex; align-items: center; gap: 6px; min-width: 0;
-}
 .profile-text b {
-  min-width: 0; flex: 0 1 auto;
+  display: block; min-width: 0;
   font-size: 11.5px; font-weight: 700; color: var(--px-navy);
   letter-spacing: -.01em; line-height: 1.2;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -747,21 +744,7 @@ body { background: var(--wash); }
   font-size: 9.5px; color: var(--muted-ink); line-height: 1.2;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.profile-role {
-  --c: #6b7a96; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px;
-  margin: 0; padding: 0 6px; border-radius: 999px;
-  font: 700 9px/1.55 inherit; font-style: normal; letter-spacing: .02em;
-  color: var(--c);
-  background: color-mix(in srgb, var(--c) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c) 26%, transparent);
-}
-.profile-role::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
-.profile-role.role-admin { --c: #1f5fd0; }
-.profile-role.role-finance { --c: #179a45; }
 .profile-logout { width: 28px; height: 28px; flex: 0 0 auto; }
-.dark .profile-role.role-admin { --c: #6fa2ff; }
-.dark .profile-role.role-finance { --c: #4fd47a; }
-.dark .profile-role.role-viewer { --c: #a3b1cb; }
 .dark .reconcile-note.build-only .build-stamp code { color: var(--ink); }
 
 /* Top bar */
