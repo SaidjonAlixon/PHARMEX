@@ -185,7 +185,39 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
         const badge = item.href === '/users' && accounts.pending > 0 ? accounts.pending : 0;
         return <Link key={item.href} href={item.href} className={`nav-link ${active ? 'active' : ''}`} onClick={() => setMenuOpen(false)} data-testid={`link-nav-${item.href.slice(1) || 'dashboard'}`}><span className="nav-icon"><Icon size={17} strokeWidth={2} /></span><span>{item.label}</span>{badge > 0 && <span className="nav-badge" title={`${badge} ta ariza tasdiq kutmoqda`}>{badge}</span>}{active && <span className="nav-indicator" />}</Link>;
       })}</nav>
-      <div className="sidebar-bottom"><div className="reconcile-note"><ShieldCheck size={17} /><div><b>Yagona manba</b><span>Har bir raqam izchil manbaga bogʻlangan</span><span className="build-stamp" title="Platformaning oxirgi yangilanishi (deploy), Toshkent vaqti" data-testid="text-build-stamp">Platforma yangilangan: {dateTime(__BUILD_TIME__)}{__BUILD_COMMIT__ && <> · <code>{__BUILD_COMMIT__}</code></>}</span></div></div><div className="profile-mini"><div className="avatar">{(user?.firstName || user?.primaryEmailAddress?.emailAddress || 'M').slice(0, 1).toUpperCase()}</div><div className="profile-text"><b>{user?.fullName || 'Moliya mutaxassisi'}</b><span>{user?.primaryEmailAddress?.emailAddress || 'Dorixona guruhi'}</span>{access.role && <i className={`profile-role role-${access.role}`} data-testid="text-user-role">{roleLabel(access.role)}</i>}</div><button title="Tizimdan chiqish" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="icon-button" data-testid="button-sign-out"><LogOut size={16} /></button></div></div>
+      <div className="sidebar-bottom">
+        <div className="reconcile-note build-only" title="Platformaning oxirgi yangilanishi (deploy), Toshkent vaqti">
+          <ShieldCheck size={15} />
+          <span className="build-stamp" data-testid="text-build-stamp">
+            Platforma yangilangan: {dateTime(__BUILD_TIME__)}
+            {__BUILD_COMMIT__ && <> · <code>{__BUILD_COMMIT__}</code></>}
+          </span>
+        </div>
+        <div className="profile-mini">
+          <div className="avatar">
+            {(user?.firstName || user?.username || user?.primaryEmailAddress?.emailAddress || 'M').slice(0, 1).toUpperCase()}
+          </div>
+          <div className="profile-text">
+            <b>
+              {(() => {
+                const role = access.role ? roleLabel(access.role) : '';
+                const name = (user?.fullName || '').trim();
+                if (name && name.toLowerCase() !== role.toLowerCase()) return name;
+                return user?.username || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Foydalanuvchi';
+              })()}
+            </b>
+            <span>{user?.primaryEmailAddress?.emailAddress || user?.username || 'Dorixona'}</span>
+            {access.role && (
+              <i className={`profile-role role-${access.role}`} data-testid="text-user-role">
+                {access.role === 'admin' ? 'Admin' : roleLabel(access.role)}
+              </i>
+            )}
+          </div>
+          <button title="Tizimdan chiqish" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="icon-button" data-testid="button-sign-out">
+            <LogOut size={15} />
+          </button>
+        </div>
+      </div>
     </aside>
     {menuOpen && <button className="mobile-shade" onClick={() => setMenuOpen(false)} aria-label="Menyuni yopish" />}
     <main className="main-area">
