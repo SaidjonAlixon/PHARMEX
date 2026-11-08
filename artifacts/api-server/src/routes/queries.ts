@@ -151,6 +151,191 @@ export async function loadExpenses(filters: QueryFilters) {
     .orderBy(desc(expensesTable.date));
 }
 
+/** Warehouse stock + sales ranking / last-sale days for Ombor insights. */
+export async function loadWarehouseInsights(filters: QueryFilters) {
+  const stockWhere = and(
+    sourceCondition(inventoryBalancesTable.source, filters.mode),
+    sql`not (${inventoryBalancesTable.source} = 'fom' and ${inventoryBalancesTable.quantity} = 0)`,
+    eq(branchesTable.kind, "warehouse"),
+    filters.branchId ? eq(inventoryBalancesTable.branchId, filters.branchId) : undefined,
+  );
+
+  const stockRows = await db
+    .select({
+      productId: productsTable.id,
+      productName: productsTable.name,
+      unit: productsTable.unit,
+      branchId: inventoryBalancesTable.branchId,
+      branchName: branchesTable.name,
+      quantity: inventoryBalancesTable.quantity,
+      balanceCost: inventoryBalancesTable.costPrice,
+      productCost: productsTable.costPrice,
+      retailPrice: productsTable.retailPrice,
+      expiryDate: productsTable.expiryDate,
+    })
+    .from(inventoryBalancesTable)
+    .innerJoin(productsTable, eq(productsTable.id, inventoryBalancesTable.productId))
+    .innerJoin(branchesTable, eq(branchesTable.id, inventoryBalancesTable.branchId))
+    .where(stockWhere);
+
+  // One row per product (sum qty if multiple warehouse branches).
+  const stock = new Map<
+    number,
+    {
+      productId: number;
+      productName: string;
+      unit: string;
+      quantity: number;
+      value: string | null;
+      retailPrice: string;
+      expiryDate: string | null;
+      branchName: string;
+    }
+  >();
+  for (const row of stockRows) {
+    const qty = toNumber(row.quantity);
+    const cost = row.balanceCost ?? row.productCost;
+    const lineValue = cost == null ? null : extendedMoney(cost, row.quantity);
+    const prev = stock.get(row.productId);
+    if (!prev) {
+      stock.set(row.productId, {
+        productId: row.productId,
+        productName: row.productName,
+        unit: row.unit || "dona",
+        quantity: qty,
+        value: lineValue == null ? null : centsMoney(lineValue),
+        retailPrice: row.retailPrice,
+        expiryDate: row.expiryDate,
+        branchName: row.branchName,
+      });
+      continue;
+    }
+    prev.quantity = roundQty(prev.quantity + qty);
+    if (lineValue != null) {
+      prev.value = centsMoney(moneyCents(prev.value ?? "0") + lineValue);
+    }
+  }
+
+  const productIds = [...stock.keys()];
+  if (!productIds.length) {
+    return { topSellers: [] as const, slowMovers: [] as const };
+  }
+
+  const periodSales = await db
+    .select({
+      productId: saleItemsTable.productId,
+      soldQty: sql<string>`coalesce(sum(case when ${salesTable.kind} = 'return' then -${saleItemsTable.quantity} else ${saleItemsTable.quantity} end), 0)::text`,
+      revenue: sql<string>`coalesce(sum(case when ${salesTable.kind} = 'return' then -1 else 1 end * (round(${saleItemsTable.quantity} * ${saleItemsTable.unitPrice}, 2) - ${saleItemsTable.discount})), 0)::text`,
+    })
+    .from(saleItemsTable)
+    .innerJoin(salesTable, eq(salesTable.id, saleItemsTable.saleId))
+    .where(
+      and(
+        sourceCondition(salesTable.source, filters.mode),
+        ne(salesTable.status, "voided"),
+        inArray(saleItemsTable.productId, productIds),
+        dateConditions(salesTable.soldAt, filters.dateFrom, filters.dateTo),
+      ),
+    )
+    .groupBy(saleItemsTable.productId);
+
+  const lastSales = await db
+    .select({
+      productId: saleItemsTable.productId,
+      lastSoldAt: sql<Date>`max(${salesTable.soldAt})`,
+    })
+    .from(saleItemsTable)
+    .innerJoin(salesTable, eq(salesTable.id, saleItemsTable.saleId))
+    .where(
+      and(
+        sourceCondition(salesTable.source, filters.mode),
+        ne(salesTable.status, "voided"),
+        eq(salesTable.kind, "sale"),
+        inArray(saleItemsTable.productId, productIds),
+      ),
+    )
+    .groupBy(saleItemsTable.productId);
+
+  const soldInPeriod = new Map(
+    periodSales.map((r) => [r.productId, { qty: toNumber(r.soldQty), revenue: r.revenue }]),
+  );
+  const lastSold = new Map(
+    lastSales.map((r) => [r.productId, r.lastSoldAt ? new Date(r.lastSoldAt) : null]),
+  );
+
+  const today = dateOnly(new Date());
+
+  const topSellers = [...stock.values()]
+    .map((item) => {
+      const sold = soldInPeriod.get(item.productId);
+      return {
+        productId: item.productId,
+        productName: item.productName,
+        unit: item.unit,
+        stockQty: item.quantity,
+        soldQty: sold?.qty ?? 0,
+        sales: sold?.revenue ?? "0.00",
+        expiryDate: item.expiryDate,
+      };
+    })
+    .filter((r) => r.soldQty > 0)
+    .sort((a, b) => (b.soldQty !== a.soldQty ? b.soldQty - a.soldQty : Number(b.sales) - Number(a.sales)))
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+
+  const slowMovers = [...stock.values()]
+    .filter((item) => item.quantity > 0)
+    .map((item) => {
+      const last = lastSold.get(item.productId) ?? null;
+      const sold = soldInPeriod.get(item.productId);
+      const lastDay = last ? dateOnly(last) : null;
+      const daysSinceSale =
+        lastDay == null
+          ? null
+          : Math.max(
+              0,
+              Math.round(
+                (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${lastDay}T00:00:00Z`)) / 86400000,
+              ),
+            );
+      const expiryDays =
+        item.expiryDate == null
+          ? null
+          : Math.round(
+              (Date.parse(`${item.expiryDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) /
+                86400000,
+            );
+      return {
+        productId: item.productId,
+        productName: item.productName,
+        unit: item.unit,
+        stockQty: item.quantity,
+        stockValue: item.value,
+        soldQty: sold?.qty ?? 0,
+        lastSoldAt: last ? last.toISOString() : null,
+        daysSinceSale,
+        expiryDate: item.expiryDate,
+        expiryDays,
+        expired: expiryDays != null && expiryDays < 0,
+      };
+    })
+    .sort((a, b) => {
+      // Never sold first, then oldest last sale, then expired.
+      if (a.lastSoldAt == null && b.lastSoldAt != null) return -1;
+      if (a.lastSoldAt != null && b.lastSoldAt == null) return 1;
+      const da = a.daysSinceSale ?? 1e9;
+      const dbDays = b.daysSinceSale ?? 1e9;
+      if (da !== dbDays) return dbDays - da;
+      if (a.expired !== b.expired) return a.expired ? -1 : 1;
+      return a.soldQty - b.soldQty;
+    });
+
+  return { topSellers, slowMovers };
+}
+
+function roundQty(n: number) {
+  return Math.round((n + Number.EPSILON) * 1000) / 1000;
+}
+
 export async function loadInventory(filters: QueryFilters) {
   const conditions: Array<SQL | undefined> = [
     sourceCondition(inventoryBalancesTable.source, filters.mode),

@@ -13,7 +13,7 @@ import {
   ListSalesResponse,
 } from "@workspace/api-zod";
 import { getDataMode } from "./financialUtils";
-import { loadInventory, loadSaleLines } from "./queries";
+import { loadInventory, loadSaleLines, loadWarehouseInsights } from "./queries";
 
 const router: IRouter = Router();
 
@@ -59,6 +59,23 @@ router.get("/inventory", async (req, res): Promise<void> => {
     search: parsed.data.search,
   });
   res.json(ListInventoryResponse.parse(rows));
+});
+
+/** Ombor: top sellers in the period + slow / unsold stock with last-sale age. */
+router.get("/warehouse-insights", async (req, res): Promise<void> => {
+  const parsed = ListSalesQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const mode = await getDataMode();
+  const data = await loadWarehouseInsights({
+    mode,
+    branchId: parsed.data.branchId,
+    dateFrom: parsed.data.dateFrom,
+    dateTo: parsed.data.dateTo,
+  });
+  res.json(data);
 });
 
 router.get("/product-detail", async (req, res): Promise<void> => {

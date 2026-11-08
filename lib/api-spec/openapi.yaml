@@ -203,6 +203,22 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/InventoryItem"
+  /warehouse-insights:
+    get:
+      operationId: getWarehouseInsights
+      tags: [trade]
+      summary: Warehouse top sellers and slow-moving stock
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+      responses:
+        "200":
+          description: Warehouse sales ranking and slow movers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarehouseInsights"
   /product-detail:
     get:
       operationId: getProduct
@@ -1063,6 +1079,43 @@ components:
         expiryDate: { type: ["string", "null"], format: date }
         source: { type: string, enum: [demo, manual, fom] }
       required: [productId, productName, group, unit, branchId, branchName, quantity, retailPrice, source]
+    WarehouseTopSeller:
+      type: object
+      properties:
+        rank: { type: integer }
+        productId: { type: integer }
+        productName: { type: string }
+        unit: { type: string }
+        stockQty: { type: number }
+        soldQty: { type: number }
+        sales: { type: string }
+        expiryDate: { type: ["string", "null"], format: date }
+      required: [rank, productId, productName, unit, stockQty, soldQty, sales]
+    WarehouseSlowMover:
+      type: object
+      properties:
+        productId: { type: integer }
+        productName: { type: string }
+        unit: { type: string }
+        stockQty: { type: number }
+        stockValue: { type: ["string", "null"] }
+        soldQty: { type: number }
+        lastSoldAt: { type: ["string", "null"], format: date-time }
+        daysSinceSale: { type: ["integer", "null"] }
+        expiryDate: { type: ["string", "null"], format: date }
+        expiryDays: { type: ["integer", "null"] }
+        expired: { type: boolean }
+      required: [productId, productName, unit, stockQty, soldQty, expired]
+    WarehouseInsights:
+      type: object
+      properties:
+        topSellers:
+          type: array
+          items: { $ref: "#/components/schemas/WarehouseTopSeller" }
+        slowMovers:
+          type: array
+          items: { $ref: "#/components/schemas/WarehouseSlowMover" }
+      required: [topSellers, slowMovers]
     ProductDetail:
       type: object
       properties:
