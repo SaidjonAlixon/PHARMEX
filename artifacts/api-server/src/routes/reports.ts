@@ -168,7 +168,7 @@ router.get("/reports", async (req, res): Promise<void> => {
             moneyCents(expense.amount),
         );
       }
-      columns = ["Filial", "Sof sotuv", "Tovar tannarxi", "Yalpi foyda", "Xarajatlar", "Dastlabki foyda", "Holat"];
+      columns = ["Filial", "Sof sotuv", "Tovar tannarxi", "Yalpi foyda", "Xarajatlar", "Sof foyda", "Holat"];
       rows = branches.map((branch) => {
         const branchSales = salesByBranch.get(branch.id) ?? 0n;
         const branchGross = grossByBranch.get(branch.id);
@@ -180,13 +180,13 @@ router.get("/reports", async (req, res): Promise<void> => {
           "Tovar tannarxi": branchGross == null ? null : centsMoney(branchSales - branchGross),
           "Yalpi foyda": isIncomplete ? null : centsMoney(branchGross ?? 0n),
           Xarajatlar: centsMoney(branchExpense),
-          "Dastlabki foyda":
+          "Sof foyda":
             isIncomplete ? null : centsMoney((branchGross ?? 0n) - branchExpense),
           Holat: rowsMissingCost ? "Dastlabki hisob" : "Hisoblandi",
         };
       });
       total = rows.reduce((sum, row) => {
-        const value = row["Dastlabki foyda"];
+        const value = row["Sof foyda"];
         return typeof value === "string" ? sum + moneyCents(value) : sum;
       }, 0n);
       break;

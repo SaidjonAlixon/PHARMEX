@@ -32,6 +32,7 @@ import { WarehousePage } from '@/pages/warehouse';
 import { WarehouseRankingPage } from '@/pages/warehouse-ranking';
 import { MoneyPage } from '@/pages/money';
 import { ExpensesPage } from '@/pages/expenses';
+import { ReportsPage } from '@/pages/reports';
 import { DebtsPage } from '@/pages/debts';
 import { CatalogPage } from '@/pages/catalog';
 import { FomLive, SettingsPage } from '@/pages/settings';
@@ -309,28 +310,6 @@ function exportRows(columns: string[], rows: Record<string, unknown>[], filename
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
 }
-function ReportsPage({ filters }: { filters: Filters }) {
-  const [kind, setKind] = useState<'sales' | 'inventory' | 'expenses' | 'debts' | 'profit' | 'cashflow'>('sales');
-  const [dates, setDates] = useState({ from: filters.dateFrom || monthStart, to: filters.dateTo || today });
-  const [hasRun, setHasRun] = useState(false);
-  const [submitted, setSubmitted] = useState({ kind: 'sales' as typeof kind, from: filters.dateFrom || monthStart, to: filters.dateTo || today, branchId: filters.branchId });
-  const params = { reportType: submitted.kind, dateFrom: submitted.from || undefined, dateTo: submitted.to || undefined, branchId: submitted.branchId ? Number(submitted.branchId) : undefined };
-  const q = useGetReport(params, { query: { queryKey: getGetReportQueryKey(params), enabled: hasRun } });
-  const labels: Record<typeof kind, string> = { sales: 'Savdo hisoboti', inventory: 'Tovar qoldiqlari', expenses: 'Xarajatlar', debts: 'Qarzlar', profit: 'Foyda va zarar', cashflow: 'Pul oqimi' };
-  const run = (e: FormEvent) => { e.preventDefault(); setSubmitted({ kind, ...dates, branchId: filters.branchId }); setHasRun(true); };
-  const report = q.data;
-  return <><PageHeading title="Hisobotlar" subtitle="Hisobot turini, davrni va filialni tanlang" /><Panel title="Hisobot sozlamalari" subtitle="Soʻrov API hisobot xizmatidan olinadi"><form className="report-form" onSubmit={run}><label>Hisobot turi<select value={kind} onChange={e => setKind(e.target.value as typeof kind)} data-testid="select-report-type">{Object.entries(labels).map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label><label>Boshlanish sanasi<input type="date" value={dates.from} onChange={e => setDates({ ...dates, from: e.target.value })} data-testid="input-report-from" /></label><label>Tugash sanasi<input type="date" value={dates.to} onChange={e => setDates({ ...dates, to: e.target.value })} data-testid="input-report-to" /></label><div className="report-branch"><span>Filial</span><div>{filters.branchId ? 'Global filtr tanlangan filialni qoʻllaydi' : 'Barcha filiallar'}</div></div><button className="button primary" data-testid="button-run-report"><FileBarChart2 size={15} /> Hisobotni koʻrsatish</button></form></Panel>
-    <DataMode mode={report?.mode} />
-    <Panel title={labels[submitted.kind]} subtitle={report ? `Yangilandi: ${date(report.updatedAt)} · ${report.rows.length} qator` : 'Hisobot natijasi'}>
-      {!hasRun && <div className="report-prompt"><FileBarChart2 size={22} /><b>Hisobot turini tanlang</b><span>Filtrlarni belgilang va «Hisobotni koʻrsatish» tugmasini bosing.</span></div>}
-      {q.isFetching && <DataState loading error={false} empty={false} retry={() => q.refetch()} />}
-      {q.isError && <DataState loading={false} error empty={false} retry={() => q.refetch()} />}
-      {report?.mode === 'empty' && <DataState loading={false} error={false} empty retry={() => q.refetch()} />}
-      {report && report.mode !== 'empty' && <><div className="report-toolbar"><div><b>Jami:</b> {money(report.total)} <StatusBadge tone={report.mode === 'demo' ? 'warn' : 'good'}>{report.mode === 'demo' ? 'Sinov rejimi' : 'Jonli maʼlumot'}</StatusBadge></div><button className="button secondary small" disabled={!report.rows.length} onClick={() => exportRows(report.columns, report.rows, `${submitted.kind}-hisobot.csv`)} data-testid="button-export-report"><Download size={14} /> CSV eksport</button></div>{report.rows.length ? <TableWrap><thead><tr>{report.columns.map(c => <th key={c}>{c}</th>)}</tr></thead><tbody>{report.rows.map((row, i) => <tr key={i} data-testid={`row-report-${i}`}>{report.columns.map(c => <td key={c}>{displayCell(row[c])}</td>)}</tr>)}</tbody></TableWrap> : <div className="inline-empty">Natija qatorlari topilmadi. Boʻsh natija nolga teng emas.</div>}</>}
-    </Panel></>;
-}
-
-
 function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: Filters) => void }) {
   return <Switch>
     <Route path="/"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><DashboardPage filters={filters} /></Shell></Show><Show when="signed-out"><SiteLayout><HomePage /></SiteLayout></Show></Route>
