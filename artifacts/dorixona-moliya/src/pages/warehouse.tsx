@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react';
 import {
-  ArrowRight, Boxes, PackageSearch, Scale, ShoppingBag, TrendingDown, TrendingUp,
+  ArrowRight, Download, PackageSearch, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { useGetWarehouseInsights, useListBranches, useListInventory } from '@workspace/api-client-react';
 import type { InventoryItem } from '@workspace/api-client-react';
 import {
-  Chips, DataState, Drawer, InfoGrid, KpiStrip, PageHeading, Panel, SearchBox, StatusBadge, TableWrap,
+  Chips, DataState, Drawer, InfoGrid, PageHeading, Panel, SearchBox, StatusBadge, TableWrap,
   date, money, num, qty, round2, stockStatus, type Filters,
 } from '@/components/kit';
 import { ProductCard } from '@/pages/stock';
+import { exportWarehouseExcel, retailValueOf } from '@/pages/warehouse-export';
 import { ExpiryCell, QtyCell, expiryDaysOf, slowStatusLabel } from '@/pages/warehouse-shared';
 
 const TEASER_LIMIT = 5;
+const PREVIEW_LIMIT = 5;
 
 type StockFilter = 'all' | 'in' | 'zero' | 'expiring' | 'expired';
 
@@ -35,17 +37,70 @@ function matchesFilter(i: InventoryItem, stockFilter: StockFilter) {
   return d >= 0 && d <= 90;
 }
 
-function retailValueOf(i: InventoryItem) {
-  return round2(Math.max(0, i.quantity) * num(i.retailPrice));
-}
-
 function sumView(rows: InventoryItem[]) {
+  const costTotal = round2(rows.reduce((s, i) => s + num(i.value), 0));
+  const retailTotal = round2(rows.reduce((s, i) => s + retailValueOf(i), 0));
   return {
     count: rows.length,
-    costTotal: round2(rows.reduce((s, i) => s + num(i.value), 0)),
-    retailTotal: round2(rows.reduce((s, i) => s + retailValueOf(i), 0)),
-    qtyTotal: round2(rows.reduce((s, i) => s + Math.max(0, i.quantity), 0)),
+    costTotal,
+    retailTotal,
+    markup: round2(retailTotal - costTotal),
   };
+}
+
+function StockTable({
+  rows,
+  onOpen,
+  limit,
+}: {
+  rows: InventoryItem[];
+  onOpen: (id: number) => void;
+  limit?: number;
+}) {
+  const list = limit != null ? rows.slice(0, limit) : rows;
+  return (
+    <TableWrap>
+      <thead>
+        <tr>
+          <th>MAHSULOT</th>
+          <th>OMBOR</th>
+          <th className="num">QOLDIQ</th>
+          <th>HOLAT</th>
+          <th className="num">1 DONA TANNARX</th>
+          <th className="num">1 DONA SOTUV</th>
+          <th className="num">QOLDIQ QIYMATI</th>
+          <th className="num">QOʻYILGAN NARX</th>
+          <th>YAROQLILIK</th>
+        </tr>
+      </thead>
+      <tbody>
+        {list.map((x: InventoryItem) => {
+          const st = stockStatus(x.quantity);
+          return (
+            <tr
+              key={`${x.productId}-${x.branchId}`}
+              className="clickable"
+              onClick={() => onOpen(x.productId)}
+              data-testid={`row-warehouse-${x.productId}-${x.branchId}`}
+            >
+              <td>
+                <span className="table-main-link">{x.productName}</span>
+                <small>{[x.manufacturer, x.barcode].filter(Boolean).join(' · ') || x.group || '—'} · bosing — toʻliq</small>
+              </td>
+              <td className="cell-strong">{x.branchName}</td>
+              <td className="num"><QtyCell quantity={x.quantity} unit={x.unit} /></td>
+              <td><StatusBadge tone={st.tone}>{st.label}</StatusBadge></td>
+              <td className="num">{money(x.costPrice)}</td>
+              <td className="num">{money(x.retailPrice)}</td>
+              <td className="num" title={`Qoldiq qiymati = ${qty(x.quantity)} × ${money(x.costPrice)}`}>{money(x.value)}</td>
+              <td className="num" title={`Qoʻyilgan narx = ${qty(x.quantity)} × ${money(x.retailPrice)}`}>{money(retailValueOf(x))}</td>
+              <td><ExpiryCell value={x.expiryDate} /></td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </TableWrap>
+  );
 }
 
 export function WarehousePage({ filters }: { filters: Filters }) {
@@ -86,22 +141,32 @@ export function WarehousePage({ filters }: { filters: Filters }) {
     return list.filter(r => warehouseIds.has(r.branchId));
   }, [invQ.data, activeWarehouseId, warehouseIds]);
 
-  const stats = useMemo(() => ({
-    positions: inventory.filter(i => i.quantity > 0).length,
-    zero: inventory.filter(i => i.quantity <= 0).length,
-    expiring: inventory.filter(i => matchesFilter(i, 'expiring')).length,
-    expired: inventory.filter(i => matchesFilter(i, 'expired')).length,
-  }), [inventory]);
+  const buckets = useMemo(() => {
+    const inStock = inventory.filter(i => matchesFilter(i, 'in'));
+    const zero = inventory.filter(i => matchesFilter(i, 'zero'));
+    const expiring = inventory.filter(i => matchesFilter(i, 'expiring'));
+    const expired = inventory.filter(i => matchesFilter(i, 'expired'));
+    const other = inStock.filter(i => !matchesFilter(i, 'expiring') && !matchesFilter(i, 'expired'));
+    return {
+      all: inventory,
+      in: inStock,
+      zero,
+      expiring,
+      expired,
+      other,
+      sums: {
+        all: sumView(inventory),
+        in: sumView(inStock),
+        zero: sumView(zero),
+        expiring: sumView(expiring),
+        expired: sumView(expired),
+        other: sumView(other),
+      },
+    };
+  }, [inventory]);
 
-  const rows = useMemo(
-    () => inventory.filter(i => matchesFilter(i, stockFilter)),
-    [inventory, stockFilter],
-  );
-
-  const view = useMemo(() => {
-    const base = sumView(rows);
-    return { ...base, markup: round2(base.retailTotal - base.costTotal) };
-  }, [rows]);
+  const rows = stockFilter === 'all' ? buckets.all : buckets[stockFilter];
+  const view = stockFilter === 'all' ? buckets.sums.all : buckets.sums[stockFilter];
   const sectionTitle = FILTER_LABEL[stockFilter];
 
   const topSellers = insightsQ.data?.topSellers || [];
@@ -116,52 +181,65 @@ export function WarehousePage({ filters }: { filters: Filters }) {
 
   const warehouseTitle = activeWarehouse?.name || (warehouses.length ? `${warehouses.length} ta ombor` : 'Ombor');
 
-  const openTotals = () => setTotalsOpen(true);
+  const downloadExcel = (list: InventoryItem[], title: string) => {
+    if (!list.length) return;
+    exportWarehouseExcel(list, title);
+  };
 
   return <>
     <PageHeading
       eyebrow="OMBOR · СКЛАД"
       title="Ombor"
-      subtitle={`${warehouseTitle} · pastki filtrni tanlang — yuqoridagi kartalar shu boʻlimning umumiy hisobini koʻrsatadi. Davr: ${periodLabel}.`}
+      subtitle={`${warehouseTitle} · har bir boʻlimning jami summasi kartada. Filtrni tanlang yoki Excel yuklab oling. Davr: ${periodLabel}.`}
+      actions={
+        <button
+          type="button"
+          className="button primary"
+          onClick={() => downloadExcel(rows, sectionTitle)}
+          disabled={!rows.length}
+          data-testid="button-warehouse-excel"
+        >
+          <Download size={15} /> Excel yuklash
+        </button>
+      }
     />
 
-    <KpiStrip items={[
-      {
-        label: `${sectionTitle} · soni`,
-        value: view.count,
-        count: true,
-        icon: PackageSearch,
-        hint: 'Kartani bosing — toʻliq hisob',
-        tone: stockFilter === 'expired' ? 'bad' : stockFilter === 'expiring' ? 'warn' : undefined,
-        onClick: openTotals,
-        testId: 'kpi-warehouse-count',
-      },
-      {
-        label: 'Tannarx jami',
-        value: view.costTotal,
-        icon: Boxes,
-        hint: 'Qoldiq × 1 dona tannarx',
-        onClick: openTotals,
-        testId: 'kpi-warehouse-cost',
-      },
-      {
-        label: 'Qoʻyilgan narx jami',
-        value: view.retailTotal,
-        icon: ShoppingBag,
-        hint: 'Tovarga qoʻyilgan · qoldiq × sotuv narxi',
-        onClick: openTotals,
-        testId: 'kpi-warehouse-retail',
-      },
-      {
-        label: 'Farq (qoʻyilgan − tannarx)',
-        value: view.markup,
-        icon: Scale,
-        hint: 'Potensial ustama · bosing — toʻliq',
-        tone: view.markup < 0 ? 'bad' : 'good',
-        onClick: openTotals,
-        testId: 'kpi-warehouse-markup',
-      },
-    ]} />
+    <div className="warehouse-cat-grid" data-testid="warehouse-category-cards">
+      {([
+        { id: 'in' as const, tone: '', title: 'Qoldiq bor', hint: 'Ombordagi faol tovarlar' },
+        { id: 'expiring' as const, tone: 'warn', title: 'Muddati yaqin', hint: '90 kungacha tugaydi' },
+        { id: 'expired' as const, tone: 'bad', title: 'Muddati oʻtgan', hint: 'Yaroqsiz qoldiq — jami summa' },
+        { id: 'all' as const, tone: '', title: 'Barchasi', hint: 'Barcha boʻlimlar birga' },
+      ]).map(card => {
+        const s = buckets.sums[card.id];
+        const active = stockFilter === card.id;
+        return (
+          <button
+            type="button"
+            key={card.id}
+            className={`warehouse-cat-card ${card.tone} ${active ? 'is-active' : ''}`}
+            onClick={() => setStockFilter(card.id)}
+            data-testid={`card-warehouse-${card.id}`}
+          >
+            <div className="warehouse-cat-top">
+              <b>{card.title}</b>
+              <em>{s.count} ta</em>
+            </div>
+            <p>{card.hint}</p>
+            <div className="warehouse-cat-money">
+              <div>
+                <span>Tannarx jami</span>
+                <strong>{money(s.costTotal)}</strong>
+              </div>
+              <div>
+                <span>Qoʻyilgan narx</span>
+                <strong>{money(s.retailTotal)}</strong>
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
 
     <div className="warehouse-teaser">
       <div className="warehouse-teaser-card">
@@ -225,7 +303,18 @@ export function WarehousePage({ filters }: { filters: Filters }) {
     <Panel
       className="warehouse-stock-panel"
       title="Ombor tovarlari"
-      subtitle={`${warehouseTitle} · hozir: ${sectionTitle.toLowerCase()} · ${rows.length} ta qator`}
+      subtitle={`${warehouseTitle} · tanlangan: ${sectionTitle.toLowerCase()}`}
+      action={
+        <button
+          type="button"
+          className="button secondary"
+          onClick={() => downloadExcel(rows, sectionTitle)}
+          disabled={!rows.length}
+          data-testid="button-warehouse-excel-panel"
+        >
+          <Download size={15} /> Excel · {sectionTitle}
+        </button>
+      }
     >
       <div className="warehouse-toolbar">
         {warehouses.length > 1 && !filterIsWarehouse && (
@@ -246,40 +335,41 @@ export function WarehousePage({ filters }: { filters: Filters }) {
           value={stockFilter}
           onChange={setStockFilter}
           options={[
-            { id: 'all', label: 'Barchasi', count: inventory.length },
-            { id: 'in', label: 'Qoldiq bor', count: stats.positions },
-            { id: 'zero', label: 'Tugagan', count: stats.zero },
-            { id: 'expiring', label: 'Muddati yaqin', count: stats.expiring },
-            { id: 'expired', label: 'Muddati oʻtgan', count: stats.expired },
+            { id: 'all', label: 'Barchasi', count: buckets.all.length },
+            { id: 'in', label: 'Qoldiq bor', count: buckets.in.length },
+            { id: 'zero', label: 'Tugagan', count: buckets.zero.length },
+            { id: 'expiring', label: 'Muddati yaqin', count: buckets.expiring.length },
+            { id: 'expired', label: 'Muddati oʻtgan', count: buckets.expired.length },
           ]}
         />
         <SearchBox value={search} onChange={setSearch} placeholder="Mahsulot, kod, shtrix-kod" />
       </div>
 
-      <div className="warehouse-view-summary" data-testid="warehouse-view-summary">
-        <div>
-          <span>Tanlangan boʻlim</span>
-          <b>{sectionTitle}</b>
+      <div className={`warehouse-active-banner ${stockFilter === 'expired' ? 'bad' : stockFilter === 'expiring' ? 'warn' : ''}`} data-testid="warehouse-active-banner">
+        <div className="warehouse-active-main">
+          <PackageSearch size={18} />
+          <div>
+            <b>{sectionTitle}</b>
+            <p>
+              {view.count} ta mahsulot · tannarx jami <strong>{money(view.costTotal)}</strong>
+              {' '}· qoʻyilgan narx <strong>{money(view.retailTotal)}</strong>
+            </p>
+          </div>
         </div>
-        <div>
-          <span>Mahsulotlar soni</span>
-          <b>{view.count} ta</b>
+        <div className="warehouse-active-actions">
+          <button type="button" className="button secondary" onClick={() => setTotalsOpen(true)} data-testid="button-open-view-totals">
+            Toʻliq hisob
+          </button>
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => downloadExcel(rows, sectionTitle)}
+            disabled={!rows.length}
+            data-testid="button-warehouse-excel-banner"
+          >
+            <Download size={15} /> Excel
+          </button>
         </div>
-        <div>
-          <span>Tannarx jami</span>
-          <b>{money(view.costTotal)}</b>
-        </div>
-        <div>
-          <span>Qoʻyilgan narx jami</span>
-          <b>{money(view.retailTotal)}</b>
-        </div>
-        <div>
-          <span>Qoldiq qiymati</span>
-          <b>{money(view.costTotal)}</b>
-        </div>
-        <button type="button" className="warehouse-summary-open" onClick={openTotals} data-testid="button-open-view-totals">
-          Toʻliq hisob <ArrowRight size={14} />
-        </button>
       </div>
 
       {emptyWarehouses ? (
@@ -295,53 +385,82 @@ export function WarehousePage({ filters }: { filters: Filters }) {
             retry={() => { invQ.refetch(); branchesQ.refetch(); }}
             emptyText="Tanlangan filtr boʻyicha qoldiq topilmadi."
           />
-          {!!rows.length && (
-            <TableWrap>
-              <thead>
-                <tr>
-                  <th>MAHSULOT</th>
-                  <th>OMBOR</th>
-                  <th className="num">QOLDIQ</th>
-                  <th>HOLAT</th>
-                  <th className="num" title="1 dona / 1 quti tannarxi">1 DONA TANNARX</th>
-                  <th className="num" title="1 dona / 1 quti sotuv narxi">1 DONA SOTUV</th>
-                  <th className="num" title="Qoldiq × tannarx">QOLDIQ QIYMATI</th>
-                  <th className="num" title="Qoldiq × sotuv narxi — tovarga qoʻyilgan narx">QOʻYILGAN NARX</th>
-                  <th>YAROQLILIK</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((x: InventoryItem) => {
-                  const st = stockStatus(x.quantity);
-                  const placed = retailValueOf(x);
-                  return (
-                    <tr
-                      key={`${x.productId}-${x.branchId}`}
-                      className="clickable"
-                      onClick={() => setProduct(x.productId)}
-                      data-testid={`row-warehouse-${x.productId}-${x.branchId}`}
-                    >
-                      <td>
-                        <span className="table-main-link">{x.productName}</span>
-                        <small>{[x.manufacturer, x.barcode].filter(Boolean).join(' · ') || x.group || '—'} · bosing — toʻliq</small>
-                      </td>
-                      <td className="cell-strong">{x.branchName}</td>
-                      <td className="num"><QtyCell quantity={x.quantity} unit={x.unit} /></td>
-                      <td><StatusBadge tone={st.tone}>{st.label}</StatusBadge></td>
-                      <td className="num">{money(x.costPrice)}</td>
-                      <td className="num">{money(x.retailPrice)}</td>
-                      <td className="num" title={`Qoldiq qiymati = ${qty(x.quantity)} × ${money(x.costPrice)}`}>
-                        {money(x.value)}
-                      </td>
-                      <td className="num" title={`Qoʻyilgan narx = ${qty(x.quantity)} × ${money(x.retailPrice)}`}>
-                        {money(placed)}
-                      </td>
-                      <td><ExpiryCell value={x.expiryDate} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </TableWrap>
+
+          {stockFilter === 'all' && !!rows.length && (
+            <div className="warehouse-split-lists">
+              <section className="warehouse-split-panel bad">
+                <header>
+                  <div>
+                    <h3>Muddati oʻtgan</h3>
+                    <p>{buckets.sums.expired.count} ta · tannarx {money(buckets.sums.expired.costTotal)} · qoʻyilgan {money(buckets.sums.expired.retailTotal)}</p>
+                  </div>
+                  <div className="warehouse-split-actions">
+                    <button type="button" className="button secondary" onClick={() => setStockFilter('expired')}>Toʻliq ochish</button>
+                    <button type="button" className="button secondary" disabled={!buckets.expired.length} onClick={() => downloadExcel(buckets.expired, FILTER_LABEL.expired)}>
+                      <Download size={14} /> Excel
+                    </button>
+                  </div>
+                </header>
+                {buckets.expired.length
+                  ? <StockTable rows={buckets.expired} onOpen={setProduct} limit={PREVIEW_LIMIT} />
+                  : <div className="inline-empty tight">Muddati oʻtgan tovar yoʻq</div>}
+                {buckets.expired.length > PREVIEW_LIMIT && (
+                  <button type="button" className="warehouse-split-more" onClick={() => setStockFilter('expired')}>
+                    Yana {buckets.expired.length - PREVIEW_LIMIT} ta · toʻliq roʻyxat <ArrowRight size={14} />
+                  </button>
+                )}
+              </section>
+
+              <section className="warehouse-split-panel warn">
+                <header>
+                  <div>
+                    <h3>Muddati yaqin</h3>
+                    <p>{buckets.sums.expiring.count} ta · tannarx {money(buckets.sums.expiring.costTotal)} · qoʻyilgan {money(buckets.sums.expiring.retailTotal)}</p>
+                  </div>
+                  <div className="warehouse-split-actions">
+                    <button type="button" className="button secondary" onClick={() => setStockFilter('expiring')}>Toʻliq ochish</button>
+                    <button type="button" className="button secondary" disabled={!buckets.expiring.length} onClick={() => downloadExcel(buckets.expiring, FILTER_LABEL.expiring)}>
+                      <Download size={14} /> Excel
+                    </button>
+                  </div>
+                </header>
+                {buckets.expiring.length
+                  ? <StockTable rows={buckets.expiring} onOpen={setProduct} limit={PREVIEW_LIMIT} />
+                  : <div className="inline-empty tight">Muddati yaqin tovar yoʻq</div>}
+                {buckets.expiring.length > PREVIEW_LIMIT && (
+                  <button type="button" className="warehouse-split-more" onClick={() => setStockFilter('expiring')}>
+                    Yana {buckets.expiring.length - PREVIEW_LIMIT} ta · toʻliq roʻyxat <ArrowRight size={14} />
+                  </button>
+                )}
+              </section>
+
+              <section className="warehouse-split-panel">
+                <header>
+                  <div>
+                    <h3>Qolganlari (yaroqli qoldiq)</h3>
+                    <p>{buckets.sums.other.count} ta · tannarx {money(buckets.sums.other.costTotal)} · qoʻyilgan {money(buckets.sums.other.retailTotal)}</p>
+                  </div>
+                  <div className="warehouse-split-actions">
+                    <button type="button" className="button secondary" onClick={() => setStockFilter('in')}>Qoldiq bor</button>
+                    <button type="button" className="button secondary" disabled={!buckets.other.length} onClick={() => downloadExcel(buckets.other, 'Qolganlari (yaroqli)')}>
+                      <Download size={14} /> Excel
+                    </button>
+                  </div>
+                </header>
+                {buckets.other.length
+                  ? <StockTable rows={buckets.other} onOpen={setProduct} limit={PREVIEW_LIMIT} />
+                  : <div className="inline-empty tight">Boshqa qoldiq yoʻq</div>}
+                {buckets.other.length > PREVIEW_LIMIT && (
+                  <button type="button" className="warehouse-split-more" onClick={() => setStockFilter('in')}>
+                    Yana {buckets.other.length - PREVIEW_LIMIT} ta · toʻliq roʻyxat <ArrowRight size={14} />
+                  </button>
+                )}
+              </section>
+            </div>
+          )}
+
+          {stockFilter !== 'all' && !!rows.length && (
+            <StockTable rows={rows} onOpen={setProduct} />
           )}
         </>
       )}
@@ -351,58 +470,24 @@ export function WarehousePage({ filters }: { filters: Filters }) {
       <Drawer
         eyebrow="BOʻLIM HISOBI"
         title={sectionTitle}
-        subtitle={<span>{warehouseTitle} · {view.count} ta mahsulot · kartani/yozuvni bosing — ochiladi</span>}
+        subtitle={<span>{warehouseTitle} · {view.count} ta mahsulot</span>}
         onClose={() => setTotalsOpen(false)}
+        actions={
+          <button type="button" className="button primary" disabled={!rows.length} onClick={() => downloadExcel(rows, sectionTitle)}>
+            <Download size={15} /> Excel yuklash
+          </button>
+        }
       >
         <InfoGrid items={[
           { label: 'Mahsulotlar soni', value: `${view.count} ta` },
           { label: 'Tannarx jami', value: money(view.costTotal) },
           { label: 'Qoʻyilgan narx jami', value: money(view.retailTotal) },
-          { label: 'Qoldiq qiymati (tannarxda)', value: money(view.costTotal) },
           { label: 'Farq (qoʻyilgan − tannarx)', value: money(view.markup) },
         ]} />
         <p className="muted-line">
-          <b>1 dona tannarx</b> — birlikning olinish narxi.
-          {' '}<b>1 dona sotuv</b> — birlikka qoʻyilgan sotuv narxi.
-          {' '}<b>Qoldiq qiymati</b> — qoldiq × tannarx.
-          {' '}<b>Qoʻyilgan narx</b> — qoldiq × sotuv narxi; tovarga jami qancha narx qoʻyilgani.
+          Bu raqamlar faqat <b>{sectionTitle.toLowerCase()}</b> boʻyicha. Filtrni oʻzgartirsangiz, jami ham oʻzgaradi. Excel shu roʻyxatni yuklab beradi.
         </p>
-        <h3 className="subhead">Boʻlimdagi mahsulotlar</h3>
-        {rows.length ? (
-          <TableWrap>
-            <thead>
-              <tr>
-                <th>MAHSULOT</th>
-                <th className="num">QOLDIQ</th>
-                <th className="num">1 DONA TANNARX</th>
-                <th className="num">1 DONA SOTUV</th>
-                <th className="num">QOLDIQ QIYMATI</th>
-                <th className="num">QOʻYILGAN NARX</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(x => (
-                <tr
-                  key={`tot-${x.productId}-${x.branchId}`}
-                  className="clickable"
-                  onClick={() => { setTotalsOpen(false); setProduct(x.productId); }}
-                >
-                  <td>
-                    <span className="table-main-link">{x.productName}</span>
-                    <small>{x.branchName}</small>
-                  </td>
-                  <td className="num"><QtyCell quantity={x.quantity} unit={x.unit} /></td>
-                  <td className="num">{money(x.costPrice)}</td>
-                  <td className="num">{money(x.retailPrice)}</td>
-                  <td className="num">{money(x.value)}</td>
-                  <td className="num">{money(retailValueOf(x))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrap>
-        ) : (
-          <div className="inline-empty">Bu boʻlimda mahsulot yoʻq.</div>
-        )}
+        {!!rows.length && <StockTable rows={rows} onOpen={(id) => { setTotalsOpen(false); setProduct(id); }} />}
       </Drawer>
     )}
 

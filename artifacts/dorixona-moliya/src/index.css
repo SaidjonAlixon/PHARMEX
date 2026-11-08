@@ -914,29 +914,98 @@ body { background: var(--wash); }
 .warehouse-rank-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .warehouse-full-panel { margin-bottom: 16px; }
 .muted-line { margin: 0 0 10px; font-size: 12.5px; color: var(--muted-ink); }
-.warehouse-view-summary {
+.warehouse-cat-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.warehouse-cat-card {
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 15px;
+  background: linear-gradient(165deg, #f4fbfd 0%, #fff 55%);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  font: inherit;
+  color: inherit;
+  transition: transform .15s, box-shadow .15s, border-color .15s;
+}
+.warehouse-cat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.warehouse-cat-card.is-active { border-color: color-mix(in srgb, var(--px-teal) 55%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--px-teal) 18%, transparent); }
+.warehouse-cat-card.warn { background: linear-gradient(165deg, #fff8ec 0%, #fff 55%); }
+.warehouse-cat-card.warn.is-active { border-color: #e0a84a; box-shadow: 0 0 0 3px rgba(224,168,74,.18); }
+.warehouse-cat-card.bad { background: linear-gradient(165deg, #fff1f1 0%, #fff 55%); }
+.warehouse-cat-card.bad.is-active { border-color: #e07070; box-shadow: 0 0 0 3px rgba(224,112,112,.16); }
+.warehouse-cat-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.warehouse-cat-top b { font-size: 14px; color: var(--px-navy); }
+.warehouse-cat-top em { font-style: normal; font-weight: 800; font-family: var(--app-font-mono); font-size: 13px; color: var(--px-teal-dark); }
+.warehouse-cat-card.warn .warehouse-cat-top em { color: #a5670a; }
+.warehouse-cat-card.bad .warehouse-cat-top em { color: #c62f3a; }
+.warehouse-cat-card p { margin: 0; font-size: 12px; color: var(--muted-ink); }
+.warehouse-cat-money { display: grid; gap: 6px; }
+.warehouse-cat-money > div { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.warehouse-cat-money span { font-size: 11px; color: var(--muted-ink); font-weight: 700; }
+.warehouse-cat-money strong { font-size: 13px; color: var(--px-navy); white-space: nowrap; }
+
+.warehouse-active-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   align-items: center;
+  justify-content: space-between;
   margin: 0 0 14px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: linear-gradient(180deg, #f7fbfd 0%, #fff 100%);
+  background: linear-gradient(180deg, #f3fafc 0%, #fff 100%);
 }
-.warehouse-view-summary > div { min-width: 0; display: grid; gap: 3px; }
-.warehouse-view-summary span { font-size: 11px; color: var(--muted-ink); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
-.warehouse-view-summary b { font-size: 14px; color: var(--px-navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.warehouse-summary-open {
-  display: inline-flex; align-items: center; gap: 6px; justify-content: center;
-  padding: 10px 12px; border: 0; border-radius: 10px; cursor: pointer;
-  background: #e7f9f5; color: var(--px-teal-dark); font-weight: 700; font-size: 12.5px; white-space: nowrap;
+.warehouse-active-banner.warn { background: linear-gradient(180deg, #fff8ec 0%, #fff 100%); border-color: #f0d7a8; }
+.warehouse-active-banner.bad { background: linear-gradient(180deg, #fff1f1 0%, #fff 100%); border-color: #f0c0c0; }
+.warehouse-active-main { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.warehouse-active-main svg { flex: 0 0 auto; margin-top: 2px; color: var(--px-teal-dark); }
+.warehouse-active-banner.warn .warehouse-active-main svg { color: #a5670a; }
+.warehouse-active-banner.bad .warehouse-active-main svg { color: #c62f3a; }
+.warehouse-active-main b { display: block; font-size: 15px; color: var(--px-navy); }
+.warehouse-active-main p { margin: 4px 0 0; font-size: 13px; color: var(--t2); }
+.warehouse-active-main strong { color: var(--px-navy); }
+.warehouse-active-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.warehouse-split-lists { display: grid; gap: 16px; }
+.warehouse-split-panel {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  padding: 12px 14px 10px;
+  display: grid;
+  gap: 10px;
 }
-.warehouse-summary-open:hover { filter: brightness(0.98); }
+.warehouse-split-panel.warn { border-color: #f0d7a8; background: linear-gradient(180deg, #fffaf2 0%, #fff 40%); }
+.warehouse-split-panel.bad { border-color: #f0c0c0; background: linear-gradient(180deg, #fff6f6 0%, #fff 40%); }
+.warehouse-split-panel > header {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; justify-content: space-between;
+}
+.warehouse-split-panel h3 { margin: 0; font-size: 15px; color: var(--px-navy); }
+.warehouse-split-panel header p { margin: 4px 0 0; font-size: 12.5px; color: var(--muted-ink); }
+.warehouse-split-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.warehouse-split-more {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; padding: 10px; border: 0; border-radius: 10px; cursor: pointer;
+  background: #eef6fa; color: var(--px-teal-dark); font-weight: 700; font-size: 13px;
+}
+.warehouse-split-panel.warn .warehouse-split-more { background: #fff2d9; color: #a5670a; }
+.warehouse-split-panel.bad .warehouse-split-more { background: #ffe4e4; color: #c62f3a; }
+
 @media (max-width: 1100px) {
-  .warehouse-view-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .warehouse-summary-open { grid-column: 1 / -1; }
+  .warehouse-cat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .warehouse-cat-grid { grid-template-columns: 1fr; }
+  .warehouse-active-actions { width: 100%; }
+  .warehouse-active-actions .button { flex: 1; justify-content: center; }
 }
 .warehouse-panel-tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 99px; background: #e7f9f5; color: #0b8fa3; font-size: 11.5px; font-weight: 700; }
 .warehouse-panel-tag.warn { background: #fff2d9; color: #a5670a; }
