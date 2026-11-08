@@ -1,53 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Boxes, PackageSearch, Warehouse } from 'lucide-react';
+import { ArrowRight, Boxes, PackageSearch, TrendingDown, TrendingUp, Warehouse } from 'lucide-react';
+import { Link } from 'wouter';
 import { useGetWarehouseInsights, useListBranches, useListInventory } from '@workspace/api-client-react';
 import type { InventoryItem } from '@workspace/api-client-react';
 import {
   Chips, DataState, KpiStrip, PageHeading, Panel, SearchBox, StatusBadge, TableWrap,
-  date, dateTime, money, num, qty, round2, stockStatus, unitLabel, type Filters,
+  date, money, num, round2, stockStatus, type Filters,
 } from '@/components/kit';
 import { ProductCard } from '@/pages/stock';
-
-function expiryDaysOf(value?: string | null) {
-  if (!value) return null;
-  return Math.floor((new Date(`${value}T00:00:00`).getTime() - Date.now()) / 86400000);
-}
-
-function expiryBadge(value?: string | null, expiryDays?: number | null) {
-  const days = expiryDays ?? expiryDaysOf(value);
-  if (days == null) return null;
-  if (days < 0) return <StatusBadge tone="bad">Muddati oʻtgan · {Math.abs(days)} kun</StatusBadge>;
-  if (days <= 90) return <StatusBadge tone="warn">{days} kun qoldi</StatusBadge>;
-  return <StatusBadge tone="good">Yaroqli</StatusBadge>;
-}
-
-function daysAgoLabel(days: number | null | undefined) {
-  if (days == null) return 'Hech qachon';
-  if (days === 0) return 'Bugun';
-  if (days === 1) return '1 kun';
-  return `${days} kun`;
-}
-
-function QtyCell({ quantity, unit }: { quantity: number; unit?: string | null }) {
-  const openPack = quantity > 0 && quantity < 1;
-  return (
-    <div className={`stock-qty ${quantity <= 0 ? 'is-empty' : openPack ? 'is-low' : ''}`}>
-      <b>{qty(quantity)}</b>
-      <span>{unitLabel(unit)}</span>
-      {openPack && <em>ochilgan</em>}
-    </div>
-  );
-}
-
-function ExpiryCell({ value, days }: { value?: string | null; days?: number | null }) {
-  if (!value) return <span className="muted">—</span>;
-  return (
-    <div className="expiry-cell">
-      <span>{date(value)}</span>
-      {expiryBadge(value, days)}
-    </div>
-  );
-}
+import { ExpiryCell, QtyCell } from '@/pages/warehouse-shared';
 
 export function WarehousePage({ filters }: { filters: Filters }) {
   const [search, setSearch] = useState('');
@@ -128,7 +89,12 @@ export function WarehousePage({ filters }: { filters: Filters }) {
     <PageHeading
       eyebrow="OMBOR · СКЛАД"
       title="Ombor"
-      subtitle={`${warehouseTitle} · qoldiq, sotuv reytingi va sekin aylanadigan tovarlar. Davr: ${periodLabel}.`}
+      subtitle={`${warehouseTitle} · qoldiqlar roʻyxati. Sotuv reytingi alohida sahifada. Davr: ${periodLabel}.`}
+      actions={
+        <Link href="/warehouse/ranking" className="button primary" data-testid="button-open-warehouse-ranking">
+          Sotuv reytingi <ArrowRight size={15} />
+        </Link>
+      }
     />
 
     <KpiStrip items={[
@@ -138,93 +104,50 @@ export function WarehousePage({ filters }: { filters: Filters }) {
       { label: 'Muddati oʻtgan', value: stats.expired, count: true, icon: PackageSearch, tone: stats.expired ? 'bad' : undefined, hint: 'Yaroqsiz qoldiq' },
     ]} />
 
-    <div className="warehouse-insights">
-      <Panel
-        className="warehouse-rank-panel"
-        title="Eng koʻp sotiladiganlar"
-        subtitle={`Tanlangan davrdagi toʻliq reyting · ${topSellers.length} ta mahsulot`}
-      >
-        <DataState
-          loading={insightsQ.isLoading}
-          error={insightsQ.isError}
-          empty={!insightsQ.isLoading && !insightsQ.isError && !topSellers.length}
-          retry={() => insightsQ.refetch()}
-          emptyText="Bu davrda ombor tovarlaridan savdo topilmadi. Yuqoridan boshqa davr tanlang."
-        />
-        {!!topSellers.length && (
-          <div className="warehouse-scroll">
-            <TableWrap>
-              <thead>
-                <tr>
-                  <th className="num">#</th>
-                  <th>MAHSULOT</th>
-                  <th className="num">SOTILDI</th>
-                  <th className="num">SUMMA</th>
-                  <th className="num">QOLDIQ</th>
-                  <th>YAROQLILIK</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topSellers.map(r => (
-                  <tr key={r.productId} className="clickable" onClick={() => setProduct(r.productId)} data-testid={`row-top-seller-${r.productId}`}>
-                    <td className="num cell-strong">{r.rank}</td>
-                    <td><span className="table-main-link">{r.productName}</span></td>
-                    <td className="num"><QtyCell quantity={r.soldQty} unit={r.unit} /></td>
-                    <td className="num">{money(r.sales)}</td>
-                    <td className="num"><QtyCell quantity={r.stockQty} unit={r.unit} /></td>
-                    <td><ExpiryCell value={r.expiryDate} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </TableWrap>
+    <div className="warehouse-teaser">
+      <div className="warehouse-teaser-card">
+        <div className="warehouse-teaser-head">
+          <span className="warehouse-teaser-icon"><TrendingUp size={16} /></span>
+          <div>
+            <b>Eng koʻp sotiladiganlar</b>
+            <p>Davr boʻyicha toʻliq reyting · {insightsQ.isLoading ? '…' : `${topSellers.length} ta`}</p>
           </div>
-        )}
-      </Panel>
+        </div>
+        <div className="warehouse-teaser-scroll">
+          {topSellers.slice(0, 5).map(r => (
+            <div key={r.productId} className="warehouse-teaser-row">
+              <em>{r.rank}</em>
+              <span>{r.productName}</span>
+              <strong>{money(r.sales)}</strong>
+            </div>
+          ))}
+          {!insightsQ.isLoading && !topSellers.length && <div className="inline-empty tight">Savdo yoʻq</div>}
+        </div>
+      </div>
 
-      <Panel
-        className="warehouse-rank-panel"
-        title="Kam va sotilmaydiganlar"
-        subtitle={`Oxirgi sotuv sanasi · ${neverSold} ta umuman sotilmagan · ${expiredSlow} ta muddati oʻtgan`}
-      >
-        <DataState
-          loading={insightsQ.isLoading}
-          error={insightsQ.isError}
-          empty={!insightsQ.isLoading && !insightsQ.isError && !slowMovers.length}
-          retry={() => insightsQ.refetch()}
-          emptyText="Omborda koʻrsatiladigan qoldiq yoʻq."
-        />
-        {!!slowMovers.length && (
-          <div className="warehouse-scroll">
-            <TableWrap>
-              <thead>
-                <tr>
-                  <th>MAHSULOT</th>
-                  <th className="num">QOLDIQ</th>
-                  <th>OXIRGI SOTUV</th>
-                  <th className="num">KUN</th>
-                  <th>YAROQLILIK</th>
-                </tr>
-              </thead>
-              <tbody>
-                {slowMovers.map(r => (
-                  <tr key={r.productId} className="clickable" onClick={() => setProduct(r.productId)} data-testid={`row-slow-mover-${r.productId}`}>
-                    <td>
-                      <span className="table-main-link">{r.productName}</span>
-                      {r.expired && <small className="negative">Muddati oʻtgan</small>}
-                    </td>
-                    <td className="num"><QtyCell quantity={r.stockQty} unit={r.unit} /></td>
-                    <td>{r.lastSoldAt ? <span className="last-sale">{dateTime(r.lastSoldAt)}</span> : <StatusBadge tone="warn">Sotilmagan</StatusBadge>}</td>
-                    <td className={`num cell-strong ${r.lastSoldAt == null || (r.daysSinceSale ?? 0) >= 30 ? 'warn-qty' : ''}`}>
-                      {daysAgoLabel(r.daysSinceSale)}
-                    </td>
-                    <td><ExpiryCell value={r.expiryDate} days={r.expiryDays} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </TableWrap>
+      <div className="warehouse-teaser-card">
+        <div className="warehouse-teaser-head">
+          <span className="warehouse-teaser-icon warn"><TrendingDown size={16} /></span>
+          <div>
+            <b>Kam / sotilmaydiganlar</b>
+            <p>{neverSold} ta sotilmagan · {expiredSlow} ta muddati oʻtgan</p>
           </div>
-        )}
-      </Panel>
+        </div>
+        <div className="warehouse-teaser-scroll">
+          {slowMovers.slice(0, 5).map(r => (
+            <div key={r.productId} className="warehouse-teaser-row">
+              <span>{r.productName}</span>
+              <strong className={r.expired ? 'negative' : ''}>{r.expired ? 'Muddati oʻtgan' : r.lastSoldAt ? 'Kam' : 'Sotilmagan'}</strong>
+            </div>
+          ))}
+          {!insightsQ.isLoading && !slowMovers.length && <div className="inline-empty tight">Qoldiq yoʻq</div>}
+        </div>
+      </div>
+
+      <Link href="/warehouse/ranking" className="warehouse-teaser-cta" data-testid="link-warehouse-ranking-full">
+        Toʻliq reytingni ochish
+        <ArrowRight size={16} />
+      </Link>
     </div>
 
     <Panel

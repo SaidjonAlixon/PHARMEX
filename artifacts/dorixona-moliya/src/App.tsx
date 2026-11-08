@@ -28,6 +28,7 @@ import { SalesPage } from '@/pages/sales';
 import { PurchasesPage } from '@/pages/purchases';
 import { StockPage } from '@/pages/stock';
 import { WarehousePage } from '@/pages/warehouse';
+import { WarehouseRankingPage } from '@/pages/warehouse-ranking';
 import { MoneyPage } from '@/pages/money';
 import { DebtsPage } from '@/pages/debts';
 import { CatalogPage } from '@/pages/catalog';
@@ -336,6 +337,7 @@ function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: 
     <Route path="/branches/:id">{params => <><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><BranchDetailPage id={Number(params.id)} filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></>}</Route>
     <Route path="/sales"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><SalesPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/purchases"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PurchasesPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
+    <Route path="/warehouse/ranking"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><WarehouseRankingPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/warehouse"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><WarehousePage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/stock"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><StockPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/stock/product/:id">{params => <><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><StockPage key={params.id} filters={filters} productId={Number(params.id)} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></>}</Route>
