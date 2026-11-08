@@ -10,7 +10,7 @@ import type { InventoryItem, Purchase, StockDocType, StockDocument } from '@work
 import {
   AccountSelect, BranchSelect, Chips, CounterpartyField, DataState, Drawer, FormError, InfoGrid, KpiStrip, Modal, PageHeading,
   Panel, ProductPicker, SearchBox, StatusBadge, TableWrap, Totals, date, dateTime, filterParams, localToIso, money, nowLocal, num,
-  qty, round2, toMoney, useRefreshAll, type Filters, type PickedProduct,
+  qty, round2, stockStatus, toMoney, unitLabel, useRefreshAll, type Filters, type PickedProduct,
 } from '@/components/kit';
 import { movementLabels, stockDocLabels, writeOffReasons } from '@/lib/labels';
 import { useAccess } from '@/lib/access';
@@ -102,17 +102,20 @@ export function StockPage({ filters, productId }: { filters: Filters; productId?
     <div className="tabs scrollable">{tabs.map(t => <button key={t.id} className={tab === t.id ? 'selected' : ''} onClick={() => setTab(t.id)} data-testid={`tab-stock-${t.id}`}><t.icon size={15} /> {t.label}{t.count != null && <span className="tab-count">{t.count}</span>}</button>)}</div>
     {tab === 'balances' ? <Panel title="Tovar qoldiqlari" subtitle="Filial va omborlar kesimida; mahsulotni bosib kartani oching" action={<div className="toolbar"><Chips value={stockFilter} onChange={setStockFilter} options={[{ id: 'all', label: 'Barchasi', count: inventory.length }, { id: 'in', label: 'Qoldiq bor', count: stats.positions }, { id: 'zero', label: 'Tugagan', count: stats.zero }, { id: 'expiring', label: 'Muddati yaqin', count: stats.expiring }]} /><SearchBox value={search} onChange={setSearch} placeholder="Mahsulot, kod, shtrix-kod" /></div>}>
       <DataState loading={invQ.isLoading} error={invQ.isError} empty={!invQ.isLoading && !invQ.isError && !stockRows.length} retry={() => invQ.refetch()} emptyText="Qoldiq yoʻq. Tovar “Kirim” boʻlimi orqali qabul qilinadi." />
-      {!!stockRows.length && <TableWrap><thead><tr><th>MAHSULOT</th><th>FILIAL / OMBOR</th><th className="num">QOLDIQ</th><th className="num">TANNARX</th><th className="num">SOTUV NARXI</th><th className="num">QIYMAT</th><th className="num">USTAMA</th><th>YAROQLILIK</th></tr></thead>
-        <tbody>{stockRows.map((x: InventoryItem) => <tr key={`${x.productId}-${x.branchId}`} className="clickable" onClick={() => setProduct(x.productId)} data-testid={`row-inventory-${x.productId}-${x.branchId}`}>
+      {!!stockRows.length && <TableWrap><thead><tr><th>MAHSULOT</th><th>FILIAL / OMBOR</th><th className="num">QOLDIQ</th><th>HOLAT</th><th className="num">TANNARX</th><th className="num">SOTUV NARXI</th><th className="num">QIYMAT</th><th>YAROQLILIK</th></tr></thead>
+        <tbody>{stockRows.map((x: InventoryItem) => {
+          const st = stockStatus(x.quantity);
+          return <tr key={`${x.productId}-${x.branchId}`} className="clickable" onClick={() => setProduct(x.productId)} data-testid={`row-inventory-${x.productId}-${x.branchId}`}>
           <td><span className="table-main-link">{x.productName}</span><small>{[x.manufacturer, x.barcode].filter(Boolean).join(' · ') || x.group || '—'}</small></td>
           <td>{x.branchName}</td>
-          <td className={`num cell-strong ${x.quantity <= 0 ? 'negative' : ''}`}>{qty(x.quantity)}</td>
+          <td className={`num cell-strong ${x.quantity <= 0 ? 'negative' : x.quantity < 1 ? 'warn-qty' : ''}`}>{qty(x.quantity)}&nbsp;{unitLabel(x.unit)}{x.quantity > 0 && x.quantity < 1 && <small>ochilgan quti</small>}</td>
+          <td><StatusBadge tone={st.tone}>{st.label}</StatusBadge></td>
           <td className="num">{money(x.costPrice)}</td>
           <td className="num">{money(x.retailPrice)}</td>
           <td className="num">{money(x.value)}</td>
-          <td className="num">{x.costPrice && num(x.costPrice) > 0 ? `${Math.round((num(x.retailPrice) / num(x.costPrice) - 1) * 1000) / 10}%` : '—'}</td>
           <td>{date(x.expiryDate)} {expiryBadge(x.expiryDate)}</td>
-        </tr>)}</tbody></TableWrap>}
+        </tr>;
+        })}</tbody></TableWrap>}
     </Panel> : <Panel title={tab === 'all' ? 'Tovar harakati hujjatlari' : stockDocLabels[tab]} subtitle="Qatorni bosib hujjat tarkibini koʻring" action={<SearchBox value={search} onChange={setSearch} placeholder="Hujjat, filial, sabab, hamkor" />}>
       <DataState loading={docsQ.isLoading} error={docsQ.isError} empty={!docsQ.isLoading && !docsQ.isError && !docRows.length} retry={() => docsQ.refetch()} emptyText={tab === 'customer_return' ? 'Mijozdan qaytarishlar “Savdolar” boʻlimidagi chek orqali rasmiylashtiriladi.' : 'Bu davrda hujjat yoʻq. Yuqoridagi tugmalar orqali yangi hujjat yarating.'} />
       {!!docRows.length && <DocumentTable rows={docRows} onOpen={setSelected} />}
@@ -160,12 +163,12 @@ export function ProductCard({ id, onClose }: { id: number; onClose: () => void }
         { label: 'Guruh', value: d.product.group || '—' },
         { label: 'Sotuv narxi', value: `${money(d.product.retailPrice)}` },
         { label: 'Oʻrtacha tannarx', value: d.product.costPrice ? `${money(d.product.costPrice)}` : '—' },
-        { label: 'Jami qoldiq', value: qty(total) },
+        { label: 'Jami qoldiq', value: `${qty(total)} ${unitLabel(d.product.unit)}` },
         { label: 'Zaxira qiymati', value: `${money(value)}` },
       ]} />
       <h3 className="subhead">Filial va omborlar kesimida</h3>
-      <TableWrap><thead><tr><th>FILIAL / OMBOR</th><th className="num">MIQDOR</th><th className="num">TANNARX</th><th className="num">QIYMAT</th><th>YAROQLILIK</th></tr></thead>
-        <tbody>{d.branchBalances.map((b, i) => <tr key={`${b.branchId}-${i}`}><td className="cell-strong">{b.branchName}</td><td className={`num ${b.quantity <= 0 ? 'negative' : ''}`}>{qty(b.quantity)}</td><td className="num">{money(b.costPrice)}</td><td className="num">{money(b.value)}</td><td>{date(b.expiryDate)} {expiryBadge(b.expiryDate)}</td></tr>)}</tbody></TableWrap>
+      <TableWrap><thead><tr><th>FILIAL / OMBOR</th><th className="num">MIQDOR</th><th>HOLAT</th><th className="num">TANNARX</th><th className="num">QIYMAT</th><th>YAROQLILIK</th></tr></thead>
+        <tbody>{d.branchBalances.map((b, i) => { const st = stockStatus(b.quantity); return <tr key={`${b.branchId}-${i}`}><td className="cell-strong">{b.branchName}</td><td className={`num ${b.quantity <= 0 ? 'negative' : b.quantity < 1 ? 'warn-qty' : ''}`}>{qty(b.quantity)}&nbsp;{unitLabel(b.unit)}</td><td><StatusBadge tone={st.tone}>{st.label}</StatusBadge></td><td className="num">{money(b.costPrice)}</td><td className="num">{money(b.value)}</td><td>{date(b.expiryDate)} {expiryBadge(b.expiryDate)}</td></tr>; })}</tbody></TableWrap>
     </>}
   </Drawer>;
 }

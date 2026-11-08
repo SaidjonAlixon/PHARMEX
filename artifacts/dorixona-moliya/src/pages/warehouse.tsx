@@ -4,7 +4,7 @@ import { useListBranches, useListInventory } from '@workspace/api-client-react';
 import type { InventoryItem } from '@workspace/api-client-react';
 import {
   Chips, DataState, KpiStrip, PageHeading, Panel, SearchBox, StatusBadge, TableWrap,
-  date, money, num, qty, round2, type Filters,
+  date, money, num, qty, round2, stockStatus, unitLabel, type Filters,
 } from '@/components/kit';
 import { ProductCard } from '@/pages/stock';
 
@@ -129,15 +129,18 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                   <th>MAHSULOT</th>
                   <th>OMBOR</th>
                   <th className="num">QOLDIQ</th>
+                  <th>HOLAT</th>
                   <th className="num">TANNARX</th>
                   <th className="num">SOTUV NARXI</th>
                   <th className="num">QIYMAT</th>
-                  <th className="num">USTAMA</th>
                   <th>YAROQLILIK</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((x: InventoryItem) => (
+                {rows.map((x: InventoryItem) => {
+                  const st = stockStatus(x.quantity);
+                  const u = unitLabel(x.unit);
+                  return (
                   <tr
                     key={`${x.productId}-${x.branchId}`}
                     className="clickable"
@@ -149,18 +152,18 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                       <small>{[x.manufacturer, x.barcode].filter(Boolean).join(' · ') || x.group || '—'}</small>
                     </td>
                     <td>{x.branchName}<small>Ombor</small></td>
-                    <td className={`num cell-strong ${x.quantity <= 0 ? 'negative' : ''}`}>{qty(x.quantity)}</td>
+                    <td className={`num cell-strong ${x.quantity <= 0 ? 'negative' : x.quantity < 1 ? 'warn-qty' : ''}`}>
+                      {qty(x.quantity)}&nbsp;{u}
+                      {x.quantity > 0 && x.quantity < 1 && <small>ochilgan quti</small>}
+                    </td>
+                    <td><StatusBadge tone={st.tone}>{st.label}</StatusBadge></td>
                     <td className="num">{money(x.costPrice)}</td>
                     <td className="num">{money(x.retailPrice)}</td>
                     <td className="num">{money(x.value)}</td>
-                    <td className="num">
-                      {x.costPrice && num(x.costPrice) > 0
-                        ? `${Math.round((num(x.retailPrice) / num(x.costPrice) - 1) * 1000) / 10}%`
-                        : '—'}
-                    </td>
                     <td>{date(x.expiryDate)} {expiryBadge(x.expiryDate)}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </TableWrap>
           )}

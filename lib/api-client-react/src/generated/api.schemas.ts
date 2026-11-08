@@ -181,6 +181,8 @@ export interface InventoryItem {
   group: string;
   manufacturer?: string;
   ikpu?: string;
+  /** Oʻlchov birligi (dona, уп, …) */
+  unit: string;
   branchId: number;
   branchName: string;
   quantity: number;

@@ -878,6 +878,7 @@ body { background: var(--wash); }
 .metric-foot { font-size: 11.5px; color: var(--t3); }
 .positive { color: #128a43 !important; }
 .negative { color: #c62f3a !important; }
+.warn-qty { color: #b8761b !important; }
 
 /* Panels */
 .panel { border: 1px solid var(--line); border-radius: 20px; padding: 20px 22px; box-shadow: var(--shadow-soft); }

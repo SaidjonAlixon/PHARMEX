@@ -1053,6 +1053,7 @@ components:
         group: { type: string }
         manufacturer: { type: string }
         ikpu: { type: string }
+        unit: { type: string, description: "Oʻlchov birligi (dona, уп, …)" }
         branchId: { type: integer }
         branchName: { type: string }
         quantity: { type: number }
@@ -1061,7 +1062,7 @@ components:
         value: { type: ["string", "null"] }
         expiryDate: { type: ["string", "null"], format: date }
         source: { type: string, enum: [demo, manual, fom] }
-      required: [productId, productName, group, branchId, branchName, quantity, retailPrice, source]
+      required: [productId, productName, group, unit, branchId, branchName, quantity, retailPrice, source]
     ProductDetail:
       type: object
       properties:

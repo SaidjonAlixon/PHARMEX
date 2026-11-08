@@ -53,7 +53,33 @@ export function money(value: string | number | null | undefined) {
 }
 export function qty(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === '') return '—';
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(Number(value)).replace(/\u00a0|\u202f/g, ' ');
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '—';
+  // Whole units print without decimals (2); open packs keep up to 3 (0,333).
+  const whole = Math.abs(n - Math.round(n)) < 0.0005;
+  return new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: whole ? 0 : 0,
+    maximumFractionDigits: whole ? 0 : 3,
+  }).format(whole ? Math.round(n) : n).replace(/\u00a0|\u202f/g, ' ');
+}
+
+/** Short unit label next to a stock figure (уп, dona, fl, …). */
+export function unitLabel(unit?: string | null) {
+  const raw = (unit || 'dona').trim();
+  const u = raw.toLowerCase().replace(/[,.]+$/g, '');
+  if (!u || u === '1' || u === 'шт' || u === 'sht' || u === 'dona') return 'dona';
+  if (u === 'уп' || u === 'up' || u.startsWith('упак') || u === 'упк') return 'уп';
+  if (u.startsWith('фл')) return 'fl';
+  if (u.startsWith('амп')) return 'amp';
+  if (u.startsWith('таб')) return 'tab';
+  return raw;
+}
+
+/** Stock presence for a balance row. */
+export function stockStatus(quantity: number): { tone: 'good' | 'warn' | 'bad'; label: string } {
+  if (quantity <= 0) return { tone: 'bad', label: 'Tugagan' };
+  if (quantity < 1) return { tone: 'warn', label: 'Kam' };
+  return { tone: 'good', label: 'Bor' };
 }
 // Browsers ship no short Uzbek month names (Chromium prints "M10"), so they are spelled out here.
 const MONTHS = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avg', 'sen', 'okt', 'noy', 'dek'];

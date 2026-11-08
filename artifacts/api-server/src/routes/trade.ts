@@ -89,6 +89,7 @@ router.get("/product-detail", async (req, res): Promise<void> => {
     group: product.groupName,
     manufacturer: product.manufacturer,
     ikpu: product.ikpu,
+    unit: product.unit || "dona",
     branchId: 0,
     branchName: "Qoldiq maʼlumoti yoʻq",
     quantity: 0,
