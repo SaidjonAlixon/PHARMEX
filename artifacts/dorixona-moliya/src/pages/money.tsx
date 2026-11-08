@@ -1,9 +1,10 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent, type MouseEvent } from 'react';
 import {
-  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Banknote, Building, ClipboardList, Landmark, Plus, Receipt, UserRound, Vault, Wallet,
+  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Banknote, Building, ClipboardList, Download, Landmark, Plus, Receipt, UserRound, Vault, Wallet,
 } from 'lucide-react';
 import {
-  useCreateCashAccount, useCreateMoneyOperation, useCreateMoneyTransfer, useGetCashRegister, useListCashAccounts, useListDebts,
+  listMoneyTransactions,
+  useCreateCashAccount, useCreateMoneyOperation, useCreateMoneyTransfer, useGetCashRegister, useListBranches, useListCashAccounts, useListDebts,
   useListExpenses, useListMoneyTransactions,
 } from '@workspace/api-client-react';
 import type { CashRegisterRow, MoneyOperationType, MoneyTransaction } from '@workspace/api-client-react';
@@ -16,6 +17,7 @@ import { expenseCategories, moneyTypeLabels } from '@/lib/labels';
 import { moneyTypeMenu } from '@/lib/menu-options';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
 import { useAccess } from '@/lib/access';
+import { exportCashRegisterExcel } from '@/pages/money-export';
 
 type Tab = 'register' | 'operations' | 'expenses' | 'owners';
 type Direction = 'all' | 'in' | 'out';
@@ -32,14 +34,54 @@ export function MoneyPage({ filters }: { filters: Filters }) {
   const [operation, setOperation] = useState<{ type: MoneyOperationType; accountId?: number } | null>(null);
   const [transfer, setTransfer] = useState<{ kind: 'transfer' | 'encashment'; from?: number } | null>(null);
   const [newAccount, setNewAccount] = useState(false);
+  const [excelBusy, setExcelBusy] = useState(false);
   const { canEdit } = useAccess();
   const base = filterParams(filters);
   const registerQ = useGetCashRegister(base);
   const txQ = useListMoneyTransactions({ ...base, accountId: accountId ? Number(accountId) : undefined, type: type || undefined, direction: direction === 'all' ? undefined : direction, search: search || undefined });
   const expensesQ = useListExpenses(base, { query: { enabled: tab === 'expenses', queryKey: ['expenses', base] } });
   const ownersQ = useListMoneyTransactions(base, { query: { enabled: tab === 'owners', queryKey: ['money-owners', base] } });
+  const branchesQ = useListBranches();
   const register = registerQ.data || [];
   const txs = txQ.data || [];
+
+  const periodLabel = filters.dateFrom
+    ? `${date(filters.dateFrom)} — ${date(filters.dateTo)}`
+    : 'barcha davr';
+  const branchLabel = filters.branchId
+    ? (branchesQ.data || []).find(b => String(b.id) === filters.branchId)?.name
+      || register.find(r => String(r.branchId) === filters.branchId)?.branchName
+      || `Filial #${filters.branchId}`
+    : 'Barcha filiallar';
+
+  const openAccountOps = (id: number) => {
+    setAccountId(String(id));
+    setTab('operations');
+  };
+
+  const downloadRegister = (rows: CashRegisterRow[], title: string, withTx = false) => {
+    setExcelBusy(true);
+    const run = async () => {
+      let transactions: MoneyTransaction[] | undefined;
+      if (withTx && rows.length === 1) {
+        transactions = await listMoneyTransactions({
+          ...base,
+          accountId: rows[0].accountId,
+        });
+      }
+      await exportCashRegisterExcel({
+        rows,
+        periodLabel,
+        branchLabel,
+        title,
+        fileName: rows.length === 1
+          ? `Kassa_${rows[0].accountName}_${new Date().toISOString().slice(0, 10)}`
+          : `Kassa_hisoboti_${new Date().toISOString().slice(0, 10)}`,
+        transactions,
+      });
+    };
+    void run().catch(() => {}).finally(() => setExcelBusy(false));
+  };
 
   const totals = useMemo(() => {
     const sum = (rows: CashRegisterRow[], pick: (r: CashRegisterRow) => string) => round2(rows.reduce((s, r) => s + num(pick(r)), 0));
@@ -99,25 +141,63 @@ export function MoneyPage({ filters }: { filters: Filters }) {
       <button className={tab === 'owners' ? 'selected' : ''} onClick={() => setTab('owners')} data-testid="tab-finance-owners"><UserRound size={15} /> Egalar mablagʻi</button>
     </div>
 
-    {tab === 'register' && <Panel title="Kassa hisoboti" subtitle="Har bir kassa va bank hisobi boʻyicha davr boshi, harakat va davr oxiri qoldigʻi">
+    {tab === 'register' && <Panel
+      title="Kassa hisoboti"
+      subtitle="Har bir kassa va bank hisobi boʻyicha davr boshi, harakat va davr oxiri qoldigʻi"
+      action={(
+        <button
+          type="button"
+          className="button secondary"
+          disabled={!register.length || excelBusy}
+          onClick={() => downloadRegister(register, 'Umumiy')}
+          data-testid="button-cash-register-excel"
+        >
+          <Download size={15} /> Excel yuklab olish
+        </button>
+      )}
+    >
       <DataState loading={registerQ.isLoading} error={registerQ.isError} empty={!registerQ.isLoading && !registerQ.isError && !register.length} retry={() => registerQ.refetch()} emptyText="Hali kassa yoki bank hisobi yoʻq. “Hisob ochish” tugmasi orqali filial kassasini yarating." />
       {!!register.length && <TableWrap><thead><tr><th>HISOB</th><th>FILIAL</th><th className="num">BOSHLANGʻICH</th><th className="num">KIRIM</th><th className="num">CHIQIM</th><th className="num">YAKUNIY</th><th className="num">SAVDO TUSHUMI</th><th className="num">INKASSATSIYA</th><th className="num">OP.</th><th /></tr></thead>
-        <tbody>{register.map(r => <tr key={r.accountId} data-testid={`row-register-${r.accountId}`}>
-          <td className="cell-strong"><span className={`account-kind ${r.kind}`}>{r.kind === 'cash' ? <Wallet size={13} /> : <Landmark size={13} />}</span> {r.accountName}<small>{r.kind === 'cash' ? 'Naqd kassa' : 'Bank hisobi'}</small></td>
-          <td>{r.branchName}</td>
-          <td className="num">{money(r.openingBalance)}</td>
-          <td className="num positive">{num(r.inflow) ? `+${money(r.inflow)}` : '—'}</td>
-          <td className="num negative">{num(r.outflow) ? `−${money(r.outflow)}` : '—'}</td>
-          <td className={`num cell-strong ${num(r.closingBalance) < 0 ? 'negative' : ''}`}>{money(r.closingBalance)}</td>
-          <td className="num">{num(r.cashSales) ? money(r.cashSales) : '—'}</td>
-          <td className="num">{num(r.encashment) ? money(r.encashment) : '—'}</td>
-          <td className="num"><button className="link-button" onClick={() => { setAccountId(String(r.accountId)); setTab('operations'); }}>{r.operations}</button></td>
-          <td>{canEdit && <div className="row-actions">
-            <button className="button ghost small" onClick={() => setOperation({ type: 'cash_in', accountId: r.accountId })} title="Kirim"><ArrowDownLeft size={13} /></button>
-            <button className="button ghost small" onClick={() => setOperation({ type: 'expense', accountId: r.accountId })} title="Chiqim"><ArrowUpRight size={13} /></button>
-            {r.kind === 'cash' && <button className="button ghost small" onClick={() => setTransfer({ kind: 'encashment', from: r.accountId })} title="Inkassatsiya"><Vault size={13} /></button>}
-          </div>}</td>
-        </tr>)}</tbody>
+        <tbody>{register.map(r => {
+          const stop = (e: MouseEvent) => e.stopPropagation();
+          return (
+            <tr
+              key={r.accountId}
+              className="clickable"
+              data-testid={`row-register-${r.accountId}`}
+              onClick={() => openAccountOps(r.accountId)}
+            >
+              <td className="cell-strong"><span className={`account-kind ${r.kind}`}>{r.kind === 'cash' ? <Wallet size={13} /> : <Landmark size={13} />}</span> {r.accountName}<small>{r.kind === 'cash' ? 'Naqd kassa' : 'Bank hisobi'}</small></td>
+              <td>{r.branchName}</td>
+              <td className="num">{money(r.openingBalance)}</td>
+              <td className="num positive">{num(r.inflow) ? `+${money(r.inflow)}` : '—'}</td>
+              <td className="num negative">{num(r.outflow) ? `−${money(r.outflow)}` : '—'}</td>
+              <td className={`num cell-strong ${num(r.closingBalance) < 0 ? 'negative' : ''}`}>{money(r.closingBalance)}</td>
+              <td className="num">{num(r.cashSales) ? money(r.cashSales) : '—'}</td>
+              <td className="num">{num(r.encashment) ? money(r.encashment) : '—'}</td>
+              <td className="num"><button type="button" className="link-button" onClick={(e) => { stop(e); openAccountOps(r.accountId); }}>{r.operations}</button></td>
+              <td onClick={stop}>
+                <div className="row-actions">
+                  <button
+                    type="button"
+                    className="button ghost small"
+                    disabled={excelBusy}
+                    title="Excel"
+                    onClick={() => downloadRegister([r], r.accountName, true)}
+                    data-testid={`button-register-excel-${r.accountId}`}
+                  >
+                    <Download size={13} />
+                  </button>
+                  {canEdit && <>
+                    <button type="button" className="button ghost small" onClick={() => setOperation({ type: 'cash_in', accountId: r.accountId })} title="Kirim"><ArrowDownLeft size={13} /></button>
+                    <button type="button" className="button ghost small" onClick={() => setOperation({ type: 'expense', accountId: r.accountId })} title="Chiqim"><ArrowUpRight size={13} /></button>
+                    {r.kind === 'cash' && <button type="button" className="button ghost small" onClick={() => setTransfer({ kind: 'encashment', from: r.accountId })} title="Inkassatsiya"><Vault size={13} /></button>}
+                  </>}
+                </div>
+              </td>
+            </tr>
+          );
+        })}</tbody>
         <tfoot><tr><td colSpan={2}>Jami</td><td className="num">{money(totals.opening)}</td><td className="num positive">+{money(totals.inflow)}</td><td className="num negative">−{money(totals.outflow)}</td><td className="num cell-strong">{money(totals.closing)}</td><td className="num">{money(totals.cashSales)}</td><td className="num">{money(totals.encashment)}</td><td colSpan={2} /></tr></tfoot></TableWrap>}
     </Panel>}
 
