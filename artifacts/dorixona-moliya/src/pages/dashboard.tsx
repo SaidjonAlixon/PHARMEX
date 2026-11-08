@@ -350,40 +350,51 @@ export function DashboardPage({ filters }: { filters: Filters }) {
             />
           </div>
 
-          <div className="dash-grid lower">
-            <Panel title="Eng koʻp sotilgan mahsulotlar" subtitle="Davr ichida sotilgan miqdor">
-              <TableWrap>
-                <thead>
-                  <tr><th>MAHSULOT</th><th>MIQDOR</th><th>SAVDO</th><th>YALPI FOYDA</th></tr>
-                </thead>
-                <tbody>
-                  {d.topProducts.map(p => (
-                    <tr key={p.productId}>
-                      <td>
-                        <Link className="table-main-link" href={`/stock/product/${p.productId}`} data-testid={`link-product-${p.productId}`}>
-                          {p.name}<ArrowRight size={13} />
-                        </Link>
-                      </td>
-                      <td>{p.quantity}</td>
-                      <td>{money(p.sales)}</td>
-                      <td className={p.grossProfit == null ? 'missing' : 'positive'}>{money(p.grossProfit)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </TableWrap>
-              {!d.topProducts.length && <div className="inline-empty">Mahsulot maʼlumoti yoʻq</div>}
-            </Panel>
-            <Panel title="Pul oqimi" subtitle="Tushum va chiqimlar">
-              <div className="flow-list">
-                {d.moneyFlow.map((p, i) => (
-                  <div className="flow-row" key={`${p.label}-${i}`}>
-                    <span>{p.label}</span>
-                    <span className="positive"><ArrowDownLeft size={14} /> {money(p.inflow)}</span>
-                    <span className="negative"><ArrowUpRight size={14} /> {money(p.outflow)}</span>
-                  </div>
-                ))}
+          <div className="dash-grid lower dash-pair">
+            <Panel className="dash-pair-panel" title="Eng koʻp sotilgan mahsulotlar" subtitle="Davr ichida sotilgan miqdor">
+              <div className="dash-pair-body is-scroll">
+                <TableWrap>
+                  <thead>
+                    <tr><th>MAHSULOT</th><th>MIQDOR</th><th>SAVDO</th><th>YALPI FOYDA</th></tr>
+                  </thead>
+                  <tbody>
+                    {d.topProducts.map(p => (
+                      <tr key={p.productId}>
+                        <td>
+                          <Link className="table-main-link" href={`/stock/product/${p.productId}`} data-testid={`link-product-${p.productId}`}>
+                            {p.name}<ArrowRight size={13} />
+                          </Link>
+                        </td>
+                        <td>{p.quantity}</td>
+                        <td>{money(p.sales)}</td>
+                        <td className={p.grossProfit == null ? 'missing' : 'positive'}>{money(p.grossProfit)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </TableWrap>
+                {!d.topProducts.length && <div className="inline-empty">Mahsulot maʼlumoti yoʻq</div>}
               </div>
-              {!d.moneyFlow.length && <div className="inline-empty">Pul oqimi maʼlumoti yoʻq</div>}
+            </Panel>
+            <Panel className="dash-pair-panel" title="Pul oqimi" subtitle={`${d.moneyFlow.length} kun · tushum va chiqimlar`}>
+              <div className="dash-pair-body is-scroll">
+                {!!d.moneyFlow.length && (
+                  <div className="flow-head" aria-hidden>
+                    <span>Sana</span>
+                    <span>Tushum</span>
+                    <span>Chiqim</span>
+                  </div>
+                )}
+                <div className="flow-list">
+                  {d.moneyFlow.map((p, i) => (
+                    <div className="flow-row" key={`${p.label}-${i}`}>
+                      <span title={p.label}>{date(p.label)}</span>
+                      <span className="positive"><ArrowDownLeft size={14} /> {money(p.inflow)}</span>
+                      <span className="negative"><ArrowUpRight size={14} /> {money(p.outflow)}</span>
+                    </div>
+                  ))}
+                </div>
+                {!d.moneyFlow.length && <div className="inline-empty">Pul oqimi maʼlumoti yoʻq</div>}
+              </div>
             </Panel>
           </div>
 

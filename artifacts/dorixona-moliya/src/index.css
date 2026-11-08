@@ -432,6 +432,20 @@ a { color: inherit; text-decoration: none; }
 .breakdown-row > div:first-child { display: flex; justify-content: space-between; color: #65796e; font-size: 10px; margin-bottom: 7px; }
 .breakdown-row b { color: #385747; font-size: 10px; font-weight: 600; }
 .bar-track { height: 5px; border-radius: 9px; background: #eff3ef; overflow: hidden; }.bar-track i { height: 100%; display: block; background: #4a9a72; border-radius: inherit; }
+.dash-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; }
+.dash-pair-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.dash-pair-panel > .panel-head { flex: 0 0 auto; }
+.dash-pair-body { flex: 1 1 auto; min-height: 320px; max-height: 420px; display: flex; flex-direction: column; }
+.dash-pair-body.is-scroll { overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.dash-pair-body .table-scroll { flex: 1 1 auto; max-height: 100%; }
+.flow-head {
+  position: sticky; top: 0; z-index: 1;
+  display: grid; grid-template-columns: 7.2rem minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 8px; padding: 0 0 8px; margin-bottom: 2px;
+  background: linear-gradient(#fff 70%, rgba(255,255,255,.85));
+  color: #8a97a8; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+}
+.flow-head > span:not(:first-child) { text-align: right; }
 .flow-list { display: grid; }
 .flow-row { display: grid; grid-template-columns: 7.2rem minmax(0, 1.2fr) minmax(0, 1fr); align-items: center; gap: 8px; border-bottom: 1px solid #eff2ef; padding: 11px 0; color: #718178; font-size: 10px; }
 .flow-row:last-child { border: 0; }
@@ -1323,8 +1337,11 @@ td.muted { font-size: 12px; }
 .bar-track i { background: var(--px-grad); }
 .breakdown-list .breakdown-row:nth-child(3n+2) .bar-track i { background: var(--px-grad-navy); }
 .breakdown-list .breakdown-row:nth-child(3n+3) .bar-track i { background: linear-gradient(90deg, #6d4fd8, #a68bff); }
-.flow-row { font-size: 12.5px; grid-template-columns: 7.5rem minmax(0, 1.15fr) minmax(0, 1fr); }
+.flow-head, .flow-row { font-size: 12.5px; grid-template-columns: 7.5rem minmax(0, 1.15fr) minmax(0, 1fr); }
+.flow-head { font-size: 11px; color: var(--t3); background: linear-gradient(var(--surface) 70%, color-mix(in srgb, var(--surface) 85%, transparent)); }
 .flow-row span:not(:first-child) { font-size: 12.5px; }
+.dash-pair-body.is-scroll { scrollbar-color: color-mix(in srgb, var(--px-teal) 45%, #cbd5e1) transparent; }
+.dark .flow-head { background: linear-gradient(var(--surface) 70%, color-mix(in srgb, var(--surface) 85%, transparent)); }
 .completeness-note { font-size: 12px; border-radius: 12px; background: var(--px-grad-soft); border-color: rgba(15,179,199,.22); color: var(--t2); }
 .progress { height: 20px; background: #e9f0f8; }
 .progress i { background: color-mix(in srgb, #0fb3c7 55%, #fff); }
