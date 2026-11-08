@@ -35,8 +35,8 @@ const HEADERS = [
   'Yaroqlilik holati',
 ] as const;
 
-/** Wide enough so product / manufacturer read in full without cramped overlap. */
-const COL_WIDTHS = [5, 44, 36, 16, 12, 10, 9, 16, 16, 18, 18, 18, 16, 26];
+/** Wide enough so product / manufacturer / money totals stay fully readable. */
+const COL_WIDTHS = [5, 44, 36, 16, 12, 10, 9, 18, 18, 24, 24, 24, 16, 26];
 
 const thin: Partial<ExcelJS.Borders> = {
   top: { style: 'thin', color: { argb: 'FFB8C9D4' } },
@@ -175,9 +175,9 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
     });
   });
 
-  const totalRow = ws.addRow([
-    '',
+  const totalRowNum = ws.addRow([
     `JAMI · ${sectionTitle}`,
+    '',
     '',
     '',
     '',
@@ -189,10 +189,14 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
     som(retailTotal),
     som(profitTotal),
     '',
-    `Umumiy: tannarx ${som(costTotal)} · qoʻyilgan ${som(retailTotal)} · foyda ${som(profitTotal)}`,
-  ]);
-  totalRow.height = 28;
-  totalRow.eachCell((cell, col) => {
+    '',
+  ]).number;
+  ws.mergeCells(totalRowNum, 1, totalRowNum, 5);
+  const totalRow = ws.getRow(totalRowNum);
+  totalRow.getCell(1).value = `JAMI · ${sectionTitle}`;
+  totalRow.height = 32;
+  for (let col = 1; col <= HEADERS.length; col++) {
+    const cell = totalRow.getCell(col);
     cell.border = {
       top: { style: 'medium', color: { argb: 'FF0FB3C7' } },
       left: { style: 'thin', color: { argb: 'FF0FB3C7' } },
@@ -202,16 +206,32 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9F5F8' } };
     cell.font = {
       name: 'Calibri',
-      size: col === 2 || (col >= 10 && col <= 12) ? 12 : 11,
+      size: col === 1 || (col >= 10 && col <= 12) ? 12 : 11,
       bold: true,
       color: { argb: 'FF0A5F6B' },
     };
     cell.alignment = {
       vertical: 'middle',
       horizontal: col >= 10 && col <= 12 ? 'right' : col === 7 ? 'center' : 'left',
-      wrapText: col === 2 || col === 14,
+      wrapText: false,
+      shrinkToFit: false,
     };
-  });
+  }
+
+  const summaryRowNum = ws.addRow([]).number;
+  ws.mergeCells(summaryRowNum, 1, summaryRowNum, HEADERS.length);
+  const summary = ws.getCell(summaryRowNum, 1);
+  summary.value = `Jami summa (soʻm):  Tannarx ${som(costTotal)}    |    Qoʻyilgan narx ${som(retailTotal)}    |    Olinadigan foyda ${som(profitTotal)}`;
+  summary.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF0A5F6B' } };
+  summary.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F7FA' } };
+  summary.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: false };
+  summary.border = {
+    top: { style: 'thin', color: { argb: 'FF0FB3C7' } },
+    bottom: { style: 'thin', color: { argb: 'FF0FB3C7' } },
+    left: { style: 'thin', color: { argb: 'FF0FB3C7' } },
+    right: { style: 'thin', color: { argb: 'FF0FB3C7' } },
+  };
+  ws.getRow(summaryRowNum).height = 26;
 
   const noteRow = ws.addRow([]);
   ws.mergeCells(noteRow.number, 1, noteRow.number, HEADERS.length);
@@ -219,7 +239,7 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
   note.value = 'Izoh: Qoldiq qiymati = qoldiq × tannarx. Qoʻyilgan narx jami = qoldiq × sotuv narxi. Olinadigan foyda = (sotuv − tannarx) × qoldiq. Barcha summalar soʻmda.';
   note.font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF6B7C8A' } };
   note.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-  ws.getRow(noteRow.number).height = 30;
+  ws.getRow(noteRow.number).height = 28;
 }
 
 async function downloadWorkbook(wb: ExcelJS.Workbook, fileLabel: string) {

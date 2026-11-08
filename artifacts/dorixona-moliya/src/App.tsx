@@ -187,9 +187,9 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
       })}</nav>
       <div className="sidebar-bottom">
         <div className="reconcile-note build-only" title="Platformaning oxirgi yangilanishi (deploy), Toshkent vaqti">
-          <ShieldCheck size={15} />
+          <ShieldCheck size={13} />
           <span className="build-stamp" data-testid="text-build-stamp">
-            Platforma yangilangan: {dateTime(__BUILD_TIME__)}
+            Yangilangan: {dateTime(__BUILD_TIME__)}
             {__BUILD_COMMIT__ && <> · <code>{__BUILD_COMMIT__}</code></>}
           </span>
         </div>
@@ -198,23 +198,30 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
             {(user?.firstName || user?.username || user?.primaryEmailAddress?.emailAddress || 'M').slice(0, 1).toUpperCase()}
           </div>
           <div className="profile-text">
-            <b>
-              {(() => {
-                const role = access.role ? roleLabel(access.role) : '';
-                const name = (user?.fullName || '').trim();
-                if (name && name.toLowerCase() !== role.toLowerCase()) return name;
-                return user?.username || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Foydalanuvchi';
-              })()}
-            </b>
-            <span>{user?.primaryEmailAddress?.emailAddress || user?.username || 'Dorixona'}</span>
-            {access.role && (
-              <i className={`profile-role role-${access.role}`} data-testid="text-user-role">
-                {access.role === 'admin' ? 'Admin' : roleLabel(access.role)}
-              </i>
-            )}
+            {(() => {
+              const role = access.role ? roleLabel(access.role) : '';
+              const name = (user?.fullName || '').trim();
+              const login = user?.username || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Foydalanuvchi';
+              const title = name && name.toLowerCase() !== role.toLowerCase() && name.toLowerCase() !== login.toLowerCase()
+                ? name
+                : login;
+              return <>
+                <div className="profile-line">
+                  <b title={title}>{title}</b>
+                  {access.role && (
+                    <i className={`profile-role role-${access.role}`} data-testid="text-user-role">
+                      {access.role === 'admin' ? 'Admin' : roleLabel(access.role)}
+                    </i>
+                  )}
+                </div>
+                {user?.primaryEmailAddress?.emailAddress && user.primaryEmailAddress.emailAddress !== title && (
+                  <span title={user.primaryEmailAddress.emailAddress}>{user.primaryEmailAddress.emailAddress}</span>
+                )}
+              </>;
+            })()}
           </div>
-          <button title="Tizimdan chiqish" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="icon-button" data-testid="button-sign-out">
-            <LogOut size={15} />
+          <button title="Tizimdan chiqish" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="icon-button profile-logout" data-testid="button-sign-out">
+            <LogOut size={14} />
           </button>
         </div>
       </div>
