@@ -31,7 +31,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
   const [tab, setTab] = useState<Tab>('register');
   const [direction, setDirection] = useState<Direction>('all');
   const [type, setType] = useState('');
-  const [accountId, setAccountId] = useState('');
+  const [accountKey, setAccountKey] = useState('');
   const [search, setSearch] = useState('');
   const [operation, setOperation] = useState<{ type: MoneyOperationType; accountId?: number } | null>(null);
   const [transfer, setTransfer] = useState<{ kind: 'transfer' | 'encashment'; from?: number } | null>(null);
@@ -41,13 +41,42 @@ export function MoneyPage({ filters }: { filters: Filters }) {
   const [receiptId, setReceiptId] = useState<number | null>(null);
   const { canEdit } = useAccess();
   const base = filterParams(filters);
+  const accountsQ = useListCashAccounts({
+    branchId: filters.branchId ? Number(filters.branchId) : undefined,
+  });
+  const accounts = accountsQ.data || [];
+  const accountScope = useMemo(() => resolveAccountScope(accountKey, accounts), [accountKey, accounts]);
+
+  useEffect(() => {
+    if (!accountKey) return;
+    if (accountKey.startsWith('ch:')) {
+      const name = accountKey.slice(3).trim().toLocaleLowerCase();
+      if (!accounts.some(a => a.name.trim().toLocaleLowerCase() === name)) setAccountKey('');
+      return;
+    }
+    const id = accountKey.startsWith('id:') ? Number(accountKey.slice(3)) : Number(accountKey);
+    if (Number.isFinite(id) && id > 0 && !accounts.some(a => a.id === id)) setAccountKey('');
+  }, [accounts, accountKey]);
+
   const registerQ = useGetCashRegister(base);
-  const txQ = useListMoneyTransactions({ ...base, accountId: accountId ? Number(accountId) : undefined, type: type || undefined, direction: direction === 'all' ? undefined : direction, search: search || undefined });
+  const txQ = useListMoneyTransactions({
+    ...base,
+    accountId: accountScope.singleId,
+    type: type || undefined,
+    direction: direction === 'all' ? undefined : direction,
+    search: search || undefined,
+  });
   const expensesQ = useListExpenses(base, { query: { enabled: tab === 'expenses', queryKey: ['expenses', base] } });
   const ownersQ = useListMoneyTransactions(base, { query: { enabled: tab === 'owners', queryKey: ['money-owners', base] } });
   const branchesQ = useListBranches();
   const register = registerQ.data || [];
-  const txs = txQ.data || [];
+  const txs = useMemo(() => {
+    const rows = txQ.data || [];
+    if (!accountScope.ids) return rows;
+    if (accountScope.ids.length <= 1) return rows;
+    const allow = new Set(accountScope.ids);
+    return rows.filter(t => allow.has(t.accountId));
+  }, [txQ.data, accountScope]);
 
   const periodLabel = filters.dateFrom
     ? `${date(filters.dateFrom)} — ${date(filters.dateTo)}`
@@ -59,7 +88,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
     : 'Barcha filiallar';
 
   const openAccountOps = (id: number) => {
-    setAccountId(String(id));
+    setAccountKey(`id:${id}`);
     setTab('operations');
   };
 
@@ -120,7 +149,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
   const ownerIn = round2(owners.filter(t => t.type === 'owner_in').reduce((s, t) => s + num(t.amount), 0));
   const ownerOut = round2(owners.filter(t => t.type === 'owner_out').reduce((s, t) => s + num(t.amount), 0));
 
-  return <>
+  return <div className="page-money">
     <PageHeading eyebrow="PUL OPERATSIYALARI · ДЕНЕЖНЫЕ ОПЕРАЦИИ" title="Pul operatsiyalari" subtitle="Kassalar va bank hisoblari: boshlangʻich va yakuniy qoldiq, kirim-chiqim, inkassatsiya, toʻlovlar, xarajatlar va egalar mablagʻi"
       actions={canEdit && <div className="heading-button-group">
         <button className="button primary" onClick={() => setOperation({ type: 'cash_in' })} data-testid="button-money-in"><ArrowDownLeft size={15} /> Kirim</button>
@@ -209,7 +238,11 @@ export function MoneyPage({ filters }: { filters: Filters }) {
       <Panel title="Pul harakati" subtitle="Barcha kassa va bank operatsiyalari; filtrlab koʻring" action={<div className="toolbar">
         <Chips value={direction} onChange={setDirection} options={[{ id: 'all', label: 'Barchasi' }, { id: 'in', label: 'Kirim' }, { id: 'out', label: 'Chiqim' }]} />
         <SelectMenu ariaLabel="Operatsiya turi" value={type} onChange={setType} options={moneyTypeMenu} align="right" />
-        <AccountFilter value={accountId} onChange={setAccountId} />
+        <AccountFilter
+          value={accountKey}
+          onChange={setAccountKey}
+          accounts={accounts}
+        />
         <SearchBox value={search} onChange={setSearch} placeholder="Hamkor, hujjat, izoh" />
         <button
           type="button"
@@ -287,16 +320,91 @@ export function MoneyPage({ filters }: { filters: Filters }) {
     {operation && <MoneyOperationModal initialType={operation.type} initialAccount={operation.accountId} defaultBranch={filters.branchId} onClose={() => setOperation(null)} />}
     {transfer && <TransferModal initialKind={transfer.kind} from={transfer.from} onClose={() => setTransfer(null)} />}
     {newAccount && <CashAccountModal defaultBranch={filters.branchId} onClose={() => setNewAccount(false)} />}
-  </>;
+  </div>;
 }
 
-function AccountFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const accounts = useListCashAccounts().data || [];
+type AccountLike = { id: number; name: string; kind: string; branchName: string };
+
+function resolveAccountScope(key: string, accounts: AccountLike[]) {
+  if (!key) return { singleId: undefined as number | undefined, ids: null as number[] | null };
+  if (key.startsWith('id:')) {
+    const id = Number(key.slice(3));
+    return Number.isFinite(id) && id > 0
+      ? { singleId: id, ids: [id] }
+      : { singleId: undefined, ids: null };
+  }
+  if (key.startsWith('ch:')) {
+    const name = key.slice(3).trim().toLocaleLowerCase();
+    const ids = accounts
+      .filter(a => a.name.trim().toLocaleLowerCase() === name)
+      .map(a => a.id);
+    if (!ids.length) return { singleId: undefined, ids: null };
+    if (ids.length === 1) return { singleId: ids[0], ids };
+    return { singleId: undefined, ids };
+  }
+  const legacy = Number(key);
+  if (Number.isFinite(legacy) && legacy > 0) return { singleId: legacy, ids: [legacy] };
+  return { singleId: undefined, ids: null };
+}
+
+function buildAccountOptions(accounts: AccountLike[]): MenuOption[] {
+  const groups = new Map<string, AccountLike[]>();
+  for (const a of accounts) {
+    const key = a.name.trim().toLocaleLowerCase() || `__id_${a.id}`;
+    const list = groups.get(key) || [];
+    list.push(a);
+    groups.set(key, list);
+  }
   const options: MenuOption[] = [
-    { value: '', label: 'Barcha hisoblar', icon: Wallet, color: '#0fb3c7' },
-    ...accounts.map(a => ({ value: String(a.id), label: a.name, hint: a.kind === 'cash' ? 'Kassa' : 'Bank hisobi', icon: a.kind === 'cash' ? Banknote : Landmark, color: a.kind === 'cash' ? '#1fb84f' : '#1f5fd0' })),
+    { value: '', label: 'Barcha hisoblar', hint: `${accounts.length} ta`, icon: Wallet, color: '#0fb3c7' },
   ];
-  return <SelectMenu ariaLabel="Hisob" value={value} onChange={onChange} options={options} align="right" />;
+  const sorted = [...groups.values()].sort((a, b) => a[0].name.localeCompare(b[0].name, 'uz'));
+  for (const list of sorted) {
+    const sample = list[0];
+    const isCash = sample.kind === 'cash';
+    const icon = isCash ? Banknote : Landmark;
+    const color = isCash ? '#1fb84f' : '#1f5fd0';
+    const kindLabel = isCash ? 'Naqd kassa' : 'Toʻlov tizimi';
+    if (list.length === 1) {
+      options.push({
+        value: `id:${sample.id}`,
+        label: sample.name,
+        hint: `${kindLabel} · ${sample.branchName}`,
+        icon,
+        color,
+      });
+      continue;
+    }
+    const branches = [...new Set(list.map(a => a.branchName))].filter(Boolean);
+    options.push({
+      value: `ch:${sample.name.trim()}`,
+      label: sample.name,
+      hint: `${list.length} ta hisob · ${branches.slice(0, 3).join(', ')}${branches.length > 3 ? '…' : ''}`,
+      icon,
+      color,
+    });
+  }
+  return options;
+}
+
+function AccountFilter({
+  value, onChange, accounts,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  accounts: AccountLike[];
+}) {
+  const options = useMemo(() => buildAccountOptions(accounts), [accounts]);
+  return (
+    <SelectMenu
+      ariaLabel="Hisob / toʻlov tizimi"
+      value={value}
+      onChange={onChange}
+      options={options}
+      align="right"
+      testId="select-money-account"
+    />
+  );
 }
 
 function TransactionsTable({
