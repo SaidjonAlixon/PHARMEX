@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { AlertCircle, Banknote, CalendarClock, FileText, PackagePlus, Plus, Trash2, Truck, Undo2, Wallet } from 'lucide-react';
+import { AlertCircle, Banknote, CalendarClock, Download, FileText, PackagePlus, Plus, Trash2, Truck, Undo2, Wallet } from 'lucide-react';
 import { getGetPurchaseQueryKey, useCreatePurchase, useGetPurchase, useListPurchases } from '@workspace/api-client-react';
 import type { Purchase } from '@workspace/api-client-react';
 import {
@@ -8,11 +8,20 @@ import {
   localToIso, money, nowLocal, num, qty, round2, toMoney, today, useRefreshAll, type Filters, type PickedProduct,
 } from '@/components/kit';
 import { debtOperationLabels, purchaseStatusLabels } from '@/lib/labels';
+import { exportPurchasesExcel } from '@/pages/purchases-export';
 import { DebtOperationModal } from './debts';
 import { StockDocumentModal } from './stock';
 import { useAccess } from '@/lib/access';
 
 type Status = 'all' | 'unpaid' | 'partial' | 'paid' | 'overdue';
+
+const STATUS_LABEL: Record<Status, string> = {
+  all: 'Barchasi',
+  unpaid: 'Toʻlanmagan',
+  partial: 'Qisman',
+  paid: 'Toʻlangan',
+  overdue: 'Muddati oʻtgan',
+};
 
 export function PurchasesPage({ filters }: { filters: Filters }) {
   const { canEdit } = useAccess();
@@ -34,8 +43,40 @@ export function PurchasesPage({ filters }: { filters: Filters }) {
     };
   }, [all]);
 
+  const periodLabel = filters.dateFrom && filters.dateTo
+    ? `${date(filters.dateFrom)} — ${date(filters.dateTo)}`
+    : 'Barcha davr';
+
+  const downloadExcel = () => {
+    const section = STATUS_LABEL[status];
+    const multi = status === 'all'
+      ? ([
+          { title: STATUS_LABEL.unpaid, rows: all.filter(p => p.paymentStatus === 'unpaid') },
+          { title: STATUS_LABEL.partial, rows: all.filter(p => p.paymentStatus === 'partial') },
+          { title: STATUS_LABEL.paid, rows: all.filter(p => p.paymentStatus === 'paid') },
+          { title: STATUS_LABEL.overdue, rows: all.filter(p => p.paymentStatus === 'overdue') },
+        ] as const).filter(s => s.rows.length)
+      : undefined;
+    if (!rows.length && !multi?.length) return;
+    void exportPurchasesExcel(rows.length ? rows : all, section, periodLabel, multi ? { sheets: [...multi] } : undefined).catch(() => {
+      window.alert('Excel faylini yuklab boʻlmadi. Qayta urinib koʻring.');
+    });
+  };
+
   return <>
-    <PageHeading eyebrow="KIRIM · ПРИХОД" title="Kirim" subtitle="Yetkazib beruvchilardan tovar qabul qilish: nakladnoy, hisob-faktura, xarid narxi, chegirma, qoʻshimcha xarajat va qarz" actions={canEdit && <button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-purchase"><Plus size={16} /> Yangi kirim</button>} />
+    <PageHeading
+      eyebrow="KIRIM · ПРИХОД"
+      title="Kirim"
+      subtitle="Yetkazib beruvchilardan tovar qabul qilish: nakladnoy, hisob-faktura, xarid narxi, chegirma, qoʻshimcha xarajat va qarz"
+      actions={
+        <div className="heading-button-group">
+          <button type="button" className="button secondary" onClick={downloadExcel} disabled={!all.length} data-testid="button-purchases-excel">
+            <Download size={16} /> Excel yuklash
+          </button>
+          {canEdit && <button className="button primary" onClick={() => setCreating(true)} data-testid="button-new-purchase"><Plus size={16} /> Yangi kirim</button>}
+        </div>
+      }
+    />
     <KpiStrip items={[
       { label: 'Kirim hujjatlari', value: all.length, count: true, icon: FileText },
       { label: 'Jami summa', value: stats.total, icon: Truck, hint: `Chegirma ${money(stats.discount)} · Xarajat ${money(stats.extra)}` },
@@ -45,9 +86,9 @@ export function PurchasesPage({ filters }: { filters: Filters }) {
       { label: 'Qolgan qarz', value: stats.balance, icon: Wallet, tone: stats.balance ? 'warn' : undefined },
       { label: 'Muddati oʻtgan', value: stats.overdue, icon: AlertCircle, tone: stats.overdue ? 'bad' : undefined, hint: `${stats.counts.overdue} ta hujjat` },
     ]} />
-    <Panel title="Kirim hujjatlari" subtitle="Qatorni bosib tafsilot, toʻlov tarixi va qaytarishlarni koʻring" action={<div className="toolbar"><Chips value={status} onChange={setStatus} options={[
+    <Panel title="Kirim hujjatlari" subtitle={`Davr: ${periodLabel} · filtr: ${STATUS_LABEL[status].toLowerCase()}`} action={<div className="toolbar"><Chips value={status} onChange={setStatus} options={[
       { id: 'all', label: 'Barchasi', count: stats.counts.all }, { id: 'unpaid', label: 'Toʻlanmagan', count: stats.counts.unpaid }, { id: 'partial', label: 'Qisman', count: stats.counts.partial }, { id: 'paid', label: 'Toʻlangan', count: stats.counts.paid }, { id: 'overdue', label: 'Muddati oʻtgan', count: stats.counts.overdue },
-    ]} /><SearchBox value={search} onChange={setSearch} placeholder="Yetkazib beruvchi, hujjat, EHF" /></div>}>
+    ]} /><SearchBox value={search} onChange={setSearch} placeholder="Yetkazib beruvchi, hujjat, EHF" /><button type="button" className="button secondary" onClick={downloadExcel} disabled={!rows.length && status !== 'all'} data-testid="button-purchases-excel-panel"><Download size={15} /> Excel</button></div>}>
       <DataState loading={q.isLoading} error={q.isError} empty={!q.isLoading && !q.isError && !rows.length} retry={() => q.refetch()} emptyText="Kirim hujjatlari yoʻq. “Yangi kirim” orqali yetkazib beruvchidan tovar qabul qiling." />
       {!!rows.length && <TableWrap><thead><tr><th>HUJJAT / SANA</th><th>YETKAZIB BERUVCHI</th><th>HISOB-FAKTURA / EHF</th><th>FILIAL</th><th className="num">POZ.</th><th className="num">CHEGIRMA</th><th className="num">QOʻSH. XARAJAT</th><th className="num">JAMI</th><th className="num">TOʻLANGAN</th><th className="num">QOLDIQ</th><th>MUDDAT</th><th>HOLAT</th></tr></thead>
         <tbody>{rows.map(p => <tr key={p.id} className="clickable" onClick={() => setSelected(p.id)} data-testid={`row-purchase-${p.id}`}>
