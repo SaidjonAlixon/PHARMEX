@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import type { ReceiptDetail } from '@workspace/api-client-react';
 import { dateTime, money, num, qty, sourceText } from '@/components/kit';
 import { paymentLabels } from '@/lib/labels';
+import { ensurePdfFonts } from '@/pages/pdf-fonts';
 
 const NAVY: [number, number, number] = [19, 48, 110];
 const TEAL: [number, number, number] = [15, 179, 199];
@@ -11,46 +12,6 @@ const LINE: [number, number, number] = [226, 232, 240];
 const GOOD: [number, number, number] = [18, 138, 67];
 const BAD: [number, number, number] = [198, 47, 58];
 const WARN: [number, number, number] = [165, 103, 10];
-
-let fontReady: Promise<void> | null = null;
-let fontCache: { regular: string; bold: string } | null = null;
-
-function arrayBufferToBase64(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
-async function ensureFonts(doc: jsPDF) {
-  if (!fontCache) {
-    fontReady ??= (async () => {
-      const [regular, bold] = await Promise.all([
-        fetch(`${import.meta.env.BASE_URL}fonts/NotoSans-Regular.ttf`).then(r => {
-          if (!r.ok) throw new Error('NotoSans-Regular topilmadi');
-          return r.arrayBuffer();
-        }),
-        fetch(`${import.meta.env.BASE_URL}fonts/NotoSans-Bold.ttf`).then(r => {
-          if (!r.ok) throw new Error('NotoSans-Bold topilmadi');
-          return r.arrayBuffer();
-        }),
-      ]);
-      fontCache = {
-        regular: arrayBufferToBase64(regular),
-        bold: arrayBufferToBase64(bold),
-      };
-    })();
-    await fontReady;
-  }
-  doc.addFileToVFS('NotoSans-Regular.ttf', fontCache!.regular);
-  doc.addFileToVFS('NotoSans-Bold.ttf', fontCache!.bold);
-  doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
-  doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
-  doc.setFont('NotoSans', 'normal');
-}
 
 function statusInfo(detail: ReceiptDetail) {
   const r = detail.receipt;
@@ -100,7 +61,7 @@ function drawInfoCard(
 export async function downloadReceiptPdf(detail: ReceiptDetail) {
   const r = detail.receipt;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  await ensureFonts(doc);
+  await ensurePdfFonts(doc);
 
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 14;

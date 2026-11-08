@@ -1,6 +1,6 @@
-import { useMemo, useState, type FormEvent, type MouseEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type MouseEvent } from 'react';
 import {
-  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Banknote, Building, ClipboardList, Download, Landmark, Plus, Receipt, UserRound, Vault, Wallet,
+  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Banknote, Building, ClipboardList, Download, FileText, Landmark, Plus, Receipt, UserRound, Vault, Wallet,
 } from 'lucide-react';
 import {
   listMoneyTransactions,
@@ -9,15 +9,17 @@ import {
 } from '@workspace/api-client-react';
 import type { CashRegisterRow, MoneyOperationType, MoneyTransaction } from '@workspace/api-client-react';
 import {
-  AccountSelect, BranchSelect, Chips, CounterpartyField, DataState, FormError, KpiStrip, Modal, PageHeading, Panel, SearchBox,
-  TableWrap, Totals, date, dateTime, filterParams, localToIso, money, nowLocal, num, round2, sourceText, toMoney,
+  AccountSelect, BranchSelect, Chips, CounterpartyField, DataState, Drawer, FormError, InfoGrid, KpiStrip, Modal, PageHeading, Panel, SearchBox,
+  StatusBadge, TableWrap, Totals, date, dateTime, filterParams, localToIso, money, nowLocal, num, round2, sourceText, toMoney,
   useRefreshAll, type Filters,
 } from '@/components/kit';
 import { expenseCategories, moneyTypeLabels } from '@/lib/labels';
 import { moneyTypeMenu } from '@/lib/menu-options';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
 import { useAccess } from '@/lib/access';
-import { exportCashRegisterExcel } from '@/pages/money-export';
+import { exportCashRegisterExcel, exportMoneyTransactionsExcel } from '@/pages/money-export';
+import { downloadMoneyTransactionPdf, downloadMoneyTransactionsPdf, relatedOf } from '@/pages/money-pdf';
+import { ReceiptDrawer } from '@/pages/sales';
 
 type Tab = 'register' | 'operations' | 'expenses' | 'owners';
 type Direction = 'all' | 'in' | 'out';
@@ -35,6 +37,8 @@ export function MoneyPage({ filters }: { filters: Filters }) {
   const [transfer, setTransfer] = useState<{ kind: 'transfer' | 'encashment'; from?: number } | null>(null);
   const [newAccount, setNewAccount] = useState(false);
   const [excelBusy, setExcelBusy] = useState(false);
+  const [selectedTxId, setSelectedTxId] = useState<number | null>(null);
+  const [receiptId, setReceiptId] = useState<number | null>(null);
   const { canEdit } = useAccess();
   const base = filterParams(filters);
   const registerQ = useGetCashRegister(base);
@@ -207,10 +211,43 @@ export function MoneyPage({ filters }: { filters: Filters }) {
         <SelectMenu ariaLabel="Operatsiya turi" value={type} onChange={setType} options={moneyTypeMenu} align="right" />
         <AccountFilter value={accountId} onChange={setAccountId} />
         <SearchBox value={search} onChange={setSearch} placeholder="Hamkor, hujjat, izoh" />
+        <button
+          type="button"
+          className="button secondary"
+          disabled={!txs.length || excelBusy}
+          onClick={() => {
+            setExcelBusy(true);
+            void exportMoneyTransactionsExcel({
+              rows: txs,
+              periodLabel,
+              branchLabel,
+              title: 'Pul harakati',
+            }).catch(() => {}).finally(() => setExcelBusy(false));
+          }}
+          data-testid="button-money-tx-excel"
+        >
+          <Download size={15} /> Excel
+        </button>
+        <button
+          type="button"
+          className="button secondary"
+          disabled={!txs.length || excelBusy}
+          onClick={() => {
+            setExcelBusy(true);
+            void downloadMoneyTransactionsPdf({
+              rows: txs,
+              periodLabel,
+              branchLabel,
+            }).catch(() => {}).finally(() => setExcelBusy(false));
+          }}
+          data-testid="button-money-tx-pdf"
+        >
+          <FileText size={15} /> PDF
+        </button>
       </div>}>
         {!!byType.length && <div className="type-summary">{byType.map(([t, v]) => <button key={t} className={type === t ? 'selected' : ''} onClick={() => setType(type === t ? '' : t)}><span>{moneyTypeLabels[t] ?? t}</span><b className={v.in >= v.out ? 'positive' : 'negative'}>{v.in ? `+${money(round2(v.in))}` : ''}{v.in && v.out ? ' / ' : ''}{v.out ? `−${money(round2(v.out))}` : ''}</b><small>{v.count} ta</small></button>)}</div>}
         <DataState loading={txQ.isLoading} error={txQ.isError} empty={!txQ.isLoading && !txQ.isError && !txs.length} retry={() => txQ.refetch()} />
-        {!!txs.length && <TransactionsTable rows={txs} />}
+        {!!txs.length && <TransactionsTable rows={txs} allRows={txs} onOpen={setSelectedTxId} busy={excelBusy} />}
       </Panel>
     </>}
 
@@ -227,8 +264,25 @@ export function MoneyPage({ filters }: { filters: Filters }) {
     {tab === 'owners' && <Panel title="Egalar kiritgan va olgan mablagʻ" subtitle="Taʼsischilar hisobidan kiritilgan kapital va olingan dividend / shaxsiy ehtiyoj" action={canEdit && <div className="toolbar"><button className="button secondary small" onClick={() => setOperation({ type: 'owner_in' })}><ArrowDownLeft size={13} /> Kiritildi</button><button className="button secondary small" onClick={() => setOperation({ type: 'owner_out' })}><ArrowUpRight size={13} /> Olindi</button></div>}>
       <div className="mini-metrics"><div><span>Kiritilgan</span><b className="positive">{money(ownerIn)}</b></div><div><span>Olingan</span><b className="negative">{money(ownerOut)}</b></div><div><span>Sof</span><b>{money(round2(ownerIn - ownerOut))}</b></div></div>
       <DataState loading={ownersQ.isLoading} error={ownersQ.isError} empty={!ownersQ.isLoading && !ownersQ.isError && !owners.length} retry={() => ownersQ.refetch()} emptyText="Bu davrda egalar mablagʻi harakati yoʻq." />
-      {!!owners.length && <TransactionsTable rows={owners} />}
+      {!!owners.length && <TransactionsTable rows={owners} allRows={owners} onOpen={setSelectedTxId} busy={excelBusy} />}
     </Panel>}
+
+    {selectedTxId != null && (() => {
+      const pool = [...txs, ...owners];
+      const tx = pool.find(t => t.id === selectedTxId);
+      if (!tx) return null;
+      return (
+        <TransactionDrawer
+          tx={tx}
+          related={relatedOf(tx, pool)}
+          periodLabel={periodLabel}
+          branchLabel={branchLabel}
+          onClose={() => setSelectedTxId(null)}
+          onOpenSale={id => setReceiptId(id)}
+        />
+      );
+    })()}
+    {receiptId != null && <ReceiptDrawer id={receiptId} onClose={() => setReceiptId(null)} />}
 
     {operation && <MoneyOperationModal initialType={operation.type} initialAccount={operation.accountId} defaultBranch={filters.branchId} onClose={() => setOperation(null)} />}
     {transfer && <TransferModal initialKind={transfer.kind} from={transfer.from} onClose={() => setTransfer(null)} />}
@@ -245,18 +299,197 @@ function AccountFilter({ value, onChange }: { value: string; onChange: (v: strin
   return <SelectMenu ariaLabel="Hisob" value={value} onChange={onChange} options={options} align="right" />;
 }
 
-function TransactionsTable({ rows }: { rows: MoneyTransaction[] }) {
-  return <TableWrap><thead><tr><th>SANA-VAQT</th><th>OPERATSIYA</th><th>HISOB</th><th>FILIAL</th><th>HAMKOR</th><th>HUJJAT / IZOH</th><th className="num">KIRIM</th><th className="num">CHIQIM</th></tr></thead>
-    <tbody>{rows.map(t => <tr key={t.id} data-testid={`row-transaction-${t.id}`}>
-      <td>{dateTime(t.date)}<small>{t.createdBy || sourceText(t.source)}</small></td>
-      <td><span className={`money-type ${t.direction}`}>{moneyTypeLabels[t.type] ?? t.type}</span>{t.category && <small>{t.category}</small>}</td>
-      <td>{t.accountName}<small>{t.accountKind === 'cash' ? 'Kassa' : 'Bank'}</small></td>
-      <td>{t.branchName}</td>
-      <td>{t.counterpartyName || '—'}</td>
-      <td>{t.documentNo || '—'}{t.note && <small>{t.note}</small>}</td>
-      <td className="num positive cell-strong">{t.direction === 'in' ? money(t.amount) : ''}</td>
-      <td className="num negative cell-strong">{t.direction === 'out' ? money(t.amount) : ''}</td>
-    </tr>)}</tbody></TableWrap>;
+function TransactionsTable({
+  rows, allRows, onOpen, busy,
+}: {
+  rows: MoneyTransaction[];
+  allRows: MoneyTransaction[];
+  onOpen: (id: number) => void;
+  busy?: boolean;
+}) {
+  return <TableWrap><thead><tr><th>SANA-VAQT</th><th>OPERATSIYA</th><th>HISOB</th><th>FILIAL</th><th>HAMKOR</th><th>HUJJAT / IZOH</th><th className="num">KIRIM</th><th className="num">CHIQIM</th><th /></tr></thead>
+    <tbody>{rows.map(t => (
+      <tr
+        key={t.id}
+        className="clickable"
+        data-testid={`row-transaction-${t.id}`}
+        onClick={() => onOpen(t.id)}
+      >
+        <td>{dateTime(t.date)}<small>{t.createdBy || sourceText(t.source)}</small></td>
+        <td><span className={`money-type ${t.direction}`}>{moneyTypeLabels[t.type] ?? t.type}</span>{t.category && <small>{t.category}</small>}</td>
+        <td>{t.accountName}<small>{t.accountKind === 'cash' ? 'Kassa' : 'Bank'}</small></td>
+        <td>{t.branchName}</td>
+        <td>{t.counterpartyName || '—'}</td>
+        <td>{t.documentNo || '—'}{t.note && <small>{t.note}</small>}</td>
+        <td className="num positive cell-strong">{t.direction === 'in' ? money(t.amount) : ''}</td>
+        <td className="num negative cell-strong">{t.direction === 'out' ? money(t.amount) : ''}</td>
+        <td onClick={e => e.stopPropagation()}>
+          <div className="row-actions">
+            <button
+              type="button"
+              className="button ghost small"
+              title="Excel"
+              disabled={busy}
+              onClick={() => {
+                void exportMoneyTransactionsExcel({
+                  rows: [t],
+                  periodLabel: dateTime(t.date),
+                  branchLabel: t.branchName || '—',
+                  title: moneyTypeLabels[t.type] ?? t.type,
+                  fileName: `Pul_operatsiya_${t.id}`,
+                }).catch(() => {});
+              }}
+            >
+              <Download size={13} />
+            </button>
+            <button
+              type="button"
+              className="button ghost small"
+              title="PDF"
+              disabled={busy}
+              onClick={() => {
+                void downloadMoneyTransactionPdf(t, relatedOf(t, allRows)).catch(() => {});
+              }}
+            >
+              <FileText size={13} />
+            </button>
+          </div>
+        </td>
+      </tr>
+    ))}</tbody></TableWrap>;
+}
+
+function TransactionDrawer({
+  tx, related: relatedProp, periodLabel, branchLabel, onClose, onOpenSale,
+}: {
+  tx: MoneyTransaction;
+  related: MoneyTransaction[];
+  periodLabel: string;
+  branchLabel: string;
+  onClose: () => void;
+  onOpenSale: (id: number) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [fetchedRelated, setFetchedRelated] = useState<MoneyTransaction[] | null>(null);
+  const typeLabel = moneyTypeLabels[tx.type] ?? tx.type;
+  const isIn = tx.direction === 'in';
+  const related = fetchedRelated ?? relatedProp;
+
+  useEffect(() => {
+    if (!tx.transferGroupId || relatedProp.length) {
+      setFetchedRelated(null);
+      return;
+    }
+    let cancelled = false;
+    void listMoneyTransactions({
+      dateFrom: tx.date.slice(0, 10),
+      dateTo: tx.date.slice(0, 10),
+    }).then(rows => {
+      if (cancelled) return;
+      setFetchedRelated(relatedOf(tx, rows));
+    }).catch(() => {
+      if (!cancelled) setFetchedRelated([]);
+    });
+    return () => { cancelled = true; };
+  }, [tx, relatedProp.length]);
+
+  return (
+    <Drawer
+      size="wide"
+      eyebrow="PUL HARAKATI"
+      title={typeLabel}
+      subtitle={<><StatusBadge tone={isIn ? 'good' : 'bad'}>{isIn ? 'Kirim' : 'Chiqim'}</StatusBadge> <span>{dateTime(tx.date)}</span></>}
+      onClose={onClose}
+      actions={(
+        <>
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void exportMoneyTransactionsExcel({
+                rows: [tx, ...related],
+                periodLabel,
+                branchLabel,
+                title: typeLabel,
+                fileName: `Pul_operatsiya_${tx.id}`,
+              }).catch(() => {}).finally(() => setBusy(false));
+            }}
+          >
+            <Download size={15} /> Excel
+          </button>
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void downloadMoneyTransactionPdf(tx, related).catch(() => {}).finally(() => setBusy(false));
+            }}
+          >
+            <FileText size={15} /> PDF
+          </button>
+        </>
+      )}
+    >
+      <div className="mini-metrics">
+        <div><span>Summa</span><b className={isIn ? 'positive' : 'negative'}>{isIn ? '+' : '−'}{money(tx.amount)}</b></div>
+        <div><span>Hisob</span><b>{tx.accountName}</b></div>
+        <div><span>Filial</span><b>{tx.branchName || '—'}</b></div>
+      </div>
+      <InfoGrid items={[
+        { label: 'Sana-vaqt', value: dateTime(tx.date) },
+        { label: 'Operatsiya', value: typeLabel },
+        { label: 'Yoʻnalish', value: isIn ? 'Kirim' : 'Chiqim' },
+        { label: 'Hisob', value: `${tx.accountName} · ${tx.accountKind === 'cash' ? 'Kassa' : 'Bank'}` },
+        { label: 'Filial', value: tx.branchName || '—' },
+        { label: 'Hamkor', value: tx.counterpartyName || '—' },
+        { label: 'Hujjat', value: tx.documentNo || '—' },
+        { label: 'Kategoriya', value: tx.category || '—' },
+        { label: 'Manba', value: sourceText(tx.source) },
+        { label: 'Yaratgan', value: tx.createdBy || '—' },
+        ...(tx.note ? [{ label: 'Izoh', value: tx.note }] : []),
+        ...(tx.transferGroupId ? [{ label: 'Oʻtkazma guruhi', value: tx.transferGroupId }] : []),
+        ...(tx.saleId ? [{
+          label: 'Bogʻliq chek',
+          value: <button type="button" className="link-button" onClick={() => onOpenSale(tx.saleId!)}>Chek #{tx.saleId}</button>,
+        }] : []),
+        ...(tx.purchaseId ? [{ label: 'Bogʻliq kirim', value: `Kirim #${tx.purchaseId}` }] : []),
+        ...(tx.debtId ? [{ label: 'Bogʻliq qarz', value: `Qarz #${tx.debtId}` }] : []),
+      ]} />
+      {!!related.length && (
+        <>
+          <h3 className="subhead">Bogʻliq oʻtkazmalar</h3>
+          <p className="muted-line">Shu oʻtkazma guruhidagi boshqa tomonlar</p>
+          <TableWrap>
+            <thead>
+              <tr>
+                <th>SANA-VAQT</th>
+                <th>OPERATSIYA</th>
+                <th>HISOB</th>
+                <th>FILIAL</th>
+                <th className="num">KIRIM</th>
+                <th className="num">CHIQIM</th>
+              </tr>
+            </thead>
+            <tbody>
+              {related.map(x => (
+                <tr key={x.id}>
+                  <td>{dateTime(x.date)}</td>
+                  <td><span className={`money-type ${x.direction}`}>{moneyTypeLabels[x.type] ?? x.type}</span></td>
+                  <td>{x.accountName}<small>{x.accountKind === 'cash' ? 'Kassa' : 'Bank'}</small></td>
+                  <td>{x.branchName}</td>
+                  <td className="num positive">{x.direction === 'in' ? money(x.amount) : ''}</td>
+                  <td className="num negative">{x.direction === 'out' ? money(x.amount) : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        </>
+      )}
+    </Drawer>
+  );
 }
 
 function MoneyOperationModal({ initialType, initialAccount, defaultBranch, onClose }: { initialType: MoneyOperationType; initialAccount?: number; defaultBranch: string; onClose: () => void }) {

@@ -244,3 +244,34 @@ export async function exportCashRegisterExcel(opts: {
   const safe = (fileName || `Kassa_hisoboti_${stamp}`).replace(/[\\/:*?"<>|]+/g, '_');
   await downloadWorkbook(wb, `${safe}.xlsx`);
 }
+
+export async function exportMoneyTransactionsExcel(opts: {
+  rows: MoneyTransaction[];
+  periodLabel: string;
+  branchLabel: string;
+  title?: string;
+  fileName?: string;
+}) {
+  const {
+    rows,
+    periodLabel,
+    branchLabel,
+    title = 'Pul harakati',
+    fileName,
+  } = opts;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'PHARMEX';
+  wb.created = new Date();
+
+  fillTxSheet(
+    wb.addWorksheet(sheetName('Pul harakati')),
+    `${title} · ${branchLabel}`,
+    rows,
+    periodLabel,
+  );
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  const safe = (fileName || `Pul_harakati_${stamp}`).replace(/[\\/:*?"<>|]+/g, '_');
+  await downloadWorkbook(wb, `${safe}.xlsx`);
+}
