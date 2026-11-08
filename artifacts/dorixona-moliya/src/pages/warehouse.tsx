@@ -16,12 +16,13 @@ import { ExpiryCell, QtyCell, expiryDaysOf, slowStatusLabel } from '@/pages/ware
 const TEASER_LIMIT = 5;
 const PREVIEW_LIMIT = 5;
 
-type StockFilter = 'all' | 'in' | 'zero' | 'expiring' | 'expired';
+type StockFilter = 'all' | 'in' | 'zero' | 'valid' | 'expiring' | 'expired';
 
 const FILTER_LABEL: Record<StockFilter, string> = {
   all: 'Barcha tovarlar',
   in: 'Qoldiq bor tovarlar',
   zero: 'Tugagan tovarlar',
+  valid: 'Muddati bor tovarlar',
   expiring: 'Muddati yaqin tovarlar',
   expired: 'Muddati oʻtgan tovarlar',
 };
@@ -30,6 +31,13 @@ function matchesFilter(i: InventoryItem, stockFilter: StockFilter) {
   if (stockFilter === 'all') return true;
   if (stockFilter === 'in') return i.quantity > 0;
   if (stockFilter === 'zero') return i.quantity <= 0;
+  if (stockFilter === 'valid') {
+    // Hali muddati tugamaganlar — muddati oʻtganlar yoʻq.
+    if (!(i.quantity > 0)) return false;
+    if (!i.expiryDate) return true;
+    const d = expiryDaysOf(i.expiryDate);
+    return d == null || d >= 0;
+  }
   if (!(i.quantity > 0 && i.expiryDate)) return false;
   const d = expiryDaysOf(i.expiryDate);
   if (d == null) return false;
@@ -152,6 +160,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
   const buckets = useMemo(() => {
     const inStock = inventory.filter(i => matchesFilter(i, 'in'));
     const zero = inventory.filter(i => matchesFilter(i, 'zero'));
+    const valid = inventory.filter(i => matchesFilter(i, 'valid'));
     const expiring = inventory.filter(i => matchesFilter(i, 'expiring'));
     const expired = inventory.filter(i => matchesFilter(i, 'expired'));
     const other = inStock.filter(i => !matchesFilter(i, 'expiring') && !matchesFilter(i, 'expired'));
@@ -159,6 +168,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
       all: inventory,
       in: inStock,
       zero,
+      valid,
       expiring,
       expired,
       other,
@@ -166,6 +176,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
         all: sumView(inventory),
         in: sumView(inStock),
         zero: sumView(zero),
+        valid: sumView(valid),
         expiring: sumView(expiring),
         expired: sumView(expired),
         other: sumView(other),
@@ -350,6 +361,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
             { id: 'all', label: 'Barchasi', count: buckets.all.length },
             { id: 'in', label: 'Qoldiq bor', count: buckets.in.length },
             { id: 'zero', label: 'Tugagan', count: buckets.zero.length },
+            { id: 'valid', label: 'Muddati bor', count: buckets.valid.length },
             { id: 'expiring', label: 'Muddati yaqin', count: buckets.expiring.length },
             { id: 'expired', label: 'Muddati oʻtgan', count: buckets.expired.length },
           ]}
@@ -453,8 +465,8 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                     <p>{buckets.sums.other.count} ta · tannarx {money(buckets.sums.other.costTotal)} · foyda {money(buckets.sums.other.profitTotal)}</p>
                   </div>
                   <div className="warehouse-split-actions">
-                    <button type="button" className="button secondary" onClick={() => setStockFilter('in')}>Qoldiq bor</button>
-                    <button type="button" className="button secondary" disabled={!buckets.other.length} onClick={() => downloadExcel(buckets.other, 'Qolganlari (yaroqli)')}>
+                    <button type="button" className="button secondary" onClick={() => setStockFilter('valid')}>Muddati bor</button>
+                    <button type="button" className="button secondary" disabled={!buckets.valid.length} onClick={() => downloadExcel(buckets.valid, FILTER_LABEL.valid)}>
                       <Download size={14} /> Excel
                     </button>
                   </div>
@@ -463,7 +475,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                   ? <StockTable rows={buckets.other} onOpen={setProduct} limit={PREVIEW_LIMIT} />
                   : <div className="inline-empty tight">Boshqa qoldiq yoʻq</div>}
                 {buckets.other.length > PREVIEW_LIMIT && (
-                  <button type="button" className="warehouse-split-more" onClick={() => setStockFilter('in')}>
+                  <button type="button" className="warehouse-split-more" onClick={() => setStockFilter('valid')}>
                     Yana {buckets.other.length - PREVIEW_LIMIT} ta · toʻliq roʻyxat <ArrowRight size={14} />
                   </button>
                 )}
