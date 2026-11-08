@@ -239,10 +239,20 @@ export function Modal({ eyebrow, title, onClose, busy, size = 'md', children }: 
   </div>;
 }
 
-export function Drawer({ eyebrow, title, subtitle, onClose, actions, children }: { eyebrow?: string; title: string; subtitle?: ReactNode; onClose: () => void; actions?: ReactNode; children: ReactNode }) {
+export function Drawer({
+  eyebrow, title, subtitle, onClose, actions, children, size = 'md',
+}: {
+  eyebrow?: string;
+  title: string;
+  subtitle?: ReactNode;
+  onClose: () => void;
+  actions?: ReactNode;
+  children: ReactNode;
+  size?: 'md' | 'wide';
+}) {
   useEscape(onClose);
   return <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
-    <aside className="drawer" role="dialog" aria-modal="true" onMouseDown={e => e.stopPropagation()}>
+    <aside className={`drawer${size === 'wide' ? ' wide' : ''}`} role="dialog" aria-modal="true" onMouseDown={e => e.stopPropagation()}>
       <div className="drawer-head">
         <div>{eyebrow && <span className="eyebrow">{eyebrow}</span>}<h2>{title}</h2>{subtitle && <div className="drawer-sub">{subtitle}</div>}</div>
         <button type="button" className="icon-button" onClick={onClose} aria-label="Yopish"><X size={18} /></button>

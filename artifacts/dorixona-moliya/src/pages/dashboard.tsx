@@ -309,6 +309,7 @@ export function DashboardPage({ filters }: { filters: Filters }) {
 
       {listKind && (
         <Drawer
+          size="wide"
           eyebrow={branchLabel}
           title={detailTitle}
           subtitle={`${detailItems.length} ta · filtr: ${periodLabel}`}
