@@ -181,16 +181,35 @@ export function Metric({ label, value, unit, trend, icon: Icon }: { label: strin
 }
 export function TableWrap({ children }: { children: ReactNode }) { return <div className="table-scroll"><table>{children}</table></div>; }
 
-export type Kpi = { label: string; value: string | number | null | undefined; hint?: string; tone?: 'good' | 'bad' | 'warn'; icon?: LucideIcon; count?: boolean };
+export type Kpi = {
+  label: string;
+  value: string | number | null | undefined;
+  hint?: string;
+  tone?: 'good' | 'bad' | 'warn';
+  icon?: LucideIcon;
+  count?: boolean;
+  onClick?: () => void;
+  testId?: string;
+};
 export function KpiStrip({ items }: { items: Kpi[] }) {
   return <div className="kpi-strip">{items.map(item => {
     const Icon = item.icon;
     const f = fitFigure(item.value, item.count);
-    return <div className={`kpi ${item.tone || ''}`} key={item.label}>
+    const body = <>
       <div className="kpi-label">{Icon && <Icon size={14} />}<span>{item.label}</span></div>
       <b className={f.cls} title={f.title}>{f.text}</b>
       <small>{item.hint ?? (item.count ? 'ta' : '\u00a0')}</small>
-    </div>;
+    </>;
+    if (item.onClick) {
+      return <button
+        type="button"
+        className={`kpi ${item.tone || ''} is-clickable`}
+        key={item.label}
+        onClick={item.onClick}
+        data-testid={item.testId}
+      >{body}</button>;
+    }
+    return <div className={`kpi ${item.tone || ''}`} key={item.label} data-testid={item.testId}>{body}</div>;
   })}</div>;
 }
 
