@@ -128,16 +128,20 @@ export async function exportDashboardExcel(opts: {
   // Trend
   {
     const ws = wb.addWorksheet(sheetName('Savdo dinamikasi'));
-    [14, 16, 16].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-    metaRow(ws, `Savdo va tannarx · ${periodLabel}`, 3);
+    [14, 16, 16, 16].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+    metaRow(ws, `Savdo · tannarx · foyda · ${periodLabel}`, 4);
     const hr = ws.getRow(2);
-    ['Sana', 'Savdo', 'Tannarx'].forEach((h, i) => { hr.getCell(i + 1).value = h; });
-    styleHeader(hr, 3);
+    ['Sana', 'Savdo', 'Tannarx', 'Foyda'].forEach((h, i) => { hr.getCell(i + 1).value = h; });
+    styleHeader(hr, 4);
     d.salesTrend.forEach((p, i) => {
-      const row = ws.addRow([p.label, money(p.sales), money(p.cost)]);
+      const profit = p.grossProfit != null && p.grossProfit !== ''
+        ? p.grossProfit
+        : String(Math.max(0, (Number(p.sales) || 0) - (Number(p.cost) || 0)));
+      const row = ws.addRow([p.label, money(p.sales), money(p.cost), money(profit)]);
       row.eachCell(cell => paint(cell, i % 2 ? 'FFF3F8FB' : 'FFFFFFFF'));
       row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
       row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right' };
+      row.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
     });
   }
 

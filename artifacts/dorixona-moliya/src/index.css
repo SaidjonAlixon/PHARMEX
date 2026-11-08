@@ -373,9 +373,13 @@ a { color: inherit; text-decoration: none; }
 .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; margin-bottom: 13px; }
 .panel-head h2 { margin: 0; font: 700 14px/1.3 var(--app-font-serif); letter-spacing: -.2px; color: #254536; }
 .panel-head p { margin: 4px 0 0; color: #8a9890; font-size: 10px; }
-.chart-legend { color: #78887e; display: flex; align-items: center; gap: 6px; font-size: 9px; white-space: nowrap; }
-.chart-legend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-left: 6px; }
+.chart-legend { color: #78887e; display: flex; align-items: center; gap: 6px; font-size: 9px; white-space: nowrap; flex-wrap: wrap; justify-content: flex-end; }
+.chart-legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 8px; flex: 0 0 auto; }
+.chart-legend i:first-child { margin-left: 0; }
 .legend-green { background: #176b4a; }.legend-amber { background: #d7a33c; }
+.legend-sales { background: linear-gradient(135deg, #0fb3c7, #2fcf5a); }
+.legend-cost { background: #1f5fd0; }
+.legend-profit { background: #c45a12; }
 .chart-area { position: relative; padding: 8px 8px 28px 52px; height: 248px; }
 .chart-area.is-vertical-ticks { height: 292px; padding-bottom: 62px; }
 .chart-area svg { position: absolute; left: 52px; right: 8px; top: 12px; width: calc(100% - 60px); height: 177px; overflow: visible; }
@@ -388,13 +392,14 @@ a { color: inherit; text-decoration: none; }
 .chart-xlabels.vertical { min-height: 52px; padding-top: 10px; }
 .chart-xlabels.vertical > span { display: flex; justify-content: center; align-items: flex-start; height: 48px; }
 .chart-xlabels.vertical > span em {
-  transform: rotate(-90deg);
-  transform-origin: center center;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: .02em;
+  letter-spacing: .04em;
   color: #5f738a;
   line-height: 1;
+  height: 44px;
 }
 .chart-area.is-dense .chart-xlabels.vertical > span em { font-size: 9px; font-weight: 600; }
 .chart-area.is-dense.is-vertical-ticks { height: 300px; padding-bottom: 68px; }
@@ -1305,6 +1310,9 @@ td.muted { font-size: 12px; }
 .chart-legend { font-size: 11.5px; color: var(--t2); }
 .legend-green { background: var(--px-teal); }
 .legend-amber { background: var(--px-blue); }
+.legend-sales { background: linear-gradient(135deg, #0fb3c7, #2fcf5a); }
+.legend-cost { background: #1f5fd0; }
+.legend-profit { background: #c45a12; }
 .chart-labels, .chart-xlabels { font-size: 10.5px; color: var(--t3); }
 .chart-xlabels.vertical > span em { color: var(--t2); }
 .chart-month-hint { color: var(--t3); }

@@ -53,30 +53,32 @@ function trendTickLabel(label: string, mode: 'day' | 'day-month' | 'full') {
   return `${String(p.d).padStart(2, '0')} ${CHART_MONTHS[p.m - 1]} ${p.y}`;
 }
 
-function ChartLine({ data, valueKey, secondaryKey }: { data: Dashboard['salesTrend']; valueKey: 'sales'; secondaryKey?: 'cost' }) {
+function ChartLine({ data }: { data: Dashboard['salesTrend'] }) {
   if (!data?.length) return <div className="chart-empty"><PackageSearch size={21} /> Davr boʻyicha trend yoʻq</div>;
 
-  const nums = data.map(d => Number(d[valueKey]) || 0).concat(secondaryKey ? data.map(d => Number(d[secondaryKey]) || 0) : []);
+  const series = data.map(d => ({
+    sales: Number(d.sales) || 0,
+    cost: Number(d.cost) || 0,
+    // Yalpi foyda = sotuv − tannarx (API grossProfit); yoʻq boʻlsa hisoblab qoʻyamiz
+    profit: d.grossProfit != null && d.grossProfit !== ''
+      ? Number(d.grossProfit) || 0
+      : Math.max(0, (Number(d.sales) || 0) - (Number(d.cost) || 0)),
+  }));
+  const nums = series.flatMap(s => [s.sales, s.cost, s.profit]);
   const max = Math.max(...nums, 1);
   const n = data.length;
   const xAt = (i: number) => (n === 1 ? 50 : (i / (n - 1)) * 100);
-  const yAt = (v: number) => 100 - (v / max) * 86;
-  const points = data.map((d, i) => `${xAt(i)},${yAt(Number(d[valueKey]) || 0)}`).join(' ');
-  const points2 = secondaryKey
-    ? data.map((d, i) => `${xAt(i)},${yAt(Number(d[secondaryKey!]) || 0)}`).join(' ')
-    : '';
+  const yAt = (v: number) => 100 - (Math.max(0, v) / max) * 86;
+  const line = (key: 'sales' | 'cost' | 'profit') => series.map((s, i) => `${xAt(i)},${yAt(s[key])}`).join(' ');
+  const salesPts = line('sales');
+  const costPts = line('cost');
+  const profitPts = line('profit');
 
   const parsed = data.map(d => parseTrendDay(d.label));
   const allDated = parsed.every(Boolean);
   const sameMonth = allDated && new Set(parsed.map(p => `${p!.y}-${p!.m}`)).size === 1;
-  // Dense month/week → vertical ticks so every day fits; short period stays horizontal
   const vertical = n >= 10;
-  const tickMode: 'day' | 'day-month' | 'full' = sameMonth && n >= 10
-    ? 'day'
-    : n >= 16
-      ? 'day-month'
-      : 'day-month';
-  // For very long ranges still show every label when vertical; thin spacing via CSS
+  const tickMode: 'day' | 'day-month' | 'full' = sameMonth && n >= 10 ? 'day' : 'day-month';
   const showEvery = vertical ? 1 : n <= 8 ? 1 : Math.ceil(n / 8);
 
   return (
@@ -86,35 +88,33 @@ function ChartLine({ data, valueKey, secondaryKey }: { data: Dashboard['salesTre
         <span title={money(max * 0.5)}>{axisMoney(max * 0.5)}</span>
         <span>0</span>
       </div>
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Savdo dinamikasi">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Savdo, tannarx va foyda dinamikasi">
         <defs>
           <linearGradient id="px-line" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0" stopColor="#0fb3c7" />
             <stop offset="1" stopColor="#2fcf5a" />
           </linearGradient>
           <linearGradient id="px-area" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#0fb3c7" stopOpacity=".22" />
+            <stop offset="0" stopColor="#0fb3c7" stopOpacity=".18" />
             <stop offset="1" stopColor="#2fcf5a" stopOpacity="0" />
           </linearGradient>
         </defs>
-        {n > 1 && <polygon points={`0,100 ${points} 100,100`} fill="url(#px-area)" />}
-        <polyline points={points} fill="none" stroke="url(#px-line)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        {secondaryKey && (
-          <polyline points={points2} fill="none" stroke="#1f5fd0" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        )}
+        {n > 1 && <polygon points={`0,100 ${salesPts} 100,100`} fill="url(#px-area)" />}
+        <polyline points={salesPts} fill="none" stroke="url(#px-line)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <polyline points={costPts} fill="none" stroke="#1f5fd0" strokeWidth="2" strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <polyline points={profitPts} fill="none" stroke="#c45a12" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       </svg>
       <div className={`chart-xlabels ${vertical ? 'vertical' : ''}`}>
         {data.map((p, i) => {
           const visible = i % showEvery === 0 || i === n - 1;
           const text = trendTickLabel(p.label, tickMode);
-          const title = parseTrendDay(p.label)
-            ? trendTickLabel(p.label, 'full')
-            : p.label;
+          const title = parseTrendDay(p.label) ? trendTickLabel(p.label, 'full') : p.label;
+          const profit = series[i]?.profit ?? 0;
           return (
             <span
               key={`${p.label}-${i}`}
               className={visible ? 'is-on' : 'is-off'}
-              title={`${title} · Savdo ${money(p.sales)}${secondaryKey ? ` · Tannarx ${money(p.cost)}` : ''}`}
+              title={`${title} · Savdo ${money(p.sales)} · Tannarx ${money(p.cost)} · Foyda ${money(profit)}`}
             >
               <em>{text}</em>
             </span>
@@ -287,11 +287,17 @@ export function DashboardPage({ filters }: { filters: Filters }) {
 
           <div className="dash-grid">
             <Panel
-              title="Savdo va tannarx dinamikasi"
-              subtitle="Kunlik dinamika · summalar soʻmda"
-              action={<span className="chart-legend"><i className="legend-green" /> Savdo <i className="legend-amber" /> Tannarx</span>}
+              title="Savdo dinamikasi"
+              subtitle="Sotuv narxi · tannarx · foyda · barcha filtrlar boʻyicha"
+              action={(
+                <span className="chart-legend">
+                  <i className="legend-sales" /> Savdo
+                  <i className="legend-cost" /> Tannarx
+                  <i className="legend-profit" /> Foyda
+                </span>
+              )}
             >
-              <ChartLine data={d.salesTrend} valueKey="sales" secondaryKey="cost" />
+              <ChartLine data={d.salesTrend} />
             </Panel>
             <ExpiryListPanel
               title="Eʼtibor talab qiladi"
