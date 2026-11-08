@@ -202,7 +202,9 @@ export function WarehousePage({ filters }: { filters: Filters }) {
 
   const downloadExcel = (list: InventoryItem[], title: string) => {
     if (!list.length) return;
-    exportWarehouseExcel(list, title);
+    void exportWarehouseExcel(list, title).catch(() => {
+      window.alert('Excel faylini yuklab boʻlmadi. Qayta urinib koʻring.');
+    });
   };
 
   return <>
