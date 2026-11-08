@@ -10,7 +10,7 @@ import {
   date, money, num, qty, round2, stockStatus, type Filters,
 } from '@/components/kit';
 import { ProductCard } from '@/pages/stock';
-import { exportWarehouseExcel, retailValueOf } from '@/pages/warehouse-export';
+import { exportWarehouseExcel, profitOf, retailValueOf } from '@/pages/warehouse-export';
 import { ExpiryCell, QtyCell, expiryDaysOf, slowStatusLabel } from '@/pages/warehouse-shared';
 
 const TEASER_LIMIT = 5;
@@ -40,11 +40,13 @@ function matchesFilter(i: InventoryItem, stockFilter: StockFilter) {
 function sumView(rows: InventoryItem[]) {
   const costTotal = round2(rows.reduce((s, i) => s + num(i.value), 0));
   const retailTotal = round2(rows.reduce((s, i) => s + retailValueOf(i), 0));
+  const profitTotal = round2(rows.reduce((s, i) => s + profitOf(i), 0));
   return {
     count: rows.length,
     costTotal,
     retailTotal,
-    markup: round2(retailTotal - costTotal),
+    profitTotal,
+    markup: profitTotal,
   };
 }
 
@@ -69,13 +71,14 @@ function StockTable({
           <th className="num">1 DONA TANNARX</th>
           <th className="num">1 DONA SOTUV</th>
           <th className="num">QOLDIQ QIYMATI</th>
-          <th className="num">QOʻYILGAN NARX</th>
+          <th className="num" title="(sotuv − tannarx) × qoldiq">OLINADIGAN FOYDA</th>
           <th>YAROQLILIK</th>
         </tr>
       </thead>
       <tbody>
         {list.map((x: InventoryItem) => {
           const st = stockStatus(x.quantity);
+          const profit = profitOf(x);
           return (
             <tr
               key={`${x.productId}-${x.branchId}`}
@@ -93,7 +96,12 @@ function StockTable({
               <td className="num">{money(x.costPrice)}</td>
               <td className="num">{money(x.retailPrice)}</td>
               <td className="num" title={`Qoldiq qiymati = ${qty(x.quantity)} × ${money(x.costPrice)}`}>{money(x.value)}</td>
-              <td className="num" title={`Qoʻyilgan narx = ${qty(x.quantity)} × ${money(x.retailPrice)}`}>{money(retailValueOf(x))}</td>
+              <td
+                className={`num ${profit < 0 ? 'negative' : 'positive'}`}
+                title={`Olinadigan foyda = (${money(x.retailPrice)} − ${money(x.costPrice)}) × ${qty(x.quantity)}`}
+              >
+                {money(profit)}
+              </td>
               <td><ExpiryCell value={x.expiryDate} /></td>
             </tr>
           );
@@ -232,8 +240,8 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                 <strong>{money(s.costTotal)}</strong>
               </div>
               <div>
-                <span>Qoʻyilgan narx</span>
-                <strong>{money(s.retailTotal)}</strong>
+                <span>Olinadigan foyda</span>
+                <strong className={s.profitTotal < 0 ? 'negative' : ''}>{money(s.profitTotal)}</strong>
               </div>
             </div>
           </button>
@@ -352,7 +360,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
             <b>{sectionTitle}</b>
             <p>
               {view.count} ta mahsulot · tannarx jami <strong>{money(view.costTotal)}</strong>
-              {' '}· qoʻyilgan narx <strong>{money(view.retailTotal)}</strong>
+              {' '}· olinadigan foyda <strong>{money(view.profitTotal)}</strong>
             </p>
           </div>
         </div>
@@ -392,7 +400,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                 <header>
                   <div>
                     <h3>Muddati oʻtgan</h3>
-                    <p>{buckets.sums.expired.count} ta · tannarx {money(buckets.sums.expired.costTotal)} · qoʻyilgan {money(buckets.sums.expired.retailTotal)}</p>
+                    <p>{buckets.sums.expired.count} ta · tannarx {money(buckets.sums.expired.costTotal)} · foyda {money(buckets.sums.expired.profitTotal)}</p>
                   </div>
                   <div className="warehouse-split-actions">
                     <button type="button" className="button secondary" onClick={() => setStockFilter('expired')}>Toʻliq ochish</button>
@@ -415,7 +423,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                 <header>
                   <div>
                     <h3>Muddati yaqin</h3>
-                    <p>{buckets.sums.expiring.count} ta · tannarx {money(buckets.sums.expiring.costTotal)} · qoʻyilgan {money(buckets.sums.expiring.retailTotal)}</p>
+                    <p>{buckets.sums.expiring.count} ta · tannarx {money(buckets.sums.expiring.costTotal)} · foyda {money(buckets.sums.expiring.profitTotal)}</p>
                   </div>
                   <div className="warehouse-split-actions">
                     <button type="button" className="button secondary" onClick={() => setStockFilter('expiring')}>Toʻliq ochish</button>
@@ -438,7 +446,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                 <header>
                   <div>
                     <h3>Qolganlari (yaroqli qoldiq)</h3>
-                    <p>{buckets.sums.other.count} ta · tannarx {money(buckets.sums.other.costTotal)} · qoʻyilgan {money(buckets.sums.other.retailTotal)}</p>
+                    <p>{buckets.sums.other.count} ta · tannarx {money(buckets.sums.other.costTotal)} · foyda {money(buckets.sums.other.profitTotal)}</p>
                   </div>
                   <div className="warehouse-split-actions">
                     <button type="button" className="button secondary" onClick={() => setStockFilter('in')}>Qoldiq bor</button>
@@ -481,11 +489,12 @@ export function WarehousePage({ filters }: { filters: Filters }) {
         <InfoGrid items={[
           { label: 'Mahsulotlar soni', value: `${view.count} ta` },
           { label: 'Tannarx jami', value: money(view.costTotal) },
-          { label: 'Qoʻyilgan narx jami', value: money(view.retailTotal) },
-          { label: 'Farq (qoʻyilgan − tannarx)', value: money(view.markup) },
+          { label: 'Sotuv narxi jami', value: money(view.retailTotal) },
+          { label: 'Olinadigan foyda', value: money(view.profitTotal) },
         ]} />
         <p className="muted-line">
-          Bu raqamlar faqat <b>{sectionTitle.toLowerCase()}</b> boʻyicha. Filtrni oʻzgartirsangiz, jami ham oʻzgaradi. Excel shu roʻyxatni yuklab beradi.
+          <b>Olinadigan foyda</b> = (1 dona sotuv − 1 dona tannarx) × qoldiq.
+          {' '}Bu raqamlar faqat <b>{sectionTitle.toLowerCase()}</b> boʻyicha. Excel shu roʻyxatni yuklab beradi.
         </p>
         {!!rows.length && <StockTable rows={rows} onOpen={(id) => { setTotalsOpen(false); setProduct(id); }} />}
       </Drawer>

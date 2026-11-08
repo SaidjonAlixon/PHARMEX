@@ -7,6 +7,12 @@ export function retailValueOf(i: InventoryItem) {
   return round2(Math.max(0, i.quantity) * num(i.retailPrice));
 }
 
+/** (sotuv − tannarx) × qoldiq — qolgan tovardan olinadigan foyda. */
+export function profitOf(i: InventoryItem) {
+  const q = Math.max(0, i.quantity);
+  return round2((num(i.retailPrice) - num(i.costPrice)) * q);
+}
+
 export function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: string) {
   const sheet = rows.map((x, i) => {
     const days = expiryDaysOf(x.expiryDate);
@@ -27,7 +33,8 @@ export function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: string
       '1_dona_tannarx': num(x.costPrice),
       '1_dona_sotuv': num(x.retailPrice),
       Qoldiq_qiymati: num(x.value),
-      Qoyilgan_narx: retailValueOf(x),
+      Qoyilgan_narx_jami: retailValueOf(x),
+      Olinadigan_foyda: profitOf(x),
       Yaroqlilik_sanasi: expiryDay(x.expiryDate) ? date(expiryDay(x.expiryDate)) : '',
       Yaroqlilik_holati: yaroqlilik,
     };
@@ -44,7 +51,8 @@ export function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: string
     '1_dona_tannarx': '',
     '1_dona_sotuv': '',
     Qoldiq_qiymati: round2(rows.reduce((s, x) => s + num(x.value), 0)),
-    Qoyilgan_narx: round2(rows.reduce((s, x) => s + retailValueOf(x), 0)),
+    Qoyilgan_narx_jami: round2(rows.reduce((s, x) => s + retailValueOf(x), 0)),
+    Olinadigan_foyda: round2(rows.reduce((s, x) => s + profitOf(x), 0)),
     Yaroqlilik_sanasi: '',
     Yaroqlilik_holati: '',
   };
@@ -53,7 +61,7 @@ export function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: string
   ws['!cols'] = [
     { wch: 5 }, { wch: 40 }, { wch: 18 }, { wch: 14 }, { wch: 12 },
     { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
-    { wch: 14 }, { wch: 14 }, { wch: 22 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 22 },
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Ombor');
