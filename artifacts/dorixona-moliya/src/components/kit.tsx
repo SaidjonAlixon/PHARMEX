@@ -63,16 +63,17 @@ export function qty(value: number | string | null | undefined) {
   }).format(whole ? Math.round(n) : n).replace(/\u00a0|\u202f/g, ' ');
 }
 
-/** Short unit label next to a stock figure (уп, dona, fl, …). */
+/** Short unit label next to a stock figure (Latin/Uzbek, readable in UI fonts). */
 export function unitLabel(unit?: string | null) {
   const raw = (unit || 'dona').trim();
   const u = raw.toLowerCase().replace(/[,.]+$/g, '');
   if (!u || u === '1' || u === 'шт' || u === 'sht' || u === 'dona') return 'dona';
-  if (u === 'уп' || u === 'up' || u.startsWith('упак') || u === 'упк') return 'уп';
-  if (u.startsWith('фл')) return 'fl';
-  if (u.startsWith('амп')) return 'amp';
-  if (u.startsWith('таб')) return 'tab';
-  return raw;
+  if (u === 'уп' || u === 'up' || u.startsWith('упак') || u === 'упк' || u === 'уп.') return 'quti';
+  if (u.startsWith('фл') || u.startsWith('fl')) return 'flakon';
+  if (u.startsWith('амп') || u.startsWith('amp')) return 'ampula';
+  if (u.startsWith('таб') || u.startsWith('tab')) return 'tabletka';
+  if (u.startsWith('тюб') || u.startsWith('tub')) return 'tuba';
+  return raw.length <= 10 ? raw : 'dona';
 }
 
 /** Stock presence for a balance row. */

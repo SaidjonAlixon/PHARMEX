@@ -885,7 +885,28 @@ body { background: var(--wash); }
 .panel-head { margin-bottom: 15px; }
 .panel-head h2 { display: flex; align-items: center; gap: 10px; font: 800 17px/1.3 var(--app-font-serif); color: var(--px-navy); letter-spacing: -.3px; }
 .panel-head h2::before { content: ''; width: 5px; height: 19px; flex: 0 0 auto; border-radius: 4px; background: var(--px-grad); }
-.panel-head p { font-size: 12.5px; color: var(--muted-ink); margin-top: 5px; }
+.panel-head p { font-size: 12.5px; color: var(--muted-ink); margin-top: 5px; max-width: 62ch; line-height: 1.45; }
+
+/* Ombor page layout */
+.warehouse-insights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0 0 16px; }
+.warehouse-rank-panel .warehouse-scroll { max-height: 420px; overflow: auto; margin: 0 -4px; padding: 0 4px; }
+.warehouse-stock-panel .panel-head { margin-bottom: 12px; }
+.warehouse-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: #f5f8fc; }
+.warehouse-toolbar .chips { flex: 1 1 auto; }
+.warehouse-toolbar .search-field { margin-left: auto; }
+.stock-qty { display: grid; justify-items: end; gap: 1px; line-height: 1.15; }
+.stock-qty b { font: 700 13px/1.2 var(--app-font-mono); color: var(--px-navy); font-variant-numeric: tabular-nums; }
+.stock-qty span { font-size: 10.5px; color: var(--t3); font-weight: 600; letter-spacing: .02em; }
+.stock-qty em { font-style: normal; font-size: 10px; color: #a5670a; font-weight: 700; }
+.stock-qty.is-empty b { color: #c62f3a; }
+.stock-qty.is-low b { color: #a5670a; }
+.expiry-cell { display: grid; gap: 5px; justify-items: start; }
+.expiry-cell > span { font-size: 12.5px; color: var(--t2); white-space: nowrap; }
+.last-sale { font-size: 12.5px; color: var(--t2); }
+@media (max-width: 1100px) {
+  .warehouse-insights { grid-template-columns: 1fr; }
+  .warehouse-toolbar .search-field { margin-left: 0; width: 100%; }
+}
 .hint-list { font-size: 13px; color: var(--t2); }
 .hint-list b { color: var(--px-navy); }
 .hint-list li::marker { color: var(--px-teal); }
