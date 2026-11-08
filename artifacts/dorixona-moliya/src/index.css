@@ -1027,8 +1027,21 @@ body { background: var(--wash); }
   font-family: var(--app-font-mono);
   font-variant-numeric: tabular-nums;
 }
-.warehouse-split-panel.warn .warehouse-split-more { background: #fff2d9; color: #a5670a; }
-.warehouse-split-panel.bad .warehouse-split-more { background: #ffe4e4; color: #c62f3a; }
+.warehouse-split-panel.warn .warehouse-split-more,
+.warehouse-split-more.is-warn { background: #fff2d9; color: #a5670a; }
+.warehouse-split-panel.bad .warehouse-split-more,
+.warehouse-split-more.is-bad { background: #ffe4e4; color: #c62f3a; }
+
+.dash-expiry-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.dash-expiry-row:hover b { color: var(--green); }
+.panel .warehouse-split-more { margin-top: 10px; }
 
 @media (max-width: 1100px) {
   .warehouse-cat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

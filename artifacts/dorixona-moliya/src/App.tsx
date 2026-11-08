@@ -11,11 +11,11 @@ import {
 } from 'lucide-react';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
 import {
-  useGetDashboard, getGetDashboardQueryKey, useListBranches, getListBranchesQueryKey, useCreateBranch,
+  useListBranches, getListBranchesQueryKey, useCreateBranch,
   useGetBranch, getGetBranchQueryKey,
   useGetReport, getGetReportQueryKey,
 } from '@workspace/api-client-react';
-import type { Branch, Dashboard, Expense, Sale } from '@workspace/api-client-react';
+import type { Branch, Expense, Sale } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -24,6 +24,7 @@ import {
   todayDay, type Filters,
 } from '@/components/kit';
 import NotFound from '@/pages/not-found';
+import { DashboardPage } from '@/pages/dashboard';
 import { SalesPage } from '@/pages/sales';
 import { PurchasesPage } from '@/pages/purchases';
 import { StockPage } from '@/pages/stock';
@@ -246,34 +247,6 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
 
 function SignInPage() { if (localAuth) return <AuthPage mode="sign-in" />; return <div className="auth-screen"><ThemeToggle className="auth-theme" /><div className="auth-intro"><Link href="/" className="brand-lockup"><BrandLogo /></Link><span className="eyebrow">FILIALDAN GURUHGACHA</span><h1>Hisobingizga<br />aniq nazar.</h1><p>Savdo, zaxira va pul oqimlari bitta ishonchli manzilda.</p></div><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></div>; }
 function SignUpPage() { if (localAuth) return <AuthPage mode="sign-up" />; return <div className="auth-screen"><div className="auth-intro"><Link href="/" className="brand-lockup"><BrandLogo /></Link><span className="eyebrow">BOSHQARUVNI BIRLASHTIRING</span><h1>Yagona tizim.<br />Aniq qarorlar.</h1><p>Guruhingiz moliyasini filiallar kesimida kuzating.</p></div><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>; }
-
-function ChartLine({ data, valueKey, secondaryKey }: { data: Dashboard['salesTrend']; valueKey: 'sales'; secondaryKey?: 'cost' }) {
-  if (!data?.length) return <div className="chart-empty"><PackageSearch size={21} /> Davr boʻyicha trend yoʻq</div>;
-  const nums = data.map(d => Number(d[valueKey]) || 0).concat(secondaryKey ? data.map(d => Number(d[secondaryKey]) || 0) : []);
-  const max = Math.max(...nums, 1);
-  const points = data.map((d, i) => `${data.length === 1 ? 50 : i / (data.length - 1) * 100},${100 - Number(d[valueKey]) / max * 84}`).join(' ');
-  const points2 = secondaryKey ? data.map((d, i) => `${data.length === 1 ? 50 : i / (data.length - 1) * 100},${100 - Number(d[secondaryKey!]) / max * 84}`).join(' ') : '';
-  return <div className="chart-area"><div className="chart-labels"><span>{money(max)}</span><span>{money(max * .5)}</span><span>0</span></div><svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Savdo dinamikasi"><defs><linearGradient id="px-line" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stopColor="#0fb3c7" /><stop offset="1" stopColor="#2fcf5a" /></linearGradient><linearGradient id="px-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#0fb3c7" stopOpacity=".22" /><stop offset="1" stopColor="#2fcf5a" stopOpacity="0" /></linearGradient></defs>{data.length > 1 && <polygon points={`0,100 ${points} 100,100`} fill="url(#px-area)" />}<polyline points={points} fill="none" stroke="url(#px-line)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />{secondaryKey && <polyline points={points2} fill="none" stroke="#1f5fd0" strokeWidth="1.8" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />}</svg><div className="chart-xlabels">{data.map((p, i) => <span key={`${p.label}-${i}`}>{p.label}</span>)}</div></div>;
-}
-function DashboardPage({ filters }: { filters: Filters }) {
-  const params = { dateFrom: filters.dateFrom || undefined, dateTo: filters.dateTo || undefined, branchId: filters.branchId ? Number(filters.branchId) : undefined };
-  const q = useGetDashboard(params);
-  const d = q.data;
-  return <><DataMode mode={d?.mode} /><PageHeading eyebrow="UMUMIY KOʻRINISH" title="Bosh dashboard" subtitle={`Moliyaviy holat • ${filters.dateFrom ? `${date(filters.dateFrom)} — ${date(filters.dateTo)}` : 'barcha davr'}`} actions={<span className="updated-stamp"><Clock3 size={14} /> Yangilandi: {d ? dateTime(d.updatedAt) : '—'}</span>} />
-    <DataState loading={q.isLoading} error={q.isError} empty={!q.isLoading && !q.isError && (!d || d.mode === 'empty')} retry={() => q.refetch()} />
-    {d && d.mode !== 'empty' && <><div className="metric-grid">
-      <Metric label="Sotuv hajmi" value={d.totals.sales} trend={d.completeness === 'complete' ? 'Hisobot toʻliq' : undefined} icon={ArrowUpRight} />
-      <Metric label="Yalpi foyda" value={d.totals.grossProfit} icon={Activity} />
-      <Metric label="Xarajatlar" value={d.totals.expenses} icon={ClipboardList} />
-      <Metric label="Pul qoldigʻi" value={d.totals.cashBalance} icon={Wallet} />
-      <Metric label="Tovar zaxirasi" value={d.totals.inventoryValue} icon={Boxes} />
-      <Metric label="Muddati oʻtgan qarz" value={d.totals.overdueDebt} icon={Clock3} />
-    </div><div className="dash-grid"><Panel title="Savdo va tannarx dinamikasi" subtitle="Davr boʻyicha soʻmda" action={<span className="chart-legend"><i className="legend-green" /> Savdo <i className="legend-amber" /> Tannarx</span>}><ChartLine data={d.salesTrend} valueKey="sales" secondaryKey="cost" /></Panel><Panel title="Eʼtibor talab qiladi" subtitle="Manba maʼlumotlariga asoslangan ogohlantirishlar">{d.alerts.length ? <div className="alert-list">{d.alerts.map(a => <Link href={a.target} className="alert-row" key={a.id} data-testid={`alert-item-${a.id}`}><span className={`alert-icon ${a.severity}`}><AlertCircle size={17} /></span><div><b>{a.title}</b><p>{a.description}</p></div><ArrowRight size={15} /></Link>)}</div> : <div className="inline-empty"><Check size={17} /> Faol ogohlantirishlar yoʻq</div>}</Panel></div>
-      <div className="dash-grid lower"><Panel title="Filiallar taqqoslanishi" subtitle="Savdo, foyda va pul holati"><TableWrap><thead><tr><th>FILIAL</th><th>SAVDO</th><th>YALPI FOYDA</th><th>SOF FOYDA</th><th>PUL QOLDIGʻI</th></tr></thead><tbody>{d.branchComparison.map(b => <tr key={b.id}><td><Link href={`/branches/${b.id}`} className="table-main-link" data-testid={`link-branch-${b.id}`}>{b.name}<ArrowRight size={13} /></Link><small>{date(b.updatedAt)}</small></td><td>{money(b.sales)}</td><td>{money(b.grossProfit)}</td><td className={b.netProfit == null ? 'missing' : 'positive'}>{money(b.netProfit)}</td><td>{money(b.cashBalance)}</td></tr>)}</tbody></TableWrap>{!d.branchComparison.length && <div className="inline-empty">Filial taqqoslash maʼlumoti yoʻq</div>}</Panel><Panel title="Xarajatlar tarkibi" subtitle="Kategoriya boʻyicha taqsimot">{d.expenseBreakdown.length ? <div className="breakdown-list">{d.expenseBreakdown.map((x, i) => <div className="breakdown-row" key={`${x.label}-${i}`}><div><span>{x.label}</span><b>{money(x.value)}</b></div><div className="bar-track"><i style={{ width: `${Math.max(3, Number(x.value) / Math.max(1, ...d.expenseBreakdown.map(z => Number(z.value))) * 100)}%` }} /></div></div>)}</div> : <div className="inline-empty">Tarkib maʼlumoti mavjud emas</div>}</Panel></div>
-      <div className="dash-grid lower"><Panel title="Eng koʻp sotilgan mahsulotlar" subtitle="Davr ichida sotilgan miqdor"><TableWrap><thead><tr><th>MAHSULOT</th><th>MIQDOR</th><th>SAVDO</th><th>YALPI FOYDA</th></tr></thead><tbody>{d.topProducts.map(p => <tr key={p.productId}><td><Link className="table-main-link" href={`/stock/product/${p.productId}`} data-testid={`link-product-${p.productId}`}>{p.name}<ArrowRight size={13} /></Link></td><td>{p.quantity}</td><td>{money(p.sales)}</td><td className={p.grossProfit == null ? 'missing' : 'positive'}>{money(p.grossProfit)}</td></tr>)}</tbody></TableWrap>{!d.topProducts.length && <div className="inline-empty">Mahsulot maʼlumoti yoʻq</div>}</Panel><Panel title="Pul oqimi" subtitle="Tushum va chiqimlar"><div className="flow-list">{d.moneyFlow.map((p,i) => <div className="flow-row" key={`${p.label}-${i}`}><span>{p.label}</span><span className="positive"><ArrowDownLeft size={14} /> {money(p.inflow)}</span><span className="negative"><ArrowUpRight size={14} /> {money(p.outflow)}</span></div>)}</div>{!d.moneyFlow.length && <div className="inline-empty">Pul oqimi maʼlumoti yoʻq</div>}</Panel></div>
-      <div className="completeness-note" data-testid="status-completeness"><ShieldCheck size={15} /><span>{d.completeness === 'complete' ? 'Hisobot toʻliq' : d.completeness === 'preliminary' ? 'Dastlabki natija — ayrim manbalar hali toʻliq emas' : 'Natija chiqarish uchun maʼlumot yetarli emas'}</span><span className="source-note">Manba: {d.mode === 'demo' ? 'sinov maʼlumotlari' : 'jonli maʼlumotlar'}</span></div></>}
-  </>;
-}
 
 function BranchesPage({ filters }: { filters: Filters }) {
   const qc = useQueryClient();
