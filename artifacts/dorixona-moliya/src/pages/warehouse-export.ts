@@ -22,7 +22,6 @@ const HEADERS = [
   '#',
   'Mahsulot',
   'Ishlab chiqaruvchi',
-  'Shtrix-kod',
   'Ombor',
   'Qoldiq',
   'Birlik',
@@ -35,8 +34,7 @@ const HEADERS = [
   'Yaroqlilik holati',
 ] as const;
 
-/** Wide enough so product / manufacturer / money totals stay fully readable. */
-const COL_WIDTHS = [5, 44, 36, 16, 12, 10, 9, 18, 18, 24, 24, 24, 16, 26];
+const COL_WIDTHS = [5, 44, 36, 12, 10, 9, 18, 18, 24, 24, 24, 16, 26];
 
 const thin: Partial<ExcelJS.Borders> = {
   top: { style: 'thin', color: { argb: 'FFB8C9D4' } },
@@ -57,7 +55,6 @@ function sheetName(title: string) {
 function wrapLines(text: string, colWidth: number) {
   const s = String(text || '');
   if (!s) return 1;
-  // Excel width ≈ characters; keep a bit of slack for Cyrillic.
   const perLine = Math.max(12, Math.floor(colWidth * 0.95));
   let lines = 0;
   for (const part of s.split(/\r?\n/)) {
@@ -82,27 +79,20 @@ function applyDataCell(cell: ExcelJS.Cell, opts?: { align?: 'left' | 'right' | '
 
 function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryItem[]) {
   COL_WIDTHS.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-  ws.views = [{ state: 'frozen', ySplit: 3 }];
+  ws.views = [{ state: 'frozen', ySplit: 2 }];
   ws.properties.defaultRowHeight = 20;
 
+  // Compact meta (no teal banner).
   ws.mergeCells(1, 1, 1, HEADERS.length);
-  const title = ws.getCell(1, 1);
-  title.value = `PHARMEX · Ombor hisoboti — ${sectionTitle}`;
-  title.font = { name: 'Calibri', size: 15, bold: true, color: { argb: 'FFFFFFFF' } };
-  title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0FB3C7' } };
-  title.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-  ws.getRow(1).height = 28;
-
-  ws.mergeCells(2, 1, 2, HEADERS.length);
-  const meta = ws.getCell(2, 1);
+  const meta = ws.getCell(1, 1);
   const stamp = new Date().toLocaleString('uz-UZ');
-  meta.value = `Sana: ${stamp} · Mahsulotlar: ${rows.length} ta · Pul birligi: soʻm`;
-  meta.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF5A6B7A' } };
+  meta.value = `${sectionTitle} · ${stamp} · ${rows.length} ta mahsulot · soʻm`;
+  meta.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF13306E' } };
   meta.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F7FA' } };
   meta.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-  ws.getRow(2).height = 20;
+  ws.getRow(1).height = 20;
 
-  const headerRow = ws.getRow(3);
+  const headerRow = ws.getRow(2);
   headerRow.height = 26;
   HEADERS.forEach((h, i) => {
     const cell = headerRow.getCell(i + 1);
@@ -139,7 +129,6 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
       idx + 1,
       product,
       maker,
-      x.barcode || '—',
       x.branchName,
       qty(x.quantity),
       unitLabel(x.unit),
@@ -154,14 +143,14 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
 
     const productLines = wrapLines(product, COL_WIDTHS[1]);
     const makerLines = wrapLines(maker, COL_WIDTHS[2]);
-    const statusLines = wrapLines(yaroqlilik, COL_WIDTHS[13]);
+    const statusLines = wrapLines(yaroqlilik, COL_WIDTHS[12]);
     row.height = Math.max(22, Math.min(72, Math.max(productLines, makerLines, statusLines) * 15));
 
     row.eachCell((cell, col) => {
-      const wrap = col === 2 || col === 3 || col === 14;
-      const align = col === 1 || col === 6 || col === 7 ? 'center' : col >= 8 && col <= 12 ? 'right' : 'left';
+      const wrap = col === 2 || col === 3 || col === 13;
+      const align = col === 1 || col === 5 || col === 6 ? 'center' : col >= 7 && col <= 11 ? 'right' : 'left';
       applyDataCell(cell, { align, fill, wrap });
-      if (col === 12) {
+      if (col === 11) {
         cell.font = {
           name: 'Calibri',
           size: 11,
@@ -169,7 +158,7 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
           color: { argb: profit < 0 ? 'FFC62F3A' : 'FF128A43' },
         };
       }
-      if (days != null && days < 0 && col === 14) {
+      if (days != null && days < 0 && col === 13) {
         cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFC62F3A' } };
       }
     });
@@ -177,7 +166,6 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
 
   const totalRowNum = ws.addRow([
     `JAMI · ${sectionTitle}`,
-    '',
     '',
     '',
     '',
@@ -191,7 +179,7 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
     '',
     '',
   ]).number;
-  ws.mergeCells(totalRowNum, 1, totalRowNum, 5);
+  ws.mergeCells(totalRowNum, 1, totalRowNum, 4);
   const totalRow = ws.getRow(totalRowNum);
   totalRow.getCell(1).value = `JAMI · ${sectionTitle}`;
   totalRow.height = 32;
@@ -206,13 +194,13 @@ function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryI
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9F5F8' } };
     cell.font = {
       name: 'Calibri',
-      size: col === 1 || (col >= 10 && col <= 12) ? 12 : 11,
+      size: col === 1 || (col >= 9 && col <= 11) ? 12 : 11,
       bold: true,
       color: { argb: 'FF0A5F6B' },
     };
     cell.alignment = {
       vertical: 'middle',
-      horizontal: col >= 10 && col <= 12 ? 'right' : col === 7 ? 'center' : 'left',
+      horizontal: col >= 9 && col <= 11 ? 'right' : col === 6 ? 'center' : 'left',
       wrapText: false,
       shrinkToFit: false,
     };
@@ -269,7 +257,6 @@ export async function exportWarehouseExcel(
 
   const extra = (options?.sheets || []).filter(s => s.rows.length > 0);
   if (extra.length) {
-    // First sheet = full "Barchasi", then each section as its own list.
     const main = wb.addWorksheet(sheetName(sectionTitle));
     fillSheet(main, sectionTitle, rows);
     const used = new Set([sheetName(sectionTitle).toLowerCase()]);
