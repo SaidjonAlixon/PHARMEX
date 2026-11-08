@@ -1,9 +1,9 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import {
-  Ban, Banknote, CreditCard, HandCoins, Percent, Plus, Receipt as ReceiptIcon, RotateCcw, ShoppingCart, Trash2, TrendingUp, Undo2,
+  Ban, Banknote, CreditCard, Download, HandCoins, Percent, Plus, Receipt as ReceiptIcon, RotateCcw, ShoppingCart, Trash2, TrendingUp, Undo2,
 } from 'lucide-react';
 import {
-  getGetReceiptQueryKey, getGetReceiptSummaryQueryKey, useCreateReceipt, useGetReceipt, useGetReceiptSummary, useListReceipts, useListSales,
+  getGetReceiptQueryKey, getGetReceiptSummaryQueryKey, getReceipt, useCreateReceipt, useGetReceipt, useGetReceiptSummary, useListReceipts, useListSales,
   useReturnReceipt, useVoidReceipt,
 } from '@workspace/api-client-react';
 import type { PaymentMethod, Receipt, ReceiptDetail } from '@workspace/api-client-react';
@@ -16,6 +16,7 @@ import { paymentLabels } from '@/lib/labels';
 import { paymentMenu } from '@/lib/menu-options';
 import { SelectMenu } from '@/components/select-menu';
 import { useAccess } from '@/lib/access';
+import { downloadReceiptPdf } from '@/pages/receipt-pdf';
 
 type Tab = 'sales' | 'returns' | 'voided' | 'lines';
 const LIST_LIMIT = 500;
@@ -29,6 +30,11 @@ function ReceiptStatus({ receipt }: { receipt: Receipt }) {
   if (receipt.kind === 'return') return <StatusBadge tone="warn">Qaytarish</StatusBadge>;
   if (num(receipt.returnedAmount) > 0) return <StatusBadge tone="warn">Qisman qaytarilgan</StatusBadge>;
   return <StatusBadge tone="good">Yakunlangan</StatusBadge>;
+}
+
+async function saveReceiptPdf(receiptId: number) {
+  const detail = await getReceipt({ receiptId });
+  await downloadReceiptPdf(detail);
 }
 
 export function SalesPage({ filters }: { filters: Filters }) {
@@ -99,7 +105,7 @@ export function SalesPage({ filters }: { filters: Filters }) {
         {!!linesQ.data?.length && <TableWrap><thead><tr><th>SANA / CHEK</th><th>MAHSULOT</th><th>FILIAL / KASSIR</th><th className="num">MIQDOR</th><th className="num">NARX</th><th className="num">CHEGIRMA</th><th className="num">SUMMA</th><th className="num">TANNARX</th><th className="num">FOYDA</th><th>TOʻLOV</th></tr></thead><tbody>{linesQ.data.map(s => <tr key={s.id}><td>{dateTime(s.date)}<small>{s.receiptNo}</small></td><td className="cell-strong">{s.productName}</td><td>{s.branchName}<small>{s.cashier || '—'}</small></td><td className={`num ${s.quantity < 0 ? 'negative' : ''}`}>{qty(s.quantity)}</td><td className="num">{money(s.unitPrice)}</td><td className="num">{money(s.discount)}</td><td className="num">{money(s.revenue)}</td><td className="num">{money(s.costPrice)}</td><td className={`num ${s.grossProfit == null ? 'missing' : 'positive'}`}>{money(s.grossProfit)}</td><td>{paymentLabels[s.paymentType] ?? s.paymentType}</td></tr>)}</tbody></TableWrap>}
       </> : <>
         <DataState loading={receiptsQ.isLoading} error={receiptsQ.isError} empty={!receiptsQ.isLoading && !receiptsQ.isError && !rows.length} retry={() => receiptsQ.refetch()} emptyText={tab === 'sales' ? 'Bu davrda chek yoʻq. “Yangi chek” tugmasi orqali sotuvni rasmiylashtiring.' : undefined} />
-        {!!rows.length && <TableWrap><thead><tr><th>CHEK / SANA-VAQT</th><th>FILIAL / KASSIR</th><th>MIJOZ</th><th className="num">POZ.</th><th className="num">SUMMA</th><th className="num">CHEGIRMA</th><th className="num">QQS</th><th className="num">JAMI</th><th className="num">TANNARX</th><th className="num">YALPI FOYDA</th><th>TOʻLOV</th><th>HOLAT</th></tr></thead>
+        {!!rows.length && <TableWrap><thead><tr><th>CHEK / SANA-VAQT</th><th>FILIAL / KASSIR</th><th>MIJOZ</th><th className="num">POZ.</th><th className="num">SUMMA</th><th className="num">CHEGIRMA</th><th className="num">QQS</th><th className="num">JAMI</th><th className="num">TANNARX</th><th className="num">YALPI FOYDA</th><th>TOʻLOV</th><th>HOLAT</th><th /></tr></thead>
           <tbody>{rows.map(r => <tr key={r.id} className="clickable" onClick={() => setSelected(r.id)} data-testid={`row-receipt-${r.id}`}>
             <td><span className="table-main-link">{r.receiptNo}</span><small>{dateTime(r.soldAt)}</small></td>
             <td>{r.branchName}<small>{r.cashier || '—'}</small></td>
@@ -113,6 +119,17 @@ export function SalesPage({ filters }: { filters: Filters }) {
             <td className={`num ${r.grossProfit == null ? 'missing' : r.kind === 'return' ? 'negative' : 'positive'}`}>{money(r.grossProfit)}</td>
             <td><PaymentChips receipt={r} /></td>
             <td><ReceiptStatus receipt={r} /></td>
+            <td onClick={e => e.stopPropagation()}>
+              <button
+                type="button"
+                className="button ghost small"
+                title="PDF yuklab olish"
+                data-testid={`button-receipt-pdf-${r.id}`}
+                onClick={() => { void saveReceiptPdf(r.id).catch(() => {}); }}
+              >
+                <Download size={14} />
+              </button>
+            </td>
           </tr>)}</tbody></TableWrap>}
       </>}
     </Panel>
@@ -125,15 +142,28 @@ export function ReceiptDrawer({ id, onClose, onOpen }: { id: number; onClose: ()
   const params = { receiptId: id };
   const q = useGetReceipt(params, { query: { queryKey: getGetReceiptQueryKey(params) } });
   const [action, setAction] = useState<'void' | 'return' | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const d = q.data;
   const r = d?.receipt;
   const returnable = !!d && d.lines.some(l => l.quantity - l.returnedQuantity > 0);
   const { canEdit } = useAccess();
   const canAct = canEdit && r?.kind === 'sale' && r.status === 'completed';
+
+  const downloadPdf = () => {
+    if (!d) return;
+    setPdfBusy(true);
+    void downloadReceiptPdf(d).catch(() => {}).finally(() => setPdfBusy(false));
+  };
+
   return <Drawer eyebrow={r?.kind === 'return' ? 'QAYTARISH HUJJATI' : 'SAVDO CHEKI'} title={r ? `Chek ${r.receiptNo}` : 'Chek'} subtitle={r && <><ReceiptStatus receipt={r} /> <span>{dateTime(r.soldAt)}</span></>} onClose={onClose}
-    actions={canAct && <>
-      <button className="button secondary" disabled={!returnable} onClick={() => setAction('return')} data-testid="button-return-receipt"><Undo2 size={15} /> Qaytarish</button>
-      <button className="button danger" disabled={num(r!.returnedAmount) > 0} title={num(r!.returnedAmount) > 0 ? 'Qaytarish rasmiylashtirilgan chekni bekor qilib boʻlmaydi' : undefined} onClick={() => setAction('void')} data-testid="button-void-receipt"><Ban size={15} /> Chekni bekor qilish</button>
+    actions={<>
+      <button type="button" className="button secondary" disabled={!d || pdfBusy} onClick={downloadPdf} data-testid="button-receipt-pdf">
+        <Download size={15} /> {pdfBusy ? 'PDF…' : 'PDF yuklab olish'}
+      </button>
+      {canAct && <>
+        <button className="button secondary" disabled={!returnable} onClick={() => setAction('return')} data-testid="button-return-receipt"><Undo2 size={15} /> Qaytarish</button>
+        <button className="button danger" disabled={num(r!.returnedAmount) > 0} title={num(r!.returnedAmount) > 0 ? 'Qaytarish rasmiylashtirilgan chekni bekor qilib boʻlmaydi' : undefined} onClick={() => setAction('void')} data-testid="button-void-receipt"><Ban size={15} /> Chekni bekor qilish</button>
+      </>}
     </>}>
     <DataState loading={q.isLoading} error={q.isError} empty={false} retry={() => q.refetch()} />
     {d && r && <>
