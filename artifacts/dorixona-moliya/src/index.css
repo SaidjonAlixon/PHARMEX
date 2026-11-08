@@ -911,8 +911,11 @@ body { background: var(--wash); }
 .kpi > b.money-figure, .metric-value.money-figure { font-variant-numeric: tabular-nums; }
 .kpi, .metric-card { min-width: 0; }
 
+.stack-panels { display: grid; gap: 14px; }
+
 /* Pul operatsiyalari — full width, longer KPI cards, one-line amounts */
-.content-area:has(.page-money) {
+.content-area:has(.page-money),
+.content-area:has(.page-expenses) {
   width: 100%;
   max-width: none;
   padding-left: clamp(14px, 1.4vw, 22px);

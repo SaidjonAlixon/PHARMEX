@@ -113,6 +113,7 @@ export async function exportDashboardExcel(opts: {
       ['Sotuv hajmi', d.totals.sales],
       ['Yalpi foyda', d.totals.grossProfit],
       ['Xarajatlar', d.totals.expenses],
+      ['Sof foyda', d.totals.netProfit],
       ['Pul qoldigʻi', d.totals.cashBalance],
       ['Tovar zaxirasi', d.totals.inventoryValue],
       ['Muddati oʻtgan qarz', d.totals.overdueDebt],

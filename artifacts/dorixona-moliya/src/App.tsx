@@ -31,6 +31,7 @@ import { StockPage } from '@/pages/stock';
 import { WarehousePage } from '@/pages/warehouse';
 import { WarehouseRankingPage } from '@/pages/warehouse-ranking';
 import { MoneyPage } from '@/pages/money';
+import { ExpensesPage } from '@/pages/expenses';
 import { DebtsPage } from '@/pages/debts';
 import { CatalogPage } from '@/pages/catalog';
 import { FomLive, SettingsPage } from '@/pages/settings';
@@ -83,6 +84,7 @@ const navItems = [
   { href: '/warehouse', label: 'Ombor', icon: Warehouse },
   { href: '/stock', label: 'Tovar harakati', icon: ArrowLeftRight },
   { href: '/finance', label: 'Pul operatsiyalari', icon: Wallet },
+  { href: '/expenses', label: 'Xarajatlar', icon: ClipboardList },
   { href: '/debts', label: 'Qarzlar', icon: HandCoins },
   { href: '/catalog', label: 'Maʼlumotnomalar', icon: BookOpen },
   { href: '/profit', label: 'Foyda va zarar', icon: Activity },
@@ -351,6 +353,7 @@ function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: 
     <Route path="/trade"><Redirect to="/sales" /></Route>
     <Route path="/trade/product/:id">{params => <Redirect to={`/stock/product/${params.id}`} />}</Route>
     <Route path="/finance"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><MoneyPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
+    <Route path="/expenses"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><ExpensesPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/debts"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><DebtsPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/catalog"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><CatalogPage /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/profit"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><ProfitPage filters={filters} /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>

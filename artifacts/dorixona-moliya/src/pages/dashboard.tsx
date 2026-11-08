@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Activity, AlertCircle, ArrowDownLeft, ArrowRight, ArrowUpRight, Boxes, CalendarClock,
-  Check, ClipboardList, Clock3, Download, PackageSearch, ShieldCheck, Wallet,
+  Check, ClipboardList, Clock3, Download, PackageSearch, ShieldCheck, TrendingUp, Wallet,
 } from 'lucide-react';
 import {
   useGetDashboard, useListBranches, useListInventory,
@@ -192,6 +192,7 @@ export function DashboardPage({ filters }: { filters: Filters }) {
             <Metric label="Sotuv hajmi" value={d.totals.sales} trend={d.completeness === 'complete' ? 'Hisobot toʻliq' : undefined} icon={ArrowUpRight} />
             <Metric label="Yalpi foyda" value={d.totals.grossProfit} icon={Activity} />
             <Metric label="Xarajatlar" value={d.totals.expenses} icon={ClipboardList} />
+            <Metric label="Sof foyda" value={d.totals.netProfit} trend="Yalpi − xarajatlar" icon={TrendingUp} />
             <Metric label="Pul qoldigʻi" value={d.totals.cashBalance} icon={Wallet} />
             <Metric label="Tovar zaxirasi" value={d.totals.inventoryValue} icon={Boxes} />
             <Metric label="Muddati oʻtgan qarz" value={d.totals.overdueDebt} icon={Clock3} />

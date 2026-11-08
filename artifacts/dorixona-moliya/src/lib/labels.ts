@@ -76,6 +76,22 @@ export const purchaseStatusLabels: Record<string, { label: string; tone: 'good' 
   overdue: { label: 'Muddati oʻtgan', tone: 'bad' },
 };
 
-export const expenseCategories = ['Ish haqi', 'Ijara', 'Kommunal xizmatlar', 'Soliq va yigʻimlar', 'Bank xizmati', 'Transport', 'Reklama', 'Xoʻjalik xarajati', 'Boshqa xarajat'];
+export const expenseCategories = [
+  'Xodimlar oyligi',
+  'Joy arenda toʻlovi',
+  'Kommunal xizmatlar',
+  'Soliq va yigʻimlar',
+  'Bank xizmati',
+  'Transport',
+  'Reklama',
+  'Xoʻjalik xarajati',
+  'Taʼmirlash',
+  'Internet / aloqa',
+  'Xavfsizlik',
+  'Tovar hisobdan chiqarish',
+  'Ish haqi',
+  'Ijara',
+  'Boshqa xarajat',
+];
 export const writeOffReasons = ['Yaroqlilik muddati oʻtgan', 'Shikastlangan / singan', 'Sifatsiz tovar', 'Yoʻqolgan', 'Ichki ehtiyoj uchun', 'Boshqa sabab'];
 export const units = ['dona', 'qadoq', 'blister', 'flakon', 'ampula', 'tyubik', 'shisha', 'kg', 'litr'];

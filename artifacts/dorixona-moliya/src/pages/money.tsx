@@ -17,6 +17,7 @@ import { expenseCategories, moneyTypeLabels } from '@/lib/labels';
 import { moneyTypeMenu } from '@/lib/menu-options';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
 import { useAccess } from '@/lib/access';
+import { Link } from 'wouter';
 import { exportCashRegisterExcel, exportMoneyTransactionsExcel } from '@/pages/money-export';
 import { downloadMoneyTransactionPdf, downloadMoneyTransactionsPdf, relatedOf } from '@/pages/money-pdf';
 import { ReceiptDrawer } from '@/pages/sales';
@@ -285,7 +286,7 @@ export function MoneyPage({ filters }: { filters: Filters }) {
     </>}
 
     {tab === 'expenses' && <div className="split-grid wide-left">
-      <Panel title="Xarajatlar" subtitle="Ish haqi, ijara, kommunal va boshqa xarajatlar" action={canEdit && <button className="button primary small" onClick={() => setOperation({ type: 'expense' })}><Plus size={14} /> Xarajat</button>}>
+      <Panel title="Xarajatlar" subtitle="Ish haqi, ijara, kommunal va boshqa xarajatlar · toʻliq boʻlim: Xarajatlar" action={<div className="toolbar">{canEdit && <button className="button primary small" onClick={() => setOperation({ type: 'expense' })}><Plus size={14} /> Xarajat</button>}<Link className="button secondary small" href="/expenses">Xarajatlar boʻlimi</Link></div>}>
         <DataState loading={expensesQ.isLoading} error={expensesQ.isError} empty={!expensesQ.isLoading && !expensesQ.isError && !(expensesQ.data || []).length} retry={() => expensesQ.refetch()} />
         {!!expensesQ.data?.length && <TableWrap><thead><tr><th>SANA</th><th>KATEGORIYA</th><th>FILIAL</th><th>IZOH</th><th className="num">SUMMA</th></tr></thead><tbody>{expensesQ.data.map(x => <tr key={x.id}><td>{date(x.date)}<small>{sourceText(x.source)}</small></td><td className="cell-strong">{x.category}</td><td>{x.branchName}</td><td>{x.description || '—'}</td><td className="num negative">{money(x.amount)}</td></tr>)}</tbody></TableWrap>}
       </Panel>
