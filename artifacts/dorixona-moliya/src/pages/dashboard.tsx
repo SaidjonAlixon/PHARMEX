@@ -66,6 +66,15 @@ function ChartLine({ data }: { data: Dashboard['salesTrend'] }) {
   }));
   const nums = series.flatMap(s => [s.sales, s.cost, s.profit]);
   const max = Math.max(...nums, 1);
+  const totals = series.reduce(
+    (acc, s) => {
+      acc.sales += s.sales;
+      acc.cost += s.cost;
+      acc.profit += s.profit;
+      return acc;
+    },
+    { sales: 0, cost: 0, profit: 0 },
+  );
   const n = data.length;
   const xAt = (i: number) => (n === 1 ? 50 : (i / (n - 1)) * 100);
   const yAt = (v: number) => 100 - (Math.max(0, v) / max) * 86;
@@ -121,11 +130,27 @@ function ChartLine({ data }: { data: Dashboard['salesTrend'] }) {
           );
         })}
       </div>
-      {sameMonth && vertical && parsed[0] && (
-        <div className="chart-month-hint">
-          {CHART_MONTHS[parsed[0]!.m - 1]} {parsed[0]!.y} · kunlar
+      <div className="chart-totals">
+        {sameMonth && vertical && parsed[0] && (
+          <div className="chart-month-hint">
+            {CHART_MONTHS[parsed[0]!.m - 1]} {parsed[0]!.y} · kunlar
+          </div>
+        )}
+        <div className="chart-total-grid">
+          <div className="chart-total is-sales">
+            <span>Savdo jami</span>
+            <b title={money(totals.sales)}>{money(totals.sales)}</b>
+          </div>
+          <div className="chart-total is-cost">
+            <span>Tannarx jami</span>
+            <b title={money(totals.cost)}>{money(totals.cost)}</b>
+          </div>
+          <div className="chart-total is-profit">
+            <span>Foyda jami</span>
+            <b title={money(totals.profit)}>{money(totals.profit)}</b>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -381,12 +381,12 @@ a { color: inherit; text-decoration: none; }
 .legend-sales { background: linear-gradient(135deg, #0fb3c7, #2fcf5a); }
 .legend-cost { background: #1f5fd0; }
 .legend-profit { background: #c45a12; }
-.chart-area { position: relative; padding: 8px 8px 28px 52px; height: 248px; }
-.chart-area.is-vertical-ticks { height: 292px; padding-bottom: 62px; }
+.chart-area { position: relative; padding: 8px 8px 12px 52px; height: auto; min-height: 248px; }
+.chart-area.is-vertical-ticks { min-height: 300px; }
 .chart-area svg { position: absolute; left: 52px; right: 8px; top: 12px; width: calc(100% - 60px); height: 177px; overflow: visible; }
 .chart-area:before { content: ''; position: absolute; left: 52px; top: 12px; right: 8px; height: 177px; background: repeating-linear-gradient(to bottom, transparent 0, transparent 43px, #edf2ee 44px, transparent 45px); pointer-events: none; }
 .chart-labels { display: flex; height: 177px; flex-direction: column; justify-content: space-between; color: #98a49c; font: 600 10px/1.1 var(--app-font-mono); letter-spacing: -.02em; white-space: nowrap; }
-.chart-xlabels { display: flex; justify-content: space-between; align-items: flex-start; color: #8d9a92; font-size: 10px; padding-top: 8px; gap: 0; min-height: 22px; }
+.chart-xlabels { display: flex; justify-content: space-between; align-items: flex-start; color: #8d9a92; font-size: 10px; padding-top: 8px; gap: 0; min-height: 22px; margin-bottom: 4px; }
 .chart-xlabels > span { flex: 1 1 0; min-width: 0; text-align: center; color: inherit; }
 .chart-xlabels > span.is-off { visibility: hidden; }
 .chart-xlabels > span em { font-style: normal; display: inline-block; white-space: nowrap; }
@@ -403,20 +403,54 @@ a { color: inherit; text-decoration: none; }
   height: 44px;
 }
 .chart-area.is-dense .chart-xlabels.vertical > span em { font-size: 9px; font-weight: 600; }
-.chart-area.is-dense.is-vertical-ticks { height: 300px; padding-bottom: 68px; }
+.chart-area.is-dense.is-vertical-ticks { min-height: 310px; }
 .chart-area.is-dense .chart-xlabels.vertical { min-height: 56px; }
 .chart-area.is-dense .chart-xlabels.vertical > span { height: 54px; }
+.chart-totals { margin: 6px 0 0; padding-left: 0; }
 .chart-month-hint {
-  position: absolute;
-  left: 52px;
-  right: 8px;
-  bottom: 8px;
   text-align: center;
   font-size: 10.5px;
   font-weight: 600;
   color: #7a8fa3;
   letter-spacing: .04em;
   text-transform: uppercase;
+  margin: 0 0 8px;
+}
+.chart-total-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-left: -44px;
+}
+.chart-total {
+  --c: #0fb3c7;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--c) 28%, #e2e8f0);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--c) 12%, #fff), #fff 70%);
+  min-width: 0;
+}
+.chart-total.is-sales { --c: #0fb3c7; }
+.chart-total.is-cost { --c: #1f5fd0; }
+.chart-total.is-profit { --c: #c45a12; }
+.chart-total > span {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--c) 75%, #64748b);
+}
+.chart-total > b {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #13306e;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chart-empty { height: 195px; display: grid; place-content: center; justify-items: center; gap: 8px; color: #99a69e; font-size: 11px; }
 .alert-list { display: grid; }
@@ -1331,6 +1365,13 @@ td.muted { font-size: 12px; }
 .chart-labels, .chart-xlabels { font-size: 10.5px; color: var(--t3); }
 .chart-xlabels.vertical > span em { color: var(--t2); }
 .chart-month-hint { color: var(--t3); }
+.chart-total { background: linear-gradient(160deg, color-mix(in srgb, var(--c) 14%, var(--surface)), var(--surface) 72%); border-color: color-mix(in srgb, var(--c) 30%, var(--line)); }
+.chart-total > b { color: var(--px-navy); font-size: 14px; }
+.dark .chart-total { background: linear-gradient(160deg, color-mix(in srgb, var(--c) 18%, var(--surface-2)), var(--surface-2) 75%); }
+.dark .chart-total > b { color: var(--ink); }
+@media (max-width: 900px) {
+  .chart-total-grid { grid-template-columns: 1fr; margin-left: 0; }
+}
 .chart-area:before { background: repeating-linear-gradient(to bottom, transparent 0, transparent 43px, #e8eef7 44px, transparent 45px); }
 .breakdown-row > div:first-child { font-size: 12.5px; color: var(--t2); }
 .breakdown-row b { font-size: 12.5px; color: var(--px-navy); }
