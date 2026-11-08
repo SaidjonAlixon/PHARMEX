@@ -35,7 +35,14 @@ router.get("/me", async (_req, res): Promise<void> => {
     res.status(404).json({ error: "Foydalanuvchi topilmadi." });
     return;
   }
-  res.json(GetCurrentUserResponse.parse(user));
+  const [owner] = await db
+    .select({ id: appUsersTable.id })
+    .from(appUsersTable)
+    .where(and(eq(appUsersTable.role, "admin"), eq(appUsersTable.status, "active")))
+    .orderBy(appUsersTable.id)
+    .limit(1);
+  const parsed = GetCurrentUserResponse.parse(user);
+  res.json({ ...parsed, isOwner: owner?.id === user.id });
 });
 
 router.get("/users", requireRole("admin"), async (_req, res): Promise<void> => {

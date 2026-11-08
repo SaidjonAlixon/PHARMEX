@@ -1926,10 +1926,16 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 .acc-cell b { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ink); }
 .acc-cell small { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--t3); }
 .acc-you { font-style: normal; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; border-radius: 6px; color: #fff; background: var(--px-grad); }
+.acc-owner { font-style: normal; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; border-radius: 6px; color: #fff; background: linear-gradient(135deg, #6d4fd8, #a68bff); }
 .acc-ok { color: #1fb84f; }
 .acc-role { font-size: 13px; font-weight: 600; color: var(--t2); }
 .acc-role-menu { min-width: 170px; }
-.acc-actions { text-align: right; white-space: nowrap; }
+.acc-actions { text-align: right; white-space: nowrap; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
+.acc-form-role { display: grid; gap: 6px; }
+.acc-form-role > span { font-size: 12.5px; font-weight: 700; color: var(--t2); }
+.acc-creds { display: grid; gap: 14px; }
+.acc-cred-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.acc-cred-row input { font-family: var(--app-font-mono); font-weight: 700; letter-spacing: .02em; }
 
 .dark .acc-verified { color: #7ee2a0; background: rgba(31,184,79,.15); }
 .dark .acc-unverified { color: #fcd38a; background: rgba(240,160,32,.15); }
