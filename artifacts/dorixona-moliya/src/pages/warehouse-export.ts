@@ -13,6 +13,11 @@ export function profitOf(i: InventoryItem) {
   return round2((num(i.retailPrice) - num(i.costPrice)) * q);
 }
 
+export type WarehouseExcelSheet = {
+  title: string;
+  rows: InventoryItem[];
+};
+
 const HEADERS = [
   '#',
   'Mahsulot',
@@ -30,7 +35,8 @@ const HEADERS = [
   'Yaroqlilik holati',
 ] as const;
 
-const COL_WIDTHS = [5, 38, 20, 14, 12, 10, 9, 16, 16, 18, 18, 18, 16, 24];
+/** Wide enough so product / manufacturer read in full without cramped overlap. */
+const COL_WIDTHS = [5, 44, 36, 16, 12, 10, 9, 16, 16, 18, 18, 18, 16, 26];
 
 const thin: Partial<ExcelJS.Borders> = {
   top: { style: 'thin', color: { argb: 'FFB8C9D4' } },
@@ -43,37 +49,50 @@ function som(value: number) {
   return money(value);
 }
 
-function applyDataCell(cell: ExcelJS.Cell, opts?: { align?: 'left' | 'right' | 'center'; bold?: boolean; fill?: string }) {
+function sheetName(title: string) {
+  const clean = title.replace(/[\\/?*[\]:]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (clean || 'List').slice(0, 31);
+}
+
+function wrapLines(text: string, colWidth: number) {
+  const s = String(text || '');
+  if (!s) return 1;
+  // Excel width ≈ characters; keep a bit of slack for Cyrillic.
+  const perLine = Math.max(12, Math.floor(colWidth * 0.95));
+  let lines = 0;
+  for (const part of s.split(/\r?\n/)) {
+    lines += Math.max(1, Math.ceil(part.length / perLine));
+  }
+  return lines;
+}
+
+function applyDataCell(cell: ExcelJS.Cell, opts?: { align?: 'left' | 'right' | 'center'; fill?: string; wrap?: boolean }) {
   cell.border = thin;
-  cell.alignment = { vertical: 'middle', horizontal: opts?.align || 'left', wrapText: true };
-  cell.font = { name: 'Calibri', size: 11, bold: !!opts?.bold, color: { argb: 'FF13306E' } };
+  cell.alignment = {
+    vertical: 'middle',
+    horizontal: opts?.align || 'left',
+    wrapText: opts?.wrap ?? false,
+    shrinkToFit: false,
+  };
+  cell.font = { name: 'Calibri', size: 11, color: { argb: 'FF13306E' } };
   if (opts?.fill) {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fill } };
   }
 }
 
-export async function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: string) {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'PHARMEX';
-  wb.created = new Date();
-
-  const ws = wb.addWorksheet('Ombor', {
-    views: [{ state: 'frozen', ySplit: 3 }],
-    properties: { defaultRowHeight: 18 },
-  });
-
+function fillSheet(ws: ExcelJS.Worksheet, sectionTitle: string, rows: InventoryItem[]) {
   COL_WIDTHS.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  ws.views = [{ state: 'frozen', ySplit: 3 }];
+  ws.properties.defaultRowHeight = 20;
 
-  // Title
   ws.mergeCells(1, 1, 1, HEADERS.length);
   const title = ws.getCell(1, 1);
   title.value = `PHARMEX · Ombor hisoboti — ${sectionTitle}`;
-  title.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+  title.font = { name: 'Calibri', size: 15, bold: true, color: { argb: 'FFFFFFFF' } };
   title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0FB3C7' } };
   title.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
   ws.getRow(1).height = 28;
 
-  // Meta
   ws.mergeCells(2, 1, 2, HEADERS.length);
   const meta = ws.getCell(2, 1);
   const stamp = new Date().toLocaleString('uz-UZ');
@@ -83,9 +102,8 @@ export async function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: 
   meta.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
   ws.getRow(2).height = 20;
 
-  // Header row
   const headerRow = ws.getRow(3);
-  headerRow.height = 24;
+  headerRow.height = 26;
   HEADERS.forEach((h, i) => {
     const cell = headerRow.getCell(i + 1);
     cell.value = h;
@@ -94,6 +112,12 @@ export async function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: 
     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     cell.border = thin;
   });
+
+  if (!rows.length) {
+    const empty = ws.addRow(['', 'Bu boʻlimda mahsulot yoʻq.']);
+    empty.getCell(2).font = { name: 'Calibri', size: 11, italic: true, color: { argb: 'FF6B7C8A' } };
+    return;
+  }
 
   const costTotal = round2(rows.reduce((s, x) => s + num(x.value), 0));
   const retailTotal = round2(rows.reduce((s, x) => s + retailValueOf(x), 0));
@@ -108,11 +132,13 @@ export async function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: 
       else yaroqlilik = `Muddati ${days} kun qoldi`;
     }
     const profit = profitOf(x);
+    const product = x.productName || '—';
+    const maker = x.manufacturer || '—';
     const fill = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF3F8FB';
     const row = ws.addRow([
       idx + 1,
-      x.productName,
-      x.manufacturer || '—',
+      product,
+      maker,
       x.barcode || '—',
       x.branchName,
       qty(x.quantity),
@@ -125,10 +151,16 @@ export async function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: 
       expiryDay(x.expiryDate) ? date(expiryDay(x.expiryDate)) : '—',
       yaroqlilik,
     ]);
-    row.height = 20;
+
+    const productLines = wrapLines(product, COL_WIDTHS[1]);
+    const makerLines = wrapLines(maker, COL_WIDTHS[2]);
+    const statusLines = wrapLines(yaroqlilik, COL_WIDTHS[13]);
+    row.height = Math.max(22, Math.min(72, Math.max(productLines, makerLines, statusLines) * 15));
+
     row.eachCell((cell, col) => {
+      const wrap = col === 2 || col === 3 || col === 14;
       const align = col === 1 || col === 6 || col === 7 ? 'center' : col >= 8 && col <= 12 ? 'right' : 'left';
-      applyDataCell(cell, { align, fill });
+      applyDataCell(cell, { align, fill, wrap });
       if (col === 12) {
         cell.font = {
           name: 'Calibri',
@@ -143,7 +175,6 @@ export async function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: 
     });
   });
 
-  // JAMI row
   const totalRow = ws.addRow([
     '',
     `JAMI · ${sectionTitle}`,
@@ -160,7 +191,7 @@ export async function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: 
     '',
     `Umumiy: tannarx ${som(costTotal)} · qoʻyilgan ${som(retailTotal)} · foyda ${som(profitTotal)}`,
   ]);
-  totalRow.height = 26;
+  totalRow.height = 28;
   totalRow.eachCell((cell, col) => {
     cell.border = {
       top: { style: 'medium', color: { argb: 'FF0FB3C7' } },
@@ -171,26 +202,27 @@ export async function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: 
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9F5F8' } };
     cell.font = {
       name: 'Calibri',
-      size: col === 2 || col >= 10 ? 12 : 11,
+      size: col === 2 || (col >= 10 && col <= 12) ? 12 : 11,
       bold: true,
       color: { argb: 'FF0A5F6B' },
     };
     cell.alignment = {
       vertical: 'middle',
       horizontal: col >= 10 && col <= 12 ? 'right' : col === 7 ? 'center' : 'left',
-      wrapText: true,
+      wrapText: col === 2 || col === 14,
     };
   });
 
-  // Footer note
   const noteRow = ws.addRow([]);
   ws.mergeCells(noteRow.number, 1, noteRow.number, HEADERS.length);
   const note = ws.getCell(noteRow.number, 1);
   note.value = 'Izoh: Qoldiq qiymati = qoldiq × tannarx. Qoʻyilgan narx jami = qoldiq × sotuv narxi. Olinadigan foyda = (sotuv − tannarx) × qoldiq. Barcha summalar soʻmda.';
   note.font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF6B7C8A' } };
   note.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-  ws.getRow(noteRow.number).height = 32;
+  ws.getRow(noteRow.number).height = 30;
+}
 
+async function downloadWorkbook(wb: ExcelJS.Workbook, fileLabel: string) {
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -198,9 +230,43 @@ export async function exportWarehouseExcel(rows: InventoryItem[], sectionTitle: 
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const day = new Date().toISOString().slice(0, 10);
-  const safe = sectionTitle.replace(/[^\w\u0400-\u04FF\- ]+/g, '').trim().replace(/\s+/g, '_') || 'ombor';
+  const safe = fileLabel.replace(/[^\w\u0400-\u04FF\- ]+/g, '').trim().replace(/\s+/g, '_') || 'ombor';
   a.href = url;
   a.download = `Ombor_${safe}_${day}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Single-section export, or multi-sheet when `sheets` is provided (Barchasi). */
+export async function exportWarehouseExcel(
+  rows: InventoryItem[],
+  sectionTitle: string,
+  options?: { sheets?: WarehouseExcelSheet[] },
+) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'PHARMEX';
+  wb.created = new Date();
+
+  const extra = (options?.sheets || []).filter(s => s.rows.length > 0);
+  if (extra.length) {
+    // First sheet = full "Barchasi", then each section as its own list.
+    const main = wb.addWorksheet(sheetName(sectionTitle));
+    fillSheet(main, sectionTitle, rows);
+    const used = new Set([sheetName(sectionTitle).toLowerCase()]);
+    for (const part of extra) {
+      let name = sheetName(part.title);
+      let n = 2;
+      while (used.has(name.toLowerCase())) {
+        name = sheetName(`${part.title} ${n++}`);
+      }
+      used.add(name.toLowerCase());
+      const ws = wb.addWorksheet(name);
+      fillSheet(ws, part.title, part.rows);
+    }
+  } else {
+    const ws = wb.addWorksheet(sheetName(sectionTitle));
+    fillSheet(ws, sectionTitle, rows);
+  }
+
+  await downloadWorkbook(wb, sectionTitle);
 }

@@ -203,8 +203,18 @@ export function WarehousePage({ filters }: { filters: Filters }) {
   const warehouseTitle = activeWarehouse?.name || (warehouses.length ? `${warehouses.length} ta ombor` : 'Ombor');
 
   const downloadExcel = (list: InventoryItem[], title: string) => {
-    if (!list.length) return;
-    void exportWarehouseExcel(list, title).catch(() => {
+    if (!list.length && stockFilter !== 'all') return;
+    const multi = stockFilter === 'all'
+      ? [
+          { title: FILTER_LABEL.expired, rows: buckets.expired },
+          { title: FILTER_LABEL.expiring, rows: buckets.expiring },
+          { title: FILTER_LABEL.valid, rows: buckets.valid },
+          { title: FILTER_LABEL.in, rows: buckets.in },
+          { title: FILTER_LABEL.zero, rows: buckets.zero },
+        ].filter(s => s.rows.length)
+      : undefined;
+    if (!(list.length || multi?.length)) return;
+    void exportWarehouseExcel(list.length ? list : buckets.all, title, multi ? { sheets: multi } : undefined).catch(() => {
       window.alert('Excel faylini yuklab boʻlmadi. Qayta urinib koʻring.');
     });
   };
