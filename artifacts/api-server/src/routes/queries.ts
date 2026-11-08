@@ -35,6 +35,7 @@ import {
 export interface QueryFilters {
   mode: DataMode;
   branchId?: number;
+  productId?: number;
   dateFrom?: Date;
   dateTo?: Date;
   search?: string;
@@ -48,6 +49,7 @@ export async function loadSaleLines(filters: QueryFilters) {
     sourceCondition(salesTable.source, filters.mode),
     ne(salesTable.status, "voided"),
     filters.branchId ? eq(salesTable.branchId, filters.branchId) : undefined,
+    filters.productId ? eq(saleItemsTable.productId, filters.productId) : undefined,
     dateConditions(salesTable.soldAt, filters.dateFrom, filters.dateTo),
     filters.paymentType
       ? eq(salesTable.paymentType, filters.paymentType)

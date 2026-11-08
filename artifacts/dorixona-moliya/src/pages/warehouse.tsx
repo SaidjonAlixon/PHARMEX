@@ -8,7 +8,9 @@ import {
   date, money, num, round2, stockStatus, type Filters,
 } from '@/components/kit';
 import { ProductCard } from '@/pages/stock';
-import { ExpiryCell, QtyCell, expiryDaysOf } from '@/pages/warehouse-shared';
+import { ExpiryCell, QtyCell, expiryDaysOf, slowStatusLabel } from '@/pages/warehouse-shared';
+
+const TEASER_LIMIT = 5;
 
 export function WarehousePage({ filters }: { filters: Filters }) {
   const [search, setSearch] = useState('');
@@ -90,12 +92,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
     <PageHeading
       eyebrow="OMBOR · СКЛАД"
       title="Ombor"
-      subtitle={`${warehouseTitle} · qoldiqlar roʻyxati. Sotuv reytingi alohida sahifada. Davr: ${periodLabel}.`}
-      actions={
-        <Link href="/warehouse/ranking" className="button primary" data-testid="button-open-warehouse-ranking">
-          Sotuv reytingi <ArrowRight size={15} />
-        </Link>
-      }
+      subtitle={`${warehouseTitle} · qoldiqlar roʻyxati. Reytinglarda faqat 5 tadan koʻrsatiladi, qolgani alohida boʻlimda. Davr: ${periodLabel}.`}
     />
 
     <KpiStrip items={[
@@ -111,19 +108,28 @@ export function WarehousePage({ filters }: { filters: Filters }) {
           <span className="warehouse-teaser-icon"><TrendingUp size={16} /></span>
           <div>
             <b>Eng koʻp sotiladiganlar</b>
-            <p>Davr boʻyicha toʻliq reyting · {insightsQ.isLoading ? '…' : `${topSellers.length} ta`}</p>
+            <p>Faqat top {TEASER_LIMIT} · jami {insightsQ.isLoading ? '…' : `${topSellers.length} ta`}</p>
           </div>
         </div>
         <div className="warehouse-teaser-scroll">
-          {topSellers.slice(0, 5).map(r => (
-            <div key={r.productId} className="warehouse-teaser-row">
+          {topSellers.slice(0, TEASER_LIMIT).map(r => (
+            <button
+              type="button"
+              key={r.productId}
+              className="warehouse-teaser-row is-clickable"
+              onClick={() => setProduct(r.productId)}
+              data-testid={`teaser-top-${r.productId}`}
+            >
               <em>{r.rank}</em>
               <span>{r.productName}</span>
               <strong>{money(r.sales)}</strong>
-            </div>
+            </button>
           ))}
           {!insightsQ.isLoading && !topSellers.length && <div className="inline-empty tight">Savdo yoʻq</div>}
         </div>
+        <Link href="/warehouse/ranking/top" className="warehouse-teaser-more" data-testid="link-warehouse-top-full">
+          Toʻliq reyting <ArrowRight size={14} />
+        </Link>
       </div>
 
       <div className="warehouse-teaser-card">
@@ -131,24 +137,28 @@ export function WarehousePage({ filters }: { filters: Filters }) {
           <span className="warehouse-teaser-icon warn"><TrendingDown size={16} /></span>
           <div>
             <b>Kam / sotilmaydiganlar</b>
-            <p>{neverSold} ta sotilmagan · {expiredSlow} ta muddati oʻtgan</p>
+            <p>Faqat {TEASER_LIMIT} ta · {neverSold} sotilmagan · {expiredSlow} muddati oʻtgan</p>
           </div>
         </div>
         <div className="warehouse-teaser-scroll">
-          {slowMovers.slice(0, 5).map(r => (
-            <div key={r.productId} className="warehouse-teaser-row">
+          {slowMovers.slice(0, TEASER_LIMIT).map(r => (
+            <button
+              type="button"
+              key={r.productId}
+              className="warehouse-teaser-row is-clickable"
+              onClick={() => setProduct(r.productId)}
+              data-testid={`teaser-slow-${r.productId}`}
+            >
               <span>{r.productName}</span>
-              <strong className={r.expired ? 'negative' : ''}>{r.expired ? 'Muddati oʻtgan' : r.lastSoldAt ? 'Kam' : 'Sotilmagan'}</strong>
-            </div>
+              <strong className={r.expired ? 'negative' : ''}>{slowStatusLabel(r)}</strong>
+            </button>
           ))}
           {!insightsQ.isLoading && !slowMovers.length && <div className="inline-empty tight">Qoldiq yoʻq</div>}
         </div>
+        <Link href="/warehouse/ranking/slow" className="warehouse-teaser-more warn" data-testid="link-warehouse-slow-full">
+          Toʻliq roʻyxat <ArrowRight size={14} />
+        </Link>
       </div>
-
-      <Link href="/warehouse/ranking" className="warehouse-teaser-cta" data-testid="link-warehouse-ranking-full">
-        Toʻliq reytingni ochish
-        <ArrowRight size={16} />
-      </Link>
     </div>
 
     <Panel
@@ -243,6 +253,13 @@ export function WarehousePage({ filters }: { filters: Filters }) {
       )}
     </Panel>
 
-    {product != null && <ProductCard id={product} onClose={() => setProduct(null)} />}
+    {product != null && (
+      <ProductCard
+        id={product}
+        onClose={() => setProduct(null)}
+        dateFrom={filters.dateFrom || undefined}
+        dateTo={filters.dateTo || undefined}
+      />
+    )}
   </>;
 }

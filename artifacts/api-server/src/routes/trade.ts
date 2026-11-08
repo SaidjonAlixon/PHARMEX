@@ -78,6 +78,34 @@ router.get("/warehouse-insights", async (req, res): Promise<void> => {
   res.json(data);
 });
 
+/** One product: every sale/return line (when + qty + sum). */
+router.get("/product-sales", async (req, res): Promise<void> => {
+  const productId = Number(req.query.productId);
+  if (!Number.isFinite(productId) || productId < 1) {
+    res.status(400).json({ error: "productId majburiy." });
+    return;
+  }
+  const dateFrom = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : undefined;
+  const dateTo = req.query.dateTo ? new Date(String(req.query.dateTo)) : undefined;
+  const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
+  const limitRaw = req.query.limit ? Number(req.query.limit) : 200;
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(1, limitRaw), 500) : 200;
+  const mode = await getDataMode();
+  const rows = await loadSaleLines({
+    mode,
+    productId,
+    branchId: Number.isFinite(branchId) && (branchId as number) >= 1 ? branchId : undefined,
+    dateFrom: dateFrom && !Number.isNaN(dateFrom.getTime()) ? dateFrom : undefined,
+    dateTo: dateTo && !Number.isNaN(dateTo.getTime()) ? dateTo : undefined,
+    limit,
+  });
+  res.json(
+    ListSalesResponse.parse(
+      rows.map(({ costCents: _c, revenueCents: _r, ...sale }) => sale),
+    ),
+  );
+});
+
 router.get("/product-detail", async (req, res): Promise<void> => {
   const parsed = GetProductQueryParams.safeParse(req.query);
   if (!parsed.success) {

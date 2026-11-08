@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import {
   getGetProductQueryKey, getGetPurchaseQueryKey, getGetStockDocumentQueryKey, useCreateStockDocument, useGetProduct, useGetPurchase,
-  useGetStockDocument, useListInventory, useListPurchases, useListStockDocuments,
+  useGetProductSales, useGetStockDocument, useListInventory, useListPurchases, useListStockDocuments,
 } from '@workspace/api-client-react';
 import type { InventoryItem, Purchase, StockDocType, StockDocument } from '@workspace/api-client-react';
 import {
@@ -14,7 +14,7 @@ import {
 } from '@/components/kit';
 import { movementLabels, stockDocLabels, writeOffReasons } from '@/lib/labels';
 import { useAccess } from '@/lib/access';
-import { ExpiryCell, expiryDaysOf } from '@/pages/warehouse-shared';
+import { ExpiryCell, QtyCell, expiryDaysOf } from '@/pages/warehouse-shared';
 
 type Tab = 'balances' | 'all' | StockDocType;
 type NewDoc = 'transfer' | 'write_off' | 'supplier_return' | 'inventory_count';
@@ -151,12 +151,31 @@ function DocumentTable({ rows, onOpen }: { rows: StockDocument[]; onOpen: (id: n
     })}</tbody></TableWrap>;
 }
 
-export function ProductCard({ id, onClose }: { id: number; onClose: () => void }) {
+export function ProductCard({
+  id,
+  onClose,
+  dateFrom,
+  dateTo,
+}: {
+  id: number;
+  onClose: () => void;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
   const params = { productId: id };
   const q = useGetProduct(params, { query: { queryKey: getGetProductQueryKey(params) } });
+  const salesQ = useGetProductSales({
+    productId: id,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    limit: 200,
+  });
   const d = q.data;
+  const sales = salesQ.data || [];
   const total = d ? round2(d.branchBalances.reduce((s, b) => s + b.quantity, 0)) : 0;
   const value = d ? round2(d.branchBalances.reduce((s, b) => s + num(b.value), 0)) : 0;
+  const soldQty = round2(sales.reduce((s, row) => s + row.quantity, 0));
+  const soldSum = round2(sales.reduce((s, row) => s + num(row.revenue), 0));
   return <Drawer eyebrow="MAHSULOT KARTASI" title={d?.product.productName || 'Mahsulot'} subtitle={d && <span>{d.product.group || 'Guruhsiz'}</span>} onClose={onClose}>
     <DataState loading={q.isLoading} error={q.isError} empty={false} retry={() => q.refetch()} />
     {d && <>
@@ -170,6 +189,43 @@ export function ProductCard({ id, onClose }: { id: number; onClose: () => void }
         { label: 'Jami qoldiq', value: `${qty(total)} ${unitLabel(d.product.unit)}` },
         { label: 'Zaxira qiymati', value: `${money(value)}` },
       ]} />
+      <h3 className="subhead">Sotuv tarixi · qachon va nechta</h3>
+      <p className="muted-line">
+        {salesQ.isLoading
+          ? 'Yuklanmoqda…'
+          : sales.length
+            ? `${sales.length} ta chek · jami ${qty(soldQty)} ${unitLabel(d.product.unit)} · ${money(soldSum)}`
+            : 'Bu mahsulot boʻyicha hali sotuv yoʻq.'}
+      </p>
+      {!!sales.length && (
+        <TableWrap>
+          <thead>
+            <tr>
+              <th>SANA / VAQT</th>
+              <th>CHEK</th>
+              <th>FILIAL</th>
+              <th className="num">MIQDOR</th>
+              <th className="num">SUMMA</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sales.map(row => (
+              <tr key={row.id} data-testid={`row-product-sale-${row.id}`}>
+                <td className="cell-strong">{dateTime(String(row.date))}</td>
+                <td><span className="mono">{row.receiptNo}</span></td>
+                <td>{row.branchName}</td>
+                <td className={`num ${row.quantity < 0 ? 'negative' : ''}`}>
+                  <QtyCell quantity={row.quantity} unit={d.product.unit} />
+                </td>
+                <td className={`num ${num(row.revenue) < 0 ? 'negative' : ''}`}>{money(row.revenue)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrap>
+      )}
+      {!salesQ.isLoading && salesQ.isError && (
+        <div className="inline-empty tight">Sotuv tarixini yuklab boʻlmadi.</div>
+      )}
       <h3 className="subhead">Filial va omborlar kesimida</h3>
       <TableWrap><thead><tr><th>FILIAL / OMBOR</th><th className="num">MIQDOR</th><th>HOLAT</th><th className="num">TANNARX</th><th className="num">QIYMAT</th><th>YAROQLILIK</th></tr></thead>
         <tbody>{d.branchBalances.map((b, i) => { const st = stockStatus(b.quantity); return <tr key={`${b.branchId}-${i}`}><td className="cell-strong">{b.branchName}</td><td className={`num ${b.quantity <= 0 ? 'negative' : b.quantity < 1 ? 'warn-qty' : ''}`}>{qty(b.quantity)}&nbsp;{unitLabel(b.unit)}</td><td><StatusBadge tone={st.tone}>{st.label}</StatusBadge></td><td className="num">{money(b.costPrice)}</td><td className="num">{money(b.value)}</td><td><ExpiryCell value={b.expiryDate} /></td></tr>; })}</tbody></TableWrap>

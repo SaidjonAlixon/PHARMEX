@@ -46,6 +46,23 @@ export function daysAgoLabel(days: number | null | undefined) {
   return `${days} kun`;
 }
 
+/** Short status for slow-mover teasers / lists. */
+export function slowStatusLabel(row: {
+  expired?: boolean;
+  expiryDays?: number | null;
+  lastSoldAt?: string | null;
+  daysSinceSale?: number | null;
+  soldQty?: number;
+}) {
+  if (row.expired) {
+    const n = row.expiryDays != null ? Math.abs(row.expiryDays) : null;
+    return n != null ? `Muddati oʻtgan · ${n} kun` : 'Muddati oʻtgan';
+  }
+  if (row.lastSoldAt == null) return 'Sotilmagan';
+  if ((row.soldQty ?? 0) <= 0) return `${daysAgoLabel(row.daysSinceSale)} · kam`;
+  return `${daysAgoLabel(row.daysSinceSale)} oldin`;
+}
+
 export function QtyCell({ quantity, unit }: { quantity: number; unit?: string | null }) {
   const openPack = quantity > 0 && quantity < 1;
   return (
