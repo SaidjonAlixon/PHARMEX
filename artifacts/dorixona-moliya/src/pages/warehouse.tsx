@@ -72,6 +72,7 @@ function StockTable({
     <TableWrap>
       <thead>
         <tr>
+          <th className="num">#</th>
           <th>MAHSULOT</th>
           <th>OMBOR</th>
           <th className="num">QOLDIQ</th>
@@ -84,7 +85,7 @@ function StockTable({
         </tr>
       </thead>
       <tbody>
-        {list.map((x: InventoryItem) => {
+        {list.map((x: InventoryItem, idx) => {
           const st = stockStatus(x.quantity);
           const profit = profitOf(x);
           return (
@@ -94,6 +95,7 @@ function StockTable({
               onClick={() => onOpen(x.productId)}
               data-testid={`row-warehouse-${x.productId}-${x.branchId}`}
             >
+              <td className="num cell-strong warehouse-row-num">{idx + 1}</td>
               <td>
                 <span className="table-main-link">{x.productName}</span>
                 <small>{[x.manufacturer, x.barcode].filter(Boolean).join(' · ') || x.group || '—'} · bosing — toʻliq</small>

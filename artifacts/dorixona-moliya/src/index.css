@@ -996,6 +996,12 @@ body { background: var(--wash); }
   width: 100%; padding: 10px; border: 0; border-radius: 10px; cursor: pointer;
   background: #eef6fa; color: var(--px-teal-dark); font-weight: 700; font-size: 13px;
 }
+.warehouse-row-num {
+  width: 2.5rem;
+  color: var(--px-teal-dark);
+  font-family: var(--app-font-mono);
+  font-variant-numeric: tabular-nums;
+}
 .warehouse-split-panel.warn .warehouse-split-more { background: #fff2d9; color: #a5670a; }
 .warehouse-split-panel.bad .warehouse-split-more { background: #ffe4e4; color: #c62f3a; }
 
