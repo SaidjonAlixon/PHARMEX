@@ -145,15 +145,15 @@ export function WarehousePage({ filters }: { filters: Filters }) {
         testId: 'kpi-warehouse-cost',
       },
       {
-        label: 'Sotuv narxi jami',
+        label: 'Qoʻyilgan narx jami',
         value: view.retailTotal,
         icon: ShoppingBag,
-        hint: 'Qoldiq × 1 dona sotuv narxi',
+        hint: 'Tovarga qoʻyilgan · qoldiq × sotuv narxi',
         onClick: openTotals,
         testId: 'kpi-warehouse-retail',
       },
       {
-        label: 'Farq (sotuv − tannarx)',
+        label: 'Farq (qoʻyilgan − tannarx)',
         value: view.markup,
         icon: Scale,
         hint: 'Potensial ustama · bosing — toʻliq',
@@ -270,11 +270,11 @@ export function WarehousePage({ filters }: { filters: Filters }) {
           <b>{money(view.costTotal)}</b>
         </div>
         <div>
-          <span>Sotuv narxi jami</span>
+          <span>Qoʻyilgan narx jami</span>
           <b>{money(view.retailTotal)}</b>
         </div>
         <div>
-          <span>Qoldiq qiymati (qoʻyilgan)</span>
+          <span>Qoldiq qiymati</span>
           <b>{money(view.costTotal)}</b>
         </div>
         <button type="button" className="warehouse-summary-open" onClick={openTotals} data-testid="button-open-view-totals">
@@ -305,13 +305,15 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                   <th>HOLAT</th>
                   <th className="num" title="1 dona / 1 quti tannarxi">1 DONA TANNARX</th>
                   <th className="num" title="1 dona / 1 quti sotuv narxi">1 DONA SOTUV</th>
-                  <th className="num" title="Qoldiq × tannarx = ombordagi summa">QOLDIQ QIYMATI</th>
+                  <th className="num" title="Qoldiq × tannarx">QOLDIQ QIYMATI</th>
+                  <th className="num" title="Qoldiq × sotuv narxi — tovarga qoʻyilgan narx">QOʻYILGAN NARX</th>
                   <th>YAROQLILIK</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((x: InventoryItem) => {
                   const st = stockStatus(x.quantity);
+                  const placed = retailValueOf(x);
                   return (
                     <tr
                       key={`${x.productId}-${x.branchId}`}
@@ -330,6 +332,9 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                       <td className="num">{money(x.retailPrice)}</td>
                       <td className="num" title={`Qoldiq qiymati = ${qty(x.quantity)} × ${money(x.costPrice)}`}>
                         {money(x.value)}
+                      </td>
+                      <td className="num" title={`Qoʻyilgan narx = ${qty(x.quantity)} × ${money(x.retailPrice)}`}>
+                        {money(placed)}
                       </td>
                       <td><ExpiryCell value={x.expiryDate} /></td>
                     </tr>
@@ -352,15 +357,15 @@ export function WarehousePage({ filters }: { filters: Filters }) {
         <InfoGrid items={[
           { label: 'Mahsulotlar soni', value: `${view.count} ta` },
           { label: 'Tannarx jami', value: money(view.costTotal) },
-          { label: 'Sotuv narxi jami', value: money(view.retailTotal) },
-          { label: 'Qoldiq qiymati (qoʻyilgan summa)', value: money(view.costTotal) },
-          { label: 'Farq (sotuv − tannarx)', value: money(view.markup) },
+          { label: 'Qoʻyilgan narx jami', value: money(view.retailTotal) },
+          { label: 'Qoldiq qiymati (tannarxda)', value: money(view.costTotal) },
+          { label: 'Farq (qoʻyilgan − tannarx)', value: money(view.markup) },
         ]} />
         <p className="muted-line">
           <b>1 dona tannarx</b> — birlikning olinish narxi.
-          {' '}<b>1 dona sotuv</b> — birlikning sotilish narxi.
-          {' '}<b>Qoldiq qiymati</b> (= tannarx jami) — qoldiq × tannarx; jadvaldagi «QOLDIQ QIYMATI» ustuni, qoʻyilgan / ombordagi summa.
-          {' '}<b>Sotuv narxi jami</b> — qoldiq × sotuv narxi.
+          {' '}<b>1 dona sotuv</b> — birlikka qoʻyilgan sotuv narxi.
+          {' '}<b>Qoldiq qiymati</b> — qoldiq × tannarx.
+          {' '}<b>Qoʻyilgan narx</b> — qoldiq × sotuv narxi; tovarga jami qancha narx qoʻyilgani.
         </p>
         <h3 className="subhead">Boʻlimdagi mahsulotlar</h3>
         {rows.length ? (
@@ -372,7 +377,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
                 <th className="num">1 DONA TANNARX</th>
                 <th className="num">1 DONA SOTUV</th>
                 <th className="num">QOLDIQ QIYMATI</th>
-                <th className="num">SOTUVDAGI SUMMA</th>
+                <th className="num">QOʻYILGAN NARX</th>
               </tr>
             </thead>
             <tbody>
