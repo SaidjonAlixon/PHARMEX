@@ -279,7 +279,7 @@ export function DashboardPage({ filters }: { filters: Filters }) {
             <Metric label="Sotuv hajmi" value={d.totals.sales} trend={d.completeness === 'complete' ? 'Hisobot toʻliq' : undefined} icon={ArrowUpRight} />
             <Metric label="Yalpi foyda" value={d.totals.grossProfit} icon={Activity} />
             <Metric label="Xarajatlar" value={d.totals.expenses} icon={ClipboardList} />
-            <Metric label="Sof foyda" value={d.totals.netProfit} trend="rasxodlardan keyingi foyda" trendTone="bad" icon={TrendingUp} />
+            <Metric label="Sof foyda" value={d.totals.netProfit} trend="Rasxodlardan keyingi foyda" trendTone="bad" icon={TrendingUp} />
             <Metric label="Pul qoldigʻi" value={d.totals.cashBalance} icon={Wallet} />
             <Metric label="Tovar zaxirasi" value={d.totals.inventoryValue} icon={Boxes} />
             <Metric label="Muddati oʻtgan qarz" value={d.totals.overdueDebt} icon={Clock3} />

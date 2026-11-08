@@ -177,7 +177,7 @@ export function fitFigure(value: string | number | null | undefined, count = fal
 
 export function Metric({ label, value, unit, trend, trendTone = 'good', icon: Icon }: { label: string; value: string | null | undefined; unit?: string; trend?: string; trendTone?: 'good' | 'bad'; icon: LucideIcon }) {
   const f = fitFigure(value);
-  return <div className="metric-card"><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={17} /></span></div><div className={`metric-value ${f.cls}`} title={f.title}>{f.text}</div><div className="metric-foot"><span>{value == null ? 'Maʼlumot yetarli emas' : unit || '\u00a0'}</span>{trend && <span className={trendTone === 'bad' ? 'negative' : 'positive'}>{trend}</span>}</div></div>;
+  return <div className="metric-card"><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={17} /></span></div><div className={`metric-value ${f.cls}`} title={f.title}>{f.text}</div><div className="metric-foot"><span>{value == null ? 'Maʼlumot yetarli emas' : unit || '\u00a0'}</span>{trend && <span className={trendTone === 'bad' ? 'negative metric-trend-bad' : 'positive'}>{trend}</span>}</div></div>;
 }
 export function TableWrap({ children }: { children: ReactNode }) { return <div className="table-scroll"><table>{children}</table></div>; }
 

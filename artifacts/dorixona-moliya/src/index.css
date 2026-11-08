@@ -366,6 +366,7 @@ a { color: inherit; text-decoration: none; }
 .metric-foot { display: flex; justify-content: space-between; color: #93a097; font-size: 9px; }
 .positive { color: #198052 !important; }
 .negative { color: #bc4b42 !important; }
+.metric-trend-bad { color: #c62f3a !important; font-weight: 700; font-size: 10.5px; letter-spacing: -.01em; }
 .missing { color: #a1aca5 !important; font-style: italic; }
 .dash-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(290px, .85fr); gap: 14px; margin: 0 0 14px; }
 .dash-grid.lower { grid-template-columns: minmax(0, 1.25fr) minmax(290px, .85fr); }

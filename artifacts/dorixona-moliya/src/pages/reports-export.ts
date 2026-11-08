@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import type { Report } from '@workspace/api-client-react';
 import { money } from '@/components/kit';
 import { ensurePdfFonts } from '@/pages/pdf-fonts';
+import { formatReportCell } from '@/pages/report-format';
 
 const NAVY: [number, number, number] = [19, 48, 110];
 const TEAL: [number, number, number] = [15, 179, 199];
@@ -16,12 +17,6 @@ const thin: Partial<ExcelJS.Borders> = {
   bottom: { style: 'thin', color: { argb: 'FFB8C9D4' } },
   right: { style: 'thin', color: { argb: 'FFB8C9D4' } },
 };
-
-function cellText(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-}
 
 function sheetName(title: string) {
   return title.replace(/[\\/?*[\]:]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'Hisobot';
@@ -62,7 +57,7 @@ export async function exportReportExcel(opts: {
   });
 
   report.rows.forEach((row, idx) => {
-    const excelRow = ws.addRow(cols.map(c => cellText(row[c])));
+    const excelRow = ws.addRow(cols.map(c => formatReportCell(c, row[c])));
     excelRow.height = 20;
     excelRow.eachCell(cell => {
       cell.border = thin;
@@ -120,7 +115,7 @@ export async function exportReportPdf(opts: {
     startY: 30,
     margin: { left: margin, right: margin },
     head: [report.columns],
-    body: report.rows.map(row => report.columns.map(c => cellText(row[c]))),
+    body: report.rows.map(row => report.columns.map(c => formatReportCell(c, row[c]))),
     styles: {
       font: 'NotoSans',
       fontSize: landscape ? 7.5 : 8,

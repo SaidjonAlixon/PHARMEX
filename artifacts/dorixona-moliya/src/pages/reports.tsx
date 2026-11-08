@@ -10,6 +10,7 @@ import {
   date, money, monthStart, today, type Filters,
 } from '@/components/kit';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
+import { formatReportCell } from '@/pages/report-format';
 import { exportReportExcel, exportReportPdf } from '@/pages/reports-export';
 
 type ReportKind = 'sales' | 'inventory' | 'expenses' | 'debts' | 'profit' | 'cashflow';
@@ -31,19 +32,6 @@ const HINTS: Record<ReportKind, string> = {
   profit: 'Sof sotuv − tannarx − xarajatlar = sof foyda',
   cashflow: 'Kassa va bank kirim-chiqimlari',
 };
-
-function displayCell(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
-  if (typeof value === 'object') {
-    if (value instanceof Date) return date(value.toISOString());
-    return JSON.stringify(value);
-  }
-  if (typeof value === 'string') {
-    const iso = /^\d{4}-\d{2}-\d{2}(T|$)/.test(value);
-    if (iso) return date(value);
-  }
-  return String(value);
-}
 
 function periodLabel(from: string, to: string) {
   return `${date(from)} — ${date(to)}`;
@@ -236,7 +224,7 @@ export function ReportsPage({ filters }: { filters: Filters }) {
                 <tbody>
                   {report.rows.map((row, i) => (
                     <tr key={i} data-testid={`row-report-${i}`}>
-                      {report.columns.map(c => <td key={c}>{displayCell(row[c])}</td>)}
+                      {report.columns.map(c => <td key={c}>{formatReportCell(c, row[c])}</td>)}
                     </tr>
                   ))}
                 </tbody>
