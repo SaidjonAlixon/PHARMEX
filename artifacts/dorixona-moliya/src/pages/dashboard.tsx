@@ -20,25 +20,112 @@ import { ProductCard } from '@/pages/stock';
 
 const TEASER = 5;
 
+const CHART_MONTHS = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avg', 'sen', 'okt', 'noy', 'dek'];
+
+function parseTrendDay(label: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(label);
+  if (!m) return null;
+  return { y: m[1], m: Number(m[2]), d: Number(m[3]), iso: `${m[1]}-${m[2]}-${m[3]}` };
+}
+
+/** Compact Y-axis: 5,8 mln / 320 ming / 12 500 */
+function axisMoney(value: number) {
+  if (!Number.isFinite(value) || value === 0) return '0';
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    const mln = abs / 1_000_000;
+    const t = mln >= 10 ? mln.toFixed(0) : mln.toFixed(1).replace(/\.0$/, '');
+    return `${value < 0 ? '−' : ''}${t}\u00A0mln`;
+  }
+  if (abs >= 1_000) {
+    const k = abs / 1_000;
+    const t = k >= 100 ? k.toFixed(0) : k.toFixed(1).replace(/\.0$/, '');
+    return `${value < 0 ? '−' : ''}${t}\u00A0ming`;
+  }
+  return String(Math.round(value));
+}
+
+function trendTickLabel(label: string, mode: 'day' | 'day-month' | 'full') {
+  const p = parseTrendDay(label);
+  if (!p) return label;
+  if (mode === 'day') return String(p.d).padStart(2, '0');
+  if (mode === 'day-month') return `${String(p.d).padStart(2, '0')} ${CHART_MONTHS[p.m - 1]}`;
+  return `${String(p.d).padStart(2, '0')} ${CHART_MONTHS[p.m - 1]} ${p.y}`;
+}
+
 function ChartLine({ data, valueKey, secondaryKey }: { data: Dashboard['salesTrend']; valueKey: 'sales'; secondaryKey?: 'cost' }) {
   if (!data?.length) return <div className="chart-empty"><PackageSearch size={21} /> Davr boʻyicha trend yoʻq</div>;
+
   const nums = data.map(d => Number(d[valueKey]) || 0).concat(secondaryKey ? data.map(d => Number(d[secondaryKey]) || 0) : []);
   const max = Math.max(...nums, 1);
-  const points = data.map((d, i) => `${data.length === 1 ? 50 : i / (data.length - 1) * 100},${100 - Number(d[valueKey]) / max * 84}`).join(' ');
-  const points2 = secondaryKey ? data.map((d, i) => `${data.length === 1 ? 50 : i / (data.length - 1) * 100},${100 - Number(d[secondaryKey!]) / max * 84}`).join(' ') : '';
+  const n = data.length;
+  const xAt = (i: number) => (n === 1 ? 50 : (i / (n - 1)) * 100);
+  const yAt = (v: number) => 100 - (v / max) * 86;
+  const points = data.map((d, i) => `${xAt(i)},${yAt(Number(d[valueKey]) || 0)}`).join(' ');
+  const points2 = secondaryKey
+    ? data.map((d, i) => `${xAt(i)},${yAt(Number(d[secondaryKey!]) || 0)}`).join(' ')
+    : '';
+
+  const parsed = data.map(d => parseTrendDay(d.label));
+  const allDated = parsed.every(Boolean);
+  const sameMonth = allDated && new Set(parsed.map(p => `${p!.y}-${p!.m}`)).size === 1;
+  // Dense month/week → vertical ticks so every day fits; short period stays horizontal
+  const vertical = n >= 10;
+  const tickMode: 'day' | 'day-month' | 'full' = sameMonth && n >= 10
+    ? 'day'
+    : n >= 16
+      ? 'day-month'
+      : 'day-month';
+  // For very long ranges still show every label when vertical; thin spacing via CSS
+  const showEvery = vertical ? 1 : n <= 8 ? 1 : Math.ceil(n / 8);
+
   return (
-    <div className="chart-area">
-      <div className="chart-labels"><span>{money(max)}</span><span>{money(max * .5)}</span><span>0</span></div>
+    <div className={`chart-area ${vertical ? 'is-vertical-ticks' : 'is-flat-ticks'}${n >= 24 ? ' is-dense' : ''}`}>
+      <div className="chart-labels" aria-hidden>
+        <span title={money(max)}>{axisMoney(max)}</span>
+        <span title={money(max * 0.5)}>{axisMoney(max * 0.5)}</span>
+        <span>0</span>
+      </div>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Savdo dinamikasi">
         <defs>
-          <linearGradient id="px-line" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stopColor="#0fb3c7" /><stop offset="1" stopColor="#2fcf5a" /></linearGradient>
-          <linearGradient id="px-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#0fb3c7" stopOpacity=".22" /><stop offset="1" stopColor="#2fcf5a" stopOpacity="0" /></linearGradient>
+          <linearGradient id="px-line" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="#0fb3c7" />
+            <stop offset="1" stopColor="#2fcf5a" />
+          </linearGradient>
+          <linearGradient id="px-area" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#0fb3c7" stopOpacity=".22" />
+            <stop offset="1" stopColor="#2fcf5a" stopOpacity="0" />
+          </linearGradient>
         </defs>
-        {data.length > 1 && <polygon points={`0,100 ${points} 100,100`} fill="url(#px-area)" />}
-        <polyline points={points} fill="none" stroke="url(#px-line)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        {secondaryKey && <polyline points={points2} fill="none" stroke="#1f5fd0" strokeWidth="1.8" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />}
+        {n > 1 && <polygon points={`0,100 ${points} 100,100`} fill="url(#px-area)" />}
+        <polyline points={points} fill="none" stroke="url(#px-line)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        {secondaryKey && (
+          <polyline points={points2} fill="none" stroke="#1f5fd0" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        )}
       </svg>
-      <div className="chart-xlabels">{data.map((p, i) => <span key={`${p.label}-${i}`}>{p.label}</span>)}</div>
+      <div className={`chart-xlabels ${vertical ? 'vertical' : ''}`}>
+        {data.map((p, i) => {
+          const visible = i % showEvery === 0 || i === n - 1;
+          const text = trendTickLabel(p.label, tickMode);
+          const title = parseTrendDay(p.label)
+            ? trendTickLabel(p.label, 'full')
+            : p.label;
+          return (
+            <span
+              key={`${p.label}-${i}`}
+              className={visible ? 'is-on' : 'is-off'}
+              title={`${title} · Savdo ${money(p.sales)}${secondaryKey ? ` · Tannarx ${money(p.cost)}` : ''}`}
+            >
+              <em>{text}</em>
+            </span>
+          );
+        })}
+      </div>
+      {sameMonth && vertical && parsed[0] && (
+        <div className="chart-month-hint">
+          {CHART_MONTHS[parsed[0]!.m - 1]} {parsed[0]!.y} · kunlar
+        </div>
+      )}
     </div>
   );
 }
@@ -201,7 +288,7 @@ export function DashboardPage({ filters }: { filters: Filters }) {
           <div className="dash-grid">
             <Panel
               title="Savdo va tannarx dinamikasi"
-              subtitle="Davr boʻyicha soʻmda"
+              subtitle="Kunlik dinamika · summalar soʻmda"
               action={<span className="chart-legend"><i className="legend-green" /> Savdo <i className="legend-amber" /> Tannarx</span>}
             >
               <ChartLine data={d.salesTrend} valueKey="sales" secondaryKey="cost" />

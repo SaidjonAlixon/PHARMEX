@@ -13,10 +13,23 @@ const GOOD: [number, number, number] = [18, 138, 67];
 const BAD: [number, number, number] = [198, 47, 58];
 const WARN: [number, number, number] = [165, 103, 10];
 
-/** Compact amount for table cells — one line, no wrapping. */
+/** Full amount with soʻm (totals / cards). */
 function som(value: string | number | null | undefined) {
   if (value == null || value === '') return '—';
-  return money(value).replace(/\s+/g, ' ').trim();
+  return money(value).replace(/\s+/g, '\u00A0').trim();
+}
+
+/** Table amount: no soʻm suffix, non-breaking spaces so cells never wrap mid-number. */
+function cellSom(value: string | number | null | undefined) {
+  if (value == null || value === '') return '—';
+  return money(value)
+    .replace(/\u00A0soʻm$/u, '')
+    .replace(/\s+/g, '\u00A0')
+    .trim();
+}
+
+function oneLine(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 function statusInfo(detail: ReceiptDetail) {
@@ -129,74 +142,95 @@ export async function downloadReceiptPdf(detail: ReceiptDetail) {
   doc.setFontSize(11);
   doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
   doc.text('Mahsulotlar', margin, y);
+  doc.setFont('NotoSans', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+  doc.text('Summalar soʻmda · har bir qator bir qatorda', margin + 28, y);
   y += 2;
 
+  // A4 landscape content ≈ 273 mm — widths keep every money cell on one line
+  const colW = {
+    n: 8,
+    name: 70,
+    qty: 14,
+    price: 27,
+    disc: 22,
+    sum: 27,
+    vat: 38,
+    cost: 27,
+    profit: 26,
+  };
+
   const body = detail.lines.map((l, idx) => {
-    const product = l.productName.replace(/\s+/g, ' ').trim();
-    const code = [l.productCode, l.unit].filter(Boolean).join(' · ');
+    const product = oneLine(l.productName);
+    const meta = [l.productCode, l.unit].filter(Boolean).join(' · ');
+    const name = meta ? `${product} · ${meta}` : product;
     const vat = l.vatRate
-      ? `${som(l.vatAmount)} (${l.vatRate}%)`
+      ? `${cellSom(l.vatAmount)}\u00A0·\u00A0${l.vatRate}%`
       : 'QQSsiz';
     return [
       String(idx + 1),
-      code ? `${product}\n${code}` : product,
+      name,
       qty(l.quantity),
-      som(l.unitPrice),
-      num(l.discount) ? som(l.discount) : '—',
-      som(l.total),
+      cellSom(l.unitPrice),
+      num(l.discount) ? cellSom(l.discount) : '—',
+      cellSom(l.total),
       vat,
-      som(l.cost),
-      som(l.grossProfit),
+      cellSom(l.cost),
+      cellSom(l.grossProfit),
     ];
   });
 
   autoTable(doc, {
     startY: y,
     margin: { left: margin, right: margin },
+    tableWidth: contentW,
     head: [['#', 'Mahsulot / kod', 'Miqdor', 'Narx', 'Chegirma', 'Summa', 'QQS', 'Tannarx', 'Foyda']],
     body,
     styles: {
       font: 'NotoSans',
-      fontSize: 8,
-      cellPadding: { top: 2.4, bottom: 2.4, left: 2, right: 2 },
+      fontSize: 7.5,
+      cellPadding: { top: 2.2, bottom: 2.2, left: 1.6, right: 1.6 },
       textColor: NAVY,
       lineColor: LINE,
-      lineWidth: 0.2,
+      lineWidth: 0.15,
       valign: 'middle',
-      overflow: 'linebreak',
-      minCellHeight: 8,
+      overflow: 'ellipsize',
+      minCellHeight: 7.5,
+      cellWidth: 'wrap',
     },
     headStyles: {
       font: 'NotoSans',
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 7.5,
       fillColor: NAVY,
       textColor: [255, 255, 255],
       halign: 'center',
       valign: 'middle',
-      cellPadding: 2.5,
-    },
-    bodyStyles: {
-      fontSize: 8,
+      cellPadding: 2.2,
+      overflow: 'ellipsize',
     },
     columnStyles: {
-      0: { cellWidth: 8, halign: 'center', valign: 'middle' },
-      1: { cellWidth: 78, halign: 'left', valign: 'middle' },
-      2: { cellWidth: 16, halign: 'right', valign: 'middle', overflow: 'ellipsize' },
-      3: { cellWidth: 28, halign: 'right', valign: 'middle', overflow: 'ellipsize' },
-      4: { cellWidth: 24, halign: 'right', valign: 'middle', overflow: 'ellipsize' },
-      5: { cellWidth: 28, halign: 'right', valign: 'middle', fontStyle: 'bold', overflow: 'ellipsize' },
-      6: { cellWidth: 32, halign: 'right', valign: 'middle', overflow: 'ellipsize' },
-      7: { cellWidth: 28, halign: 'right', valign: 'middle', overflow: 'ellipsize' },
-      8: { cellWidth: 26, halign: 'right', valign: 'middle', textColor: GOOD, fontStyle: 'bold', overflow: 'ellipsize' },
+      0: { cellWidth: colW.n, halign: 'center' },
+      1: { cellWidth: colW.name, halign: 'left', fontSize: 7.2 },
+      2: { cellWidth: colW.qty, halign: 'right' },
+      3: { cellWidth: colW.price, halign: 'right' },
+      4: { cellWidth: colW.disc, halign: 'right' },
+      5: { cellWidth: colW.sum, halign: 'right', fontStyle: 'bold' },
+      6: { cellWidth: colW.vat, halign: 'right' },
+      7: { cellWidth: colW.cost, halign: 'right' },
+      8: { cellWidth: colW.profit, halign: 'right', textColor: GOOD, fontStyle: 'bold' },
     },
     alternateRowStyles: { fillColor: [243, 248, 251] },
     didParseCell: data => {
-      // Number columns stay single-line
-      if (data.section === 'body' && data.column.index >= 2) {
-        data.cell.styles.overflow = 'ellipsize';
-        const raw = String(data.cell.raw ?? data.cell.text);
-        data.cell.text = [raw.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()];
+      const raw = Array.isArray(data.cell.text)
+        ? data.cell.text.join(' ')
+        : String(data.cell.raw ?? data.cell.text ?? '');
+      data.cell.styles.overflow = 'ellipsize';
+      data.cell.text = [oneLine(raw).replace(/ /g, '\u00A0')];
+      // Keep product name readable: allow normal spaces only in name column
+      if (data.column.index === 1) {
+        data.cell.text = [oneLine(raw)];
       }
     },
   });
