@@ -14,6 +14,7 @@ import {
   ListBranchesResponse,
 } from "@workspace/api-zod";
 import { requireRole } from "../middlewares/requireClerkUser";
+import { countOrgBranches } from "../lib/org";
 import { loadCashAccounts, loadDebts, loadExpenses, loadInventory, loadSaleLines } from "./queries";
 import {
   centsMoney,
@@ -28,10 +29,13 @@ const router: IRouter = Router();
 
 router.get("/branches", async (_req, res): Promise<void> => {
   const mode = await getDataMode();
+  const orgId = res.locals.organizationId as number | null;
+  const conds = [sourceCondition(branchesTable.source, mode)].filter(Boolean);
+  if (orgId != null) conds.push(eq(branchesTable.organizationId, orgId));
   const rows = await db
     .select()
     .from(branchesTable)
-    .where(sourceCondition(branchesTable.source, mode))
+    .where(conds.length === 1 ? conds[0]! : and(...conds))
     .orderBy(asc(branchesTable.name));
   res.json(ListBranchesResponse.parse(rows));
 });
@@ -45,9 +49,25 @@ router.post(
       res.status(400).json({ error: parsed.error.message });
       return;
     }
+    const orgId = res.locals.organizationId as number | null;
+    if (orgId == null) {
+      res.status(403).json({ error: "Kompaniya konteksti yoʻq." });
+      return;
+    }
+    const org = res.locals.organization as { branchLimit: number | null } | null;
+    if (org?.branchLimit != null) {
+      const used = await countOrgBranches(orgId);
+      if (used >= org.branchLimit) {
+        res.status(403).json({
+          error: `Tarif boʻyicha maksimal ${org.branchLimit} ta filial. Yangi filial uchun tarifni yangilang.`,
+          code: "branch_limit",
+        });
+        return;
+      }
+    }
     const [branch] = await db
       .insert(branchesTable)
-      .values({ ...parsed.data, source: "manual" })
+      .values({ ...parsed.data, source: "manual", organizationId: orgId })
       .returning();
     await db.insert(auditLogTable).values({
       actorId: String(res.locals.userId),
@@ -67,13 +87,18 @@ router.get("/branch-detail", async (req, res): Promise<void> => {
     return;
   }
   const mode = await getDataMode();
+  const orgId = res.locals.organizationId as number | null;
   const [branch] = await db
     .select()
     .from(branchesTable)
     .where(eq(branchesTable.id, parsed.data.branchId))
     .limit(1);
 
-  if (!branch || (mode === "live" && branch.source === "demo")) {
+  if (
+    !branch ||
+    (mode === "live" && branch.source === "demo") ||
+    (orgId != null && branch.organizationId !== orgId)
+  ) {
     res.status(404).json({ error: "Filial topilmadi." });
     return;
   }
@@ -83,6 +108,7 @@ router.get("/branch-detail", async (req, res): Promise<void> => {
     branchId: branch.id,
     dateFrom: parsed.data.dateFrom,
     dateTo: parsed.data.dateTo,
+    organizationId: orgId,
   };
   const [allSales, expenses, accounts, inventory, debts] = await Promise.all([
     loadSaleLines(filters),

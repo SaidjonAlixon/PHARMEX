@@ -55,7 +55,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 /** Admin-only: the pending count drives the sidebar badge. */
 export function usePendingAccounts() {
   const me = useGetCurrentUser();
-  const isAdmin = me.data?.role === 'admin';
+  const isAdmin = me.data?.role === 'admin' || me.data?.role === 'platform_admin';
   const q = useQuery({ queryKey: accountsKey, queryFn: () => request<AccountsResponse>('GET', '/accounts'), enabled: isAdmin, refetchInterval: 30_000 });
   return { isAdmin, pending: q.data?.users.filter(u => u.status === 'pending').length ?? 0 };
 }

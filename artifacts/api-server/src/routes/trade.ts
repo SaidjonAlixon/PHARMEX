@@ -13,7 +13,7 @@ import {
   ListSalesResponse,
 } from "@workspace/api-zod";
 import { getDataMode } from "./financialUtils";
-import { loadInventory, loadSaleLines, loadWarehouseInsights } from "./queries";
+import { loadInventory, loadSaleLines, loadWarehouseInsights, withTenant } from "./queries";
 
 const router: IRouter = Router();
 
@@ -24,7 +24,7 @@ router.get("/sales", async (req, res): Promise<void> => {
     return;
   }
   const mode = await getDataMode();
-  const rows = await loadSaleLines({
+  const rows = await loadSaleLines(withTenant(res, {
     mode,
     dateFrom: parsed.data.dateFrom,
     dateTo: parsed.data.dateTo,
@@ -32,7 +32,7 @@ router.get("/sales", async (req, res): Promise<void> => {
     paymentType: parsed.data.paymentType,
     search: parsed.data.search,
     limit: parsed.data.limit,
-  });
+  }));
   res.json(
     ListSalesResponse.parse(
       rows.map(
@@ -53,11 +53,11 @@ router.get("/inventory", async (req, res): Promise<void> => {
     return;
   }
   const mode = await getDataMode();
-  const rows = await loadInventory({
+  const rows = await loadInventory(withTenant(res, {
     mode,
     branchId: parsed.data.branchId,
     search: parsed.data.search,
-  });
+  }));
   res.json(ListInventoryResponse.parse(rows));
 });
 
@@ -69,12 +69,12 @@ router.get("/warehouse-insights", async (req, res): Promise<void> => {
     return;
   }
   const mode = await getDataMode();
-  const data = await loadWarehouseInsights({
+  const data = await loadWarehouseInsights(withTenant(res, {
     mode,
     branchId: parsed.data.branchId,
     dateFrom: parsed.data.dateFrom,
     dateTo: parsed.data.dateTo,
-  });
+  }));
   res.json(data);
 });
 
@@ -91,14 +91,14 @@ router.get("/product-sales", async (req, res): Promise<void> => {
   const limitRaw = req.query.limit ? Number(req.query.limit) : 200;
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(1, limitRaw), 500) : 200;
   const mode = await getDataMode();
-  const rows = await loadSaleLines({
+  const rows = await loadSaleLines(withTenant(res, {
     mode,
     productId,
     branchId: Number.isFinite(branchId) && (branchId as number) >= 1 ? branchId : undefined,
     dateFrom: dateFrom && !Number.isNaN(dateFrom.getTime()) ? dateFrom : undefined,
     dateTo: dateTo && !Number.isNaN(dateTo.getTime()) ? dateTo : undefined,
     limit,
-  });
+  }));
   res.json(
     ListSalesResponse.parse(
       rows.map(({ costCents: _c, revenueCents: _r, ...sale }) => sale),
@@ -123,7 +123,7 @@ router.get("/product-detail", async (req, res): Promise<void> => {
   }
 
   const mode = await getDataMode();
-  const branchBalances = (await loadInventory({ mode })).filter(
+  const branchBalances = (await loadInventory(withTenant(res, { mode }))).filter(
     (item) => item.productId === product.id,
   );
   // FOM versions without the stock report (6) send products with no balances; the card still opens.

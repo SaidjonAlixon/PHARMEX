@@ -42,12 +42,33 @@ export interface QueryFilters {
   category?: string;
   paymentType?: string;
   limit?: number;
+  /** When set, only rows whose branch belongs to this organization. Use -1 for empty. */
+  organizationId?: number | null;
+}
+
+/** Attach tenant scope from Express locals (platform_admin = unscoped). */
+export function withTenant(
+  res: { locals: Record<string, unknown> },
+  filters: QueryFilters,
+): QueryFilters {
+  if (res.locals.userRole === "platform_admin") return filters;
+  const id = res.locals.organizationId;
+  return {
+    ...filters,
+    organizationId: typeof id === "number" ? id : -1,
+  };
+}
+
+function orgBranchCond(organizationId?: number | null): SQL | undefined {
+  if (organizationId == null) return undefined;
+  return eq(branchesTable.organizationId, organizationId);
 }
 
 export async function loadSaleLines(filters: QueryFilters) {
   const where = and(
     sourceCondition(salesTable.source, filters.mode),
     ne(salesTable.status, "voided"),
+    orgBranchCond(filters.organizationId),
     filters.branchId ? eq(salesTable.branchId, filters.branchId) : undefined,
     filters.productId ? eq(saleItemsTable.productId, filters.productId) : undefined,
     dateConditions(salesTable.soldAt, filters.dateFrom, filters.dateTo),
@@ -128,6 +149,7 @@ export async function loadSaleLines(filters: QueryFilters) {
 export async function loadExpenses(filters: QueryFilters) {
   const conditions: Array<SQL | undefined> = [
     sourceCondition(expensesTable.source, filters.mode),
+    orgBranchCond(filters.organizationId),
     filters.branchId ? eq(expensesTable.branchId, filters.branchId) : undefined,
     dateConditions(expensesTable.date, filters.dateFrom, filters.dateTo),
     filters.category
@@ -159,6 +181,7 @@ export async function loadWarehouseInsights(filters: QueryFilters) {
     sourceCondition(inventoryBalancesTable.source, filters.mode),
     sql`not (${inventoryBalancesTable.source} = 'fom' and ${inventoryBalancesTable.quantity} = 0)`,
     eq(branchesTable.kind, "warehouse"),
+    orgBranchCond(filters.organizationId),
     filters.branchId ? eq(inventoryBalancesTable.branchId, filters.branchId) : undefined,
   );
 
@@ -342,6 +365,7 @@ export async function loadInventory(filters: QueryFilters) {
   const conditions: Array<SQL | undefined> = [
     sourceCondition(inventoryBalancesTable.source, filters.mode),
     sql`not (${inventoryBalancesTable.source} = 'fom' and ${inventoryBalancesTable.quantity} = 0)`,
+    orgBranchCond(filters.organizationId),
     filters.branchId
       ? eq(inventoryBalancesTable.branchId, filters.branchId)
       : undefined,
@@ -440,6 +464,7 @@ export async function loadDebts(
     .where(
       and(
         sourceCondition(debtsTable.source, filters.mode),
+        orgBranchCond(filters.organizationId),
         filters.includeCancelled || filters.debtId
           ? undefined
           : ne(debtsTable.status, "cancelled"),
@@ -539,6 +564,7 @@ export async function loadMoneyTransactions(
     .where(
       and(
         sourceCondition(moneyTransactionsTable.source, filters.mode),
+        orgBranchCond(filters.organizationId),
         filters.branchId
           ? eq(moneyTransactionsTable.branchId, filters.branchId)
           : undefined,
@@ -587,6 +613,7 @@ export async function loadCashAccounts(filters: QueryFilters) {
     .where(
       and(
         sourceCondition(cashAccountsTable.source, filters.mode),
+        orgBranchCond(filters.organizationId),
         filters.branchId
           ? eq(cashAccountsTable.branchId, filters.branchId)
           : undefined,

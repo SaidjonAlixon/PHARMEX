@@ -30,7 +30,7 @@ import {
   requireBranch,
 } from "../lib/ledger";
 import { centsMoney, getDataMode, moneyCents } from "./financialUtils";
-import { loadDebts } from "./queries";
+import { loadDebts, withTenant } from "./queries";
 
 const router: IRouter = Router();
 
@@ -82,14 +82,14 @@ router.get("/debts", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const rows = await loadDebts({
+  const rows = await loadDebts(withTenant(res, {
     mode: await getDataMode(),
     branchId: parsed.data.branchId,
     kind: parsed.data.kind,
     search: parsed.data.search,
     status: parsed.data.status,
     counterpartyId: parsed.data.counterpartyId,
-  });
+  }));
   res.json(ListDebtsResponse.parse(rows));
 });
 
@@ -202,11 +202,11 @@ router.get("/counterparty-balances", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const debts = await loadDebts({
+  const debts = await loadDebts(withTenant(res, {
     mode: await getDataMode(),
     branchId: parsed.data.branchId,
     kind: parsed.data.kind,
-  });
+  }));
   const groups = new Map<
     string,
     {

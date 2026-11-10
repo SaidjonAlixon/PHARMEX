@@ -7,7 +7,7 @@ import {
   Activity, AlertCircle, ArrowDownLeft, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Boxes, Building2,
   Check, ChevronDown, CircleHelp, ClipboardList, Clock3, Download, FileBarChart2, Filter, HandCoins, LogOut,
   Menu, PackageSearch, Plus, RefreshCw, Search, Settings2, ShieldCheck, ShoppingCart, Truck, Wallet, Warehouse, X,
-  CalendarCheck, CalendarDays, CalendarClock, CalendarRange, Infinity as InfinityIcon, Layers, Store, UserCog
+  CalendarCheck, CalendarDays, CalendarClock, CalendarRange, Infinity as InfinityIcon, Layers, Store, UserCog, BadgePercent, Shield
 } from 'lucide-react';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
 import {
@@ -40,9 +40,11 @@ import { ThemeToggle } from '@/lib/theme';
 import { BrandLogo } from '@/components/brand-logo';
 import { SiteLayout } from '@/site/layout';
 import { HomePage } from '@/site/home';
-import { FaqPage, FeaturesPage, HowPage, IntegrationPage, SecurityPage, SolutionsPage } from '@/site/pages';
+import { FaqPage, FeaturesPage, HowPage, IntegrationPage, PricingPage, SecurityPage, SolutionsPage } from '@/site/pages';
 import { AuthPage } from '@/site/auth';
 import { UsersPage, usePendingAccounts } from '@/pages/users';
+import { PlansPage } from '@/pages/plans';
+import { PlatformPage } from '@/pages/platform';
 import { roleLabel, useAccess } from '@/lib/access';
 import { Route, Switch, useLocation, Router as WouterRouter, Redirect, Link } from 'wouter';
 
@@ -90,9 +92,11 @@ const navItems = [
   { href: '/catalog', label: 'Maʼlumotnomalar', icon: BookOpen },
   { href: '/profit', label: 'Foyda va zarar', icon: Activity },
   { href: '/reports', label: 'Hisobotlar', icon: FileBarChart2 },
+  { href: '/tariflar', label: 'Tariflar', icon: BadgePercent },
   { href: '/settings', label: 'Sozlamalar', icon: Settings2 },
 ];
 const usersNavItem = { href: '/users', label: 'Foydalanuvchilar', icon: UserCog };
+const platformNavItem = { href: '/platform', label: 'Platforma', icon: Shield };
 
 const periodOptions: MenuOption[] = [
   { value: 'today', label: 'Bugun', hint: 'Faqat bugungi kun (Toshkent vaqti)', icon: CalendarCheck, color: '#0fb3c7' },
@@ -154,7 +158,9 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const { signOut } = useClerk();
   const accounts = usePendingAccounts();
   const access = useAccess();
-  const items = localAuth && accounts.isAdmin ? [...navItems.slice(0, -1), usersNavItem, navItems[navItems.length - 1]!] : navItems;
+  let items = [...navItems];
+  if (localAuth && accounts.isAdmin) items = [...items.slice(0, -1), usersNavItem, items[items.length - 1]!];
+  if (access.isPlatformAdmin) items = [platformNavItem, ...items];
   const period = filters.period ?? DEFAULT_PERIOD;
   // The range bar edits a draft; data follows only after “Tasdiqlash”.
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -178,10 +184,11 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const filtered = period !== DEFAULT_PERIOD || !!filters.branchId;
   const scopeText = period === 'custom' ? 'Barcha davr' : filters.dateFrom === filters.dateTo ? date(filters.dateFrom) : `${date(filters.dateFrom)} — ${date(filters.dateTo)}`;
   // Pages without dated data do not show the period bar.
-  const showPeriod = !['/settings', '/users', '/catalog'].some(path => location === path || location.startsWith(`${path}/`));
+  const showPeriod = !['/settings', '/users', '/catalog', '/tariflar', '/platform'].some(path => location === path || location.startsWith(`${path}/`));
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`}>
       <Link href="/" className="brand-lockup brand-card" data-testid="link-brand"><BrandLogo /></Link>
+      {access.subscriptionBlocked && <div className="sub-banner" data-testid="banner-subscription">Obuna tugagan — <Link href="/tariflar">tarifni yangilang</Link></div>}
       <div className="workspace-label">BOʻLIMLAR</div>
       <nav className="primary-nav" aria-label="Asosiy navigatsiya">{items.map(item => {
         const active = item.href === '/' ? location === '/' : location === item.href || location.startsWith(`${item.href}/`);
@@ -314,6 +321,8 @@ function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: 
   return <Switch>
     <Route path="/"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><DashboardPage filters={filters} /></Shell></Show><Show when="signed-out"><SiteLayout><HomePage /></SiteLayout></Show></Route>
     <Route path="/imkoniyatlar"><SiteLayout><FeaturesPage /></SiteLayout></Route>
+    <Route path="/tariflar"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlansPage /></Shell></Show><Show when="signed-out"><SiteLayout><PricingPage /></SiteLayout></Show></Route>
+    <Route path="/platform"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlatformPage /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
     <Route path="/yechimlar"><SiteLayout><SolutionsPage /></SiteLayout></Route>
     <Route path="/qanday-ishlaydi"><SiteLayout><HowPage /></SiteLayout></Route>
     <Route path="/integratsiya"><SiteLayout><IntegrationPage /></SiteLayout></Route>

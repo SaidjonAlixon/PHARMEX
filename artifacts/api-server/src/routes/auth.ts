@@ -35,6 +35,8 @@ import {
   type AccountStatus,
 } from "../lib/accounts";
 import { mailConfigured, mailDevFallback, sendMail } from "../lib/mailer";
+import { createOrganizationForOwner, loadOrganization, publicOrganization } from "../lib/org";
+import { planList } from "../lib/plans";
 
 const router: IRouter = Router();
 
@@ -67,14 +69,40 @@ function recordFailure(key: string): void {
 
 type AppUser = typeof appUsersTable.$inferSelect;
 
-function publicUser(user: AppUser) {
+async function publicUser(user: AppUser) {
+  const org = user.role === "platform_admin" ? null : await loadOrganization(user.organizationId);
   return {
     id: user.id,
     username: user.username,
     email: user.email,
     displayName: user.displayName,
     role: user.role,
+    organizationId: user.organizationId,
+    organization: publicOrganization(org),
+    plans: planList(),
   };
+}
+
+function isPlatformAdminEmail(email: string | null | undefined): boolean {
+  const configured = process.env.PLATFORM_ADMIN_EMAIL?.trim().toLowerCase();
+  if (!configured || !email) return false;
+  return email.trim().toLowerCase() === configured;
+}
+
+async function provisionCompany(user: AppUser, companyName?: string): Promise<AppUser> {
+  if (user.role === "platform_admin" || user.organizationId) return user;
+  if (isPlatformAdminEmail(user.email)) {
+    const [promoted] = await db
+      .update(appUsersTable)
+      .set({ role: "platform_admin", organizationId: null })
+      .where(eq(appUsersTable.id, user.id))
+      .returning();
+    return promoted ?? user;
+  }
+  const name = (companyName?.trim() || `${user.displayName} kompaniyasi`).slice(0, 120);
+  await createOrganizationForOwner({ name, ownerUserId: user.id });
+  const [fresh] = await db.select().from(appUsersTable).where(eq(appUsersTable.id, user.id)).limit(1);
+  return fresh ?? user;
 }
 
 const blockedMessages: Record<Exclude<AccountStatus, "active">, string> = {
@@ -202,7 +230,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
   await startSession(res, user);
-  res.json(publicUser(user));
+  res.json(await publicUser(user));
 });
 
 router.post("/auth/logout", (_req, res): void => {
@@ -219,12 +247,12 @@ router.get("/auth/session", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Kirish talab qilinadi." });
     return;
   }
-  res.json(publicUser(user));
+  res.json(await publicUser(user));
 });
 
 // --- method 2: email + password, confirmed with a 6-character code ------
 
-type SignupPayload = { firstName: string; lastName: string; passwordHash: string };
+type SignupPayload = { firstName: string; lastName: string; passwordHash: string; companyName?: string };
 
 async function sendSignupCode(email: string, payload: SignupPayload): Promise<void> {
   const code = await issueCode(email, SIGNUP_PURPOSE, payload);
@@ -236,6 +264,7 @@ router.post("/auth/register/email/start", async (req, res): Promise<void> => {
   const email = normalizeEmail(req.body?.email);
   const firstName = cleanName(req.body?.firstName);
   const lastName = cleanName(req.body?.lastName);
+  const companyName = cleanName(req.body?.companyName) || `${firstName} kompaniyasi`;
   const password = req.body?.password;
 
   if (!firstName || !lastName) {
@@ -271,7 +300,12 @@ router.post("/auth/register/email/start", async (req, res): Promise<void> => {
   }
 
   try {
-    await sendSignupCode(email, { firstName, lastName, passwordHash: await hashPassword(password as string) });
+    await sendSignupCode(email, {
+      firstName,
+      lastName,
+      companyName,
+      passwordHash: await hashPassword(password as string),
+    });
   } catch (err) {
     req.log.error({ err }, "Signup code email failed");
     res.status(502).json({ error: "Kodni emailga yuborib boʻlmadi. Birozdan soʻng qayta urinib koʻring." });
@@ -337,25 +371,22 @@ router.post("/auth/register/email/verify", async (req, res): Promise<void> => {
     return;
   }
   const policy = await loadAuthPolicy();
+  // Self-serve SaaS: verified email opens a company immediately (7-day trial).
   const created = await createAccount({
     email,
     displayName: [payload.firstName, payload.lastName].filter(Boolean).join(" ") || email,
     passwordHash: payload.passwordHash,
     signupMethod: "email",
     emailVerified: true,
-    status: policy.autoApproveVerified ? "active" : "pending",
+    status: "active",
   });
   if (created === "exists") {
     res.status(409).json({ error: "Bu email bilan akkaunt allaqachon mavjud. Kirish sahifasidan foydalaning." });
     return;
   }
-  if (created.status === "active") {
-    await startSession(res, created);
-    res.json({ status: "active", user: publicUser(created) });
-    return;
-  }
-  void notifyAdmin(created, req);
-  res.json({ status: "pending" });
+  const provisioned = await provisionCompany(created, payload.companyName);
+  await startSession(res, provisioned);
+  res.json({ status: "active", user: await publicUser(provisioned) });
 });
 
 // --- method 3: application reviewed by an administrator -----------------
@@ -476,21 +507,21 @@ router.get("/auth/google/callback", async (req, res): Promise<void> => {
       }
     }
     if (!user) {
-      const policy = await loadAuthPolicy();
       const created = await createAccount({
         email: profile.email,
         displayName: profile.name,
         googleSub: profile.sub,
         signupMethod: "google",
         emailVerified: true,
-        status: policy.autoApproveVerified ? "active" : "pending",
+        status: "active",
       });
       if (created === "exists") {
         res.redirect(authPage(intent, { error: "google_state" }));
         return;
       }
-      user = created;
-      if (user.status === "pending") void notifyAdmin(user, req);
+      user = await provisionCompany(created, `${profile.name} kompaniyasi`);
+    } else if (!user.organizationId && user.role !== "platform_admin") {
+      user = await provisionCompany(user, `${user.displayName} kompaniyasi`);
     }
 
     if (user!.status !== "active") {

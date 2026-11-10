@@ -38,15 +38,32 @@ const accountColumns = {
   createdAt: appUsersTable.createdAt,
 };
 
-/** Earliest active admin = bosh admin (protected owner). */
-async function ownerAdminId(): Promise<number | null> {
+/** Earliest active admin in the organization = kompaniya egasi. */
+async function ownerAdminId(organizationId: number | null): Promise<number | null> {
+  if (organizationId == null) return null;
   const [row] = await db
     .select({ id: appUsersTable.id })
     .from(appUsersTable)
-    .where(and(eq(appUsersTable.role, "admin"), eq(appUsersTable.status, "active")))
+    .where(
+      and(
+        eq(appUsersTable.role, "admin"),
+        eq(appUsersTable.status, "active"),
+        eq(appUsersTable.organizationId, organizationId),
+      ),
+    )
     .orderBy(asc(appUsersTable.id))
     .limit(1);
   return row?.id ?? null;
+}
+
+function requireOrg(res: { locals: Record<string, unknown>; status: (n: number) => { json: (b: unknown) => void } }): number | null {
+  if (res.locals.userRole === "platform_admin") return null;
+  const id = res.locals.organizationId;
+  if (typeof id !== "number") {
+    res.status(403).json({ error: "Kompaniya konteksti topilmadi." });
+    return null;
+  }
+  return id;
 }
 
 function generatePassword(): string {
@@ -83,15 +100,26 @@ async function uniqueUsername(seed: string): Promise<string> {
 }
 
 router.get("/accounts", requireRole("admin"), async (_req, res): Promise<void> => {
+  const orgId = requireOrg(res);
+  if (orgId == null && res.locals.userRole !== "platform_admin") return;
+  if (orgId == null) {
+    res.json({ users: [], policy: await loadAuthPolicy(), me: Number(res.locals.appUserId), ownerId: null, isOwner: false, mail: { configured: mailConfigured(), devMode: mailDevFallback() }, google: googleConfig() !== null });
+    return;
+  }
   const me = Number(res.locals.appUserId);
   const [users, policy, ownerId] = await Promise.all([
     db
       .select(accountColumns)
       .from(appUsersTable)
-      .where(sql`${appUsersTable.passwordHash} is not null or ${appUsersTable.googleSub} is not null`)
+      .where(
+        and(
+          eq(appUsersTable.organizationId, orgId),
+          sql`${appUsersTable.passwordHash} is not null or ${appUsersTable.googleSub} is not null`,
+        ),
+      )
       .orderBy(sql`case ${appUsersTable.status} when 'pending' then 0 else 1 end`, desc(appUsersTable.createdAt)),
     loadAuthPolicy(),
-    ownerAdminId(),
+    ownerAdminId(orgId),
   ]);
   res.json({
     users,
@@ -105,8 +133,10 @@ router.get("/accounts", requireRole("admin"), async (_req, res): Promise<void> =
 });
 
 router.put("/accounts/policy", requireRole("admin"), async (req, res): Promise<void> => {
+  const orgId = requireOrg(res);
+  if (orgId == null) return;
   const me = Number(res.locals.appUserId);
-  const ownerId = await ownerAdminId();
+  const ownerId = await ownerAdminId(orgId);
   if (ownerId !== me) {
     res.status(403).json({ error: "Kirish siyosatini faqat bosh administrator oʻzgartira oladi." });
     return;
@@ -129,8 +159,10 @@ router.put("/accounts/policy", requireRole("admin"), async (req, res): Promise<v
 });
 
 router.post("/accounts", requireRole("admin"), async (req, res): Promise<void> => {
+  const orgId = requireOrg(res);
+  if (orgId == null) return;
   const me = Number(res.locals.appUserId);
-  const ownerId = await ownerAdminId();
+  const ownerId = await ownerAdminId(orgId);
   if (ownerId !== me) {
     res.status(403).json({ error: "Foydalanuvchi yaratish faqat bosh administratorga ruxsat etilgan." });
     return;
@@ -172,6 +204,7 @@ router.post("/accounts", requireRole("admin"), async (req, res): Promise<void> =
         phone: phone || "",
         email: "",
         role,
+        organizationId: orgId,
         status: "active",
         signupMethod: "admin",
         passwordHash,
@@ -234,8 +267,10 @@ router.patch("/accounts/:id", requireRole("admin"), async (req, res): Promise<vo
     return;
   }
 
+  const orgId = requireOrg(res);
+  if (orgId == null) return;
   const me = Number(res.locals.appUserId);
-  const ownerId = await ownerAdminId();
+  const ownerId = await ownerAdminId(orgId);
   const isOwner = ownerId === me;
 
   if (id === me && ((status && status !== "active") || (role && role !== "admin"))) {
@@ -254,7 +289,11 @@ router.patch("/accounts/:id", requireRole("admin"), async (req, res): Promise<vo
 
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(815274902::bigint)`);
-    const [target] = await tx.select().from(appUsersTable).where(eq(appUsersTable.id, id)).limit(1);
+    const [target] = await tx
+      .select()
+      .from(appUsersTable)
+      .where(and(eq(appUsersTable.id, id), eq(appUsersTable.organizationId, orgId)))
+      .limit(1);
     if (!target) return "missing" as const;
 
     const losesAdmin =
@@ -263,7 +302,14 @@ router.patch("/accounts/:id", requireRole("admin"), async (req, res): Promise<vo
       const [other] = await tx
         .select({ id: appUsersTable.id })
         .from(appUsersTable)
-        .where(and(eq(appUsersTable.role, "admin"), eq(appUsersTable.status, "active"), ne(appUsersTable.id, id)))
+        .where(
+          and(
+            eq(appUsersTable.role, "admin"),
+            eq(appUsersTable.status, "active"),
+            eq(appUsersTable.organizationId, orgId),
+            ne(appUsersTable.id, id),
+          ),
+        )
         .limit(1);
       if (!other) return "last-admin" as const;
     }
@@ -327,9 +373,11 @@ router.patch("/accounts/:id", requireRole("admin"), async (req, res): Promise<vo
 });
 
 router.post("/accounts/:id/reset-password", requireRole("admin"), async (req, res): Promise<void> => {
+  const orgId = requireOrg(res);
+  if (orgId == null) return;
   const id = Number(req.params.id);
   const me = Number(res.locals.appUserId);
-  const ownerId = await ownerAdminId();
+  const ownerId = await ownerAdminId(orgId);
   if (ownerId !== me) {
     res.status(403).json({ error: "Parolni faqat bosh administrator yangilay oladi." });
     return;
@@ -343,7 +391,11 @@ router.post("/accounts/:id/reset-password", requireRole("admin"), async (req, re
     return;
   }
 
-  const [target] = await db.select().from(appUsersTable).where(eq(appUsersTable.id, id)).limit(1);
+  const [target] = await db
+    .select()
+    .from(appUsersTable)
+    .where(and(eq(appUsersTable.id, id), eq(appUsersTable.organizationId, orgId)))
+    .limit(1);
   if (!target) {
     res.status(404).json({ error: "Foydalanuvchi topilmadi." });
     return;
@@ -374,9 +426,11 @@ router.post("/accounts/:id/reset-password", requireRole("admin"), async (req, re
 });
 
 router.delete("/accounts/:id", requireRole("admin"), async (req, res): Promise<void> => {
+  const orgId = requireOrg(res);
+  if (orgId == null) return;
   const id = Number(req.params.id);
   const me = Number(res.locals.appUserId);
-  const ownerId = await ownerAdminId();
+  const ownerId = await ownerAdminId(orgId);
   if (ownerId !== me) {
     res.status(403).json({ error: "Foydalanuvchini faqat bosh administrator oʻchira oladi." });
     return;
@@ -390,7 +444,11 @@ router.delete("/accounts/:id", requireRole("admin"), async (req, res): Promise<v
     return;
   }
 
-  const [target] = await db.select().from(appUsersTable).where(eq(appUsersTable.id, id)).limit(1);
+  const [target] = await db
+    .select()
+    .from(appUsersTable)
+    .where(and(eq(appUsersTable.id, id), eq(appUsersTable.organizationId, orgId)))
+    .limit(1);
   if (!target) {
     res.status(404).json({ error: "Foydalanuvchi topilmadi." });
     return;

@@ -51,6 +51,7 @@ import {
   loadCashAccounts,
   loadExpenses,
   loadMoneyTransactions,
+  withTenant,
 } from "./queries";
 
 const router: IRouter = Router();
@@ -109,13 +110,13 @@ router.get("/expenses", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const rows = await loadExpenses({
+  const rows = await loadExpenses(withTenant(res, {
     mode: await getDataMode(),
     dateFrom: parsed.data.dateFrom,
     dateTo: parsed.data.dateTo,
     branchId: parsed.data.branchId,
     category: parsed.data.category,
-  });
+  }));
   res.json(ListExpensesResponse.parse(rows));
 });
 
@@ -156,10 +157,10 @@ router.get("/cash-accounts", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const rows = await loadCashAccounts({
+  const rows = await loadCashAccounts(withTenant(res, {
     mode: await getDataMode(),
     branchId: parsed.data.branchId,
-  });
+  }));
   res.json(ListCashAccountsResponse.parse(rows));
 });
 
@@ -188,7 +189,7 @@ router.post("/cash-accounts", writers, async (req, res): Promise<void> => {
     await audit(tx, actor.id, "cash_account.created", "cash_account", created.id, `${created.name} (${created.kind}) ochildi, boshlang‘ich qoldiq ${created.openingBalance}`);
     return created;
   });
-  const [row] = (await loadCashAccounts({ mode: "live" })).filter(
+  const [row] = (await loadCashAccounts(withTenant(res, { mode: "live" }))).filter(
     (item) => item.id === account.id,
   );
   res.status(201).json(CreateCashAccountResponse.parse(row));
@@ -421,7 +422,7 @@ router.get("/money-transactions", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const rows = await loadMoneyTransactions({
+  const rows = await loadMoneyTransactions(withTenant(res, {
     mode: await getDataMode(),
     branchId: parsed.data.branchId,
     dateFrom: parsed.data.dateFrom,
@@ -430,7 +431,7 @@ router.get("/money-transactions", async (req, res): Promise<void> => {
     type: parsed.data.type,
     direction: parsed.data.direction,
     search: parsed.data.search,
-  });
+  }));
   res.json(ListMoneyTransactionsResponse.parse(rows));
 });
 

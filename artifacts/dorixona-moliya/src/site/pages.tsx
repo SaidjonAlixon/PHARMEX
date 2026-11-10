@@ -5,7 +5,9 @@ import {
   PlugZap, Receipt, RefreshCw, ScrollText, Search, Server, ShieldCheck, Sparkles, Store, Truck, Undo2, UserCog, Users, Wallet,
   Warehouse, Workflow, X, Zap, type LucideIcon,
 } from 'lucide-react';
+import { Link } from 'wouter';
 import { modules } from './content';
+import { PUBLIC_PLANS, formatUzs } from '@/lib/plans';
 import { AnchorLink, CtaBand, FeatureCard, PageHero, PrimaryCta, SectionHead, delay } from './ui';
 
 /* ------------------------------------------------------------------ Imkoniyatlar */
@@ -398,5 +400,52 @@ export function FaqPage() {
       </div>
     </section>
     <CtaBand />
+  </>;
+}
+
+export function PricingPage() {
+  return <>
+    <PageHero
+      eyebrow="TARIFLAR"
+      icon={Crown}
+      title="7 kun bepul,"
+      accent="keyin aniq tarif."
+      text="Har bir kompaniya alohida panelga ega. Google yoki email orqali oching — 7 kun toʻliq sinov, soʻng Click orqali oylik tarif."
+      chips={['7 kun trial', 'Click toʻlov', 'CRM multi-tenant', '3 ta tarif']}
+    />
+    <section className="s-section tight">
+      <div className="s-wrap">
+        <SectionHead center eyebrow="OYLIK" title="Kompaniyangiz oʻsishiga" accent="mos tarif." text="Filial soni va imkoniyatlar boʻyicha tanlang. Istalgan vaqtda yuqoriroq tarifga oʻtishingiz mumkin." />
+        <div className="s-price-grid">
+          {PUBLIC_PLANS.map((p, i) => (
+            <article key={p.code} className={`s-price-card ${p.highlight ? 'featured' : ''}`} data-reveal style={delay(i)}>
+              {p.highlight && <span className="s-price-badge">Eng koʻp tanlanadi</span>}
+              <h3>{p.name}</h3>
+              <div className="s-price-amount"><b>{formatUzs(p.priceUzs)}</b><small>/ oy</small></div>
+              <p className="s-price-limit">{p.branchLimit == null ? 'Istalgancha filial' : `${p.branchLimit} ta filial`}</p>
+              <ul>{p.features.map(f => <li key={f}><Check size={15} />{f}</li>)}</ul>
+              <Link href="/sign-up" className={`s-btn ${p.highlight ? 'primary' : 'ghost'} lg`} data-testid={`link-plan-${p.code}`}>
+                7 kun bepul boshlash <ArrowRight size={16} />
+              </Link>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+    <section className="s-section">
+      <div className="s-wrap">
+        <SectionHead center eyebrow="XIZMATLAR" title="Platformada nimalar bor?" accent="" text="Har bir tarif CRM uslubida ishlaydi: sizning kompaniyangiz maʼlumoti boshqalardan ajratilgan." />
+        <div className="s-cards three">
+          {[
+            { icon: Building2, t: 'Alohida kompaniya paneli', d: 'Roʻyxatdan oʻtgan har bir tashkilot oʻz filiallari, savdosi va xodimlariga ega.' },
+            { icon: Users, t: 'Kompaniya admin', d: 'Faqat oʻz jamoangizni qoʻshing: admin, moliya, kuzatuvchi rollari.' },
+            { icon: Zap, t: 'Click orqali toʻlov', d: 'Trial tugagach Click orqali xavfsiz toʻlang — tarif darhol yangilanadi.' },
+          ].map((c, i) => (
+            <FeatureCard key={c.t} i={i} icon={c.icon} color="#0fb3c7" title={c.t} text={c.d} />
+          ))}
+        </div>
+      </div>
+    </section>
+    <CtaBand title="Bugun oching — 7 kun bepul sinab koʻring." />
   </>;
 }

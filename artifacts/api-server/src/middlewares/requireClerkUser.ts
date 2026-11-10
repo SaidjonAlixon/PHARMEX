@@ -7,6 +7,7 @@ import {
   localAuthEnabled,
   readSessionToken,
 } from "../lib/localAuth";
+import { attachOrgLocals, loadOrganization } from "../lib/org";
 
 const bootstrappedUsers = new Set<string>();
 
@@ -30,6 +31,8 @@ const requireLocalUser: RequestHandler = async (req, res, next) => {
     res.locals.appUserId = appUser.id;
     res.locals.userRole = appUser.role;
     res.locals.userName = appUser.displayName;
+    const org = await loadOrganization(appUser.organizationId);
+    attachOrgLocals(req, res, org, appUser.role);
     next();
   } catch (error) {
     req.log.error({ err: error }, "Could not resolve signed-in application user");
@@ -98,6 +101,8 @@ const requireClerkSessionUser: RequestHandler = async (req, res, next) => {
     res.locals.appUserId = appUser.id;
     res.locals.userRole = appUser.role;
     res.locals.userName = appUser.displayName;
+    const org = await loadOrganization(appUser.organizationId);
+    attachOrgLocals(req, res, org, appUser.role);
     next();
   } catch (error) {
     req.log.error({ err: error }, "Could not resolve signed-in application user");
@@ -112,8 +117,19 @@ export const requireClerkUser: RequestHandler = localAuthEnabled
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export const readOnlyForViewers: RequestHandler = (req, res, next) => {
-  if (res.locals.userRole === "viewer" && !READ_METHODS.has(req.method)) {
+  if (READ_METHODS.has(req.method)) {
+    next();
+    return;
+  }
+  if (res.locals.userRole === "viewer") {
     res.status(403).json({ error: "Kuzatuvchi faqat koʻra oladi: maʼlumot kiritish yoki saqlash mumkin emas." });
+    return;
+  }
+  if (res.locals.userRole !== "platform_admin" && res.locals.canWrite === false) {
+    res.status(402).json({
+      error: "Obuna muddati tugagan yoki sinov yakunlangan. Davom etish uchun tarifni yangilang.",
+      code: "subscription_required",
+    });
     return;
   }
   next();
@@ -121,10 +137,19 @@ export const readOnlyForViewers: RequestHandler = (req, res, next) => {
 
 export function requireRole(...allowedRoles: string[]): RequestHandler {
   return (req, res, next) => {
-    if (!allowedRoles.includes(String(res.locals.userRole ?? ""))) {
+    const role = String(res.locals.userRole ?? "");
+    if (!allowedRoles.includes(role)) {
       res.status(403).json({ error: "Bu amal uchun ruxsat yo‘q." });
       return;
     }
     next();
   };
 }
+
+export const requirePlatformAdmin: RequestHandler = (_req, res, next) => {
+  if (res.locals.userRole !== "platform_admin") {
+    res.status(403).json({ error: "Faqat platforma administratori." });
+    return;
+  }
+  next();
+};

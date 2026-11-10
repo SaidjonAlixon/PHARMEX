@@ -1,12 +1,13 @@
 import {
   Activity, ArrowLeftRight, BookOpen, Building2, FileBarChart2, HandCoins, LayoutDashboard, ShieldCheck, ShoppingCart,
-  Sparkles, Truck, Users, Wallet, Workflow, CircleHelp, PlugZap, type LucideIcon,
+  Sparkles, Truck, Users, Wallet, Workflow, CircleHelp, PlugZap, BadgePercent, type LucideIcon,
 } from 'lucide-react';
 
 export type SitePage = { href: string; label: string; short: string; icon: LucideIcon };
 
 export const sitePages: SitePage[] = [
   { href: '/imkoniyatlar', label: 'Imkoniyatlar', short: '10 ta modul: savdodan foydagacha', icon: Sparkles },
+  { href: '/tariflar', label: 'Tariflar', short: '7 kun bepul · 3 ta tarif', icon: BadgePercent },
   { href: '/yechimlar', label: 'Yechimlar', short: 'Kimlar uchun va nima uchun', icon: Users },
   { href: '/qanday-ishlaydi', label: 'Qanday ishlaydi', short: 'Hujjatdan qarorgacha zanjir', icon: Workflow },
   { href: '/integratsiya', label: 'Integratsiya', short: 'FOM F-APTEKA bilan real vaqt', icon: PlugZap },

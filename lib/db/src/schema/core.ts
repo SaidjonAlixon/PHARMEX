@@ -2,6 +2,7 @@ import { createInsertSchema } from "drizzle-zod";
 import {
   date,
   index,
+  integer,
   numeric,
   pgTable,
   serial,
@@ -15,6 +16,7 @@ export const branchesTable = pgTable(
   "pharmacy_branches",
   {
     id: serial("id").primaryKey(),
+    organizationId: integer("organization_id"),
     name: text("name").notNull(),
     fomId: text("fom_id"),
     kind: text("kind").notNull().default("pharmacy"),
@@ -30,7 +32,9 @@ export const branchesTable = pgTable(
   },
   (table) => [
     index("pharmacy_branches_name_idx").on(table.name),
-    uniqueIndex("pharmacy_branches_source_fom_id_idx").on(
+    index("pharmacy_branches_org_idx").on(table.organizationId),
+    uniqueIndex("pharmacy_branches_org_source_fom_id_idx").on(
+      table.organizationId,
       table.source,
       table.fomId,
     ),
@@ -41,6 +45,7 @@ export const productsTable = pgTable(
   "pharmacy_products",
   {
     id: serial("id").primaryKey(),
+    organizationId: integer("organization_id"),
     name: text("name").notNull(),
     code: text("code"),
     barcode: text("barcode"),
@@ -65,9 +70,11 @@ export const productsTable = pgTable(
   },
   (table) => [
     index("pharmacy_products_name_idx").on(table.name),
-    uniqueIndex("pharmacy_products_code_idx").on(table.code),
-    uniqueIndex("pharmacy_products_barcode_idx").on(table.barcode),
-    uniqueIndex("pharmacy_products_source_fom_id_idx").on(
+    index("pharmacy_products_org_idx").on(table.organizationId),
+    uniqueIndex("pharmacy_products_org_code_idx").on(table.organizationId, table.code),
+    uniqueIndex("pharmacy_products_org_barcode_idx").on(table.organizationId, table.barcode),
+    uniqueIndex("pharmacy_products_org_source_fom_id_idx").on(
+      table.organizationId,
       table.source,
       table.fomId,
     ),
@@ -78,6 +85,7 @@ export const counterpartiesTable = pgTable(
   "pharmacy_counterparties",
   {
     id: serial("id").primaryKey(),
+    organizationId: integer("organization_id"),
     name: text("name").notNull(),
     kind: text("kind").notNull().default("supplier"),
     taxId: text("tax_id").notNull().default(""),
@@ -90,11 +98,14 @@ export const counterpartiesTable = pgTable(
   },
   (table) => [
     index("pharmacy_counterparties_name_idx").on(table.name),
-    uniqueIndex("pharmacy_counterparties_kind_name_idx").on(
+    index("pharmacy_counterparties_org_idx").on(table.organizationId),
+    uniqueIndex("pharmacy_counterparties_org_kind_name_idx").on(
+      table.organizationId,
       table.kind,
       table.name,
     ),
-    uniqueIndex("pharmacy_counterparties_kind_fom_id_idx").on(
+    uniqueIndex("pharmacy_counterparties_org_kind_fom_id_idx").on(
+      table.organizationId,
       table.kind,
       table.fomId,
     ),

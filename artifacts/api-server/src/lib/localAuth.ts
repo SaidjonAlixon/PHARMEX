@@ -120,12 +120,33 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     .limit(1);
   if (existing) return;
 
+  const platformEmail = process.env.PLATFORM_ADMIN_EMAIL?.trim().toLowerCase() || "";
   await db.insert(appUsersTable).values({
     clerkUserId: `local:${username}`,
     username,
     passwordHash: await hashPassword(password),
-    displayName: "Administrator",
-    role: "admin",
+    displayName: "Platforma admin",
+    email: platformEmail,
+    role: "platform_admin",
+    organizationId: null,
   });
-  logger.info({ username }, "Bootstrap administrator created");
+  logger.info({ username }, "Bootstrap platform administrator created");
+}
+
+/** Promote PLATFORM_ADMIN_EMAIL user to platform_admin (no org). */
+export async function ensurePlatformAdminEmail(): Promise<void> {
+  const email = process.env.PLATFORM_ADMIN_EMAIL?.trim().toLowerCase();
+  if (!email) return;
+  const [user] = await db
+    .select()
+    .from(appUsersTable)
+    .where(eq(appUsersTable.email, email))
+    .limit(1);
+  if (!user) return;
+  if (user.role === "platform_admin" && user.organizationId == null) return;
+  await db
+    .update(appUsersTable)
+    .set({ role: "platform_admin", organizationId: null })
+    .where(eq(appUsersTable.id, user.id));
+  logger.info({ email }, "Platform admin role applied from PLATFORM_ADMIN_EMAIL");
 }

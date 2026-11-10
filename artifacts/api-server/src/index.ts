@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { ensureBootstrapAdmin, localAuthEnabled } from "./lib/localAuth";
+import { ensureBootstrapAdmin, ensurePlatformAdminEmail, localAuthEnabled } from "./lib/localAuth";
 import { loadFomSettings, scheduleFomSync } from "./lib/fomSettings";
 
 const rawPort = process.env["PORT"];
@@ -19,6 +19,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 if (localAuthEnabled) {
   await ensureBootstrapAdmin();
+  await ensurePlatformAdminEmail();
 }
 
 app.listen(port, (err) => {

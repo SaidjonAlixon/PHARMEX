@@ -15,6 +15,7 @@ import {
   loadInventory,
   loadMoneyTransactions,
   loadSaleLines,
+  withTenant,
 } from "./queries";
 
 const router: IRouter = Router();
@@ -26,12 +27,12 @@ router.get("/reports", async (req, res): Promise<void> => {
     return;
   }
   const mode = await getDataMode();
-  const filters = {
+  const filters = withTenant(res, {
     mode,
     branchId: parsed.data.branchId,
     dateFrom: parsed.data.dateFrom,
     dateTo: parsed.data.dateTo,
-  };
+  });
   let columns: string[] = [];
   let rows: Array<Record<string, unknown>> = [];
   let total = 0n;
@@ -135,6 +136,9 @@ router.get("/reports", async (req, res): Promise<void> => {
           .where(
             and(
               sourceCondition(branchesTable.source, mode),
+              filters.organizationId != null
+                ? eq(branchesTable.organizationId, filters.organizationId)
+                : undefined,
               parsed.data.branchId
                 ? eq(branchesTable.id, parsed.data.branchId)
                 : undefined,

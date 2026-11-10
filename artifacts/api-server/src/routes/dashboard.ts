@@ -33,6 +33,7 @@ import {
   loadInventory,
   loadMoneyTransactions,
   loadSaleLines,
+  withTenant,
 } from "./queries";
 
 const router: IRouter = Router();
@@ -51,12 +52,12 @@ router.get("/dashboard", async (req, res): Promise<void> => {
     new Date(Date.UTC(localToday.getUTCFullYear(), localToday.getUTCMonth(), 1));
   const dateTo = parsed.data.dateTo ?? localToday;
   const mode = await getDataMode();
-  const filters = {
+  const filters = withTenant(res, {
     mode,
     branchId: parsed.data.branchId,
     dateFrom,
     dateTo,
-  };
+  });
 
   if (mode === "empty") {
     const empty = {
@@ -104,8 +105,8 @@ router.get("/dashboard", async (req, res): Promise<void> => {
       loadSaleLines(filters),
       loadExpenses(filters),
       loadCashAccounts(filters),
-      loadInventory({ mode, branchId: parsed.data.branchId }),
-      loadDebts({ mode, branchId: parsed.data.branchId }),
+      loadInventory(withTenant(res, { mode, branchId: parsed.data.branchId })),
+      loadDebts(withTenant(res, { mode, branchId: parsed.data.branchId })),
       loadMoneyTransactions(filters),
       db
         .select()
@@ -113,6 +114,9 @@ router.get("/dashboard", async (req, res): Promise<void> => {
         .where(
           and(
             sourceCondition(branchesTable.source, mode),
+            filters.organizationId != null
+              ? eq(branchesTable.organizationId, filters.organizationId)
+              : undefined,
             parsed.data.branchId
               ? eq(branchesTable.id, parsed.data.branchId)
               : undefined,
@@ -344,8 +348,8 @@ router.get("/dashboard", async (req, res): Promise<void> => {
           loadSaleLines(branchFilter),
           loadExpenses(branchFilter),
           loadCashAccounts(branchFilter),
-          loadInventory({ mode, branchId: branch.id }),
-          loadDebts({ mode, branchId: branch.id }),
+          loadInventory(withTenant(res, { mode, branchId: branch.id })),
+          loadDebts(withTenant(res, { mode, branchId: branch.id })),
         ]);
       const branchRevenue = branchSales.reduce((sum, sale) => sum + sale.revenueCents, 0n);
       const branchCostsKnown = branchSales.every((sale) => sale.costCents !== null);

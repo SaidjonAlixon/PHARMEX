@@ -18,7 +18,10 @@ export const appUsersTable = pgTable(
     clerkUserId: text("clerk_user_id").notNull(),
     displayName: text("display_name").notNull().default("Foydalanuvchi"),
     email: text("email").notNull().default(""),
+    // platform_admin | admin | finance | viewer
     role: text("role").notNull().default("viewer"),
+    // null for platform_admin; required for company users
+    organizationId: integer("organization_id"),
     username: text("username"),
     passwordHash: text("password_hash"),
     // active | pending | rejected | disabled — only active accounts receive sessions.
@@ -48,6 +51,7 @@ export const appUsersTable = pgTable(
       .where(sql`${table.email} <> ''`),
     index("pharmacy_app_users_role_idx").on(table.role),
     index("pharmacy_app_users_status_idx").on(table.status),
+    index("pharmacy_app_users_org_idx").on(table.organizationId),
   ],
 );
 

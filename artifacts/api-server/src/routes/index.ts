@@ -14,6 +14,8 @@ import reportsRouter from "./reports";
 import fomRouter, { fomSiteRouter } from "./fom";
 import authRouter from "./auth";
 import accountsRouter from "./accounts";
+import billingRouter from "./billing";
+import platformRouter from "./platform";
 import { readOnlyForViewers, requireClerkUser } from "../middlewares/requireClerkUser";
 import { localAuthEnabled } from "../lib/localAuth";
 
@@ -22,10 +24,13 @@ const router: IRouter = Router();
 router.use(healthRouter);
 router.use(fomSiteRouter);
 if (localAuthEnabled) router.use(authRouter);
+// Public Click callbacks + plan catalog; authenticated routes guard themselves.
+router.use(billingRouter);
 router.use(requireClerkUser);
 router.use(readOnlyForViewers);
 router.use(identityRouter);
 if (localAuthEnabled) router.use(accountsRouter);
+router.use(platformRouter);
 router.use(branchesRouter);
 router.use(dashboardRouter);
 router.use(tradeRouter);

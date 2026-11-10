@@ -19,7 +19,13 @@ import {
 import { requireRole } from "../middlewares/requireClerkUser";
 import { actorOf, audit, dateOnlyString } from "../lib/ledger";
 import { centsMoney, getDataMode, moneyCents, sourceCondition, toNumber } from "./financialUtils";
-import { loadDebts } from "./queries";
+import { loadDebts, withTenant } from "./queries";
+
+function catalogOrgId(res: { locals: Record<string, unknown> }): number | null | undefined {
+  if (res.locals.userRole === "platform_admin") return undefined;
+  const id = res.locals.organizationId;
+  return typeof id === "number" ? id : -1;
+}
 
 const router: IRouter = Router();
 
@@ -28,7 +34,7 @@ function isUniqueViolation(error: unknown) {
   return (error as { code?: string })?.code === "23505" || cause?.code === "23505";
 }
 
-async function loadProducts(search?: string, productId?: number) {
+async function loadProducts(search?: string, productId?: number, organizationId?: number | null) {
   const mode = await getDataMode();
   const rows = await db
     .select({
@@ -52,6 +58,7 @@ async function loadProducts(search?: string, productId?: number) {
     .where(
       and(
         sourceCondition(productsTable.source, mode === "empty" ? "live" : mode),
+        organizationId != null ? eq(productsTable.organizationId, organizationId) : undefined,
         productId ? eq(productsTable.id, productId) : undefined,
         search
           ? or(
@@ -80,7 +87,7 @@ router.get("/products", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  res.json(ListProductsResponse.parse(await loadProducts(parsed.data.search?.trim())));
+  res.json(ListProductsResponse.parse(await loadProducts(parsed.data.search?.trim(), undefined, catalogOrgId(res))));
 });
 
 router.post(
@@ -94,6 +101,7 @@ router.post(
     }
     const input = parsed.data;
     const actor = actorOf(res.locals);
+    const orgId = catalogOrgId(res);
     try {
       const product = await db.transaction(async (tx) => {
         const [created] = await tx
@@ -108,12 +116,13 @@ router.post(
             vatRate: String(input.vatRate ?? 0),
             expiryDate: dateOnlyString(input.expiryDate),
             source: "manual",
+            organizationId: typeof orgId === "number" && orgId > 0 ? orgId : null,
           })
           .returning();
         await audit(tx, actor.id, "product.created", "product", created.id, `Mahsulot qo‘shildi: ${created.name}`);
         return created;
       });
-      const [row] = await loadProducts(undefined, product.id);
+      const [row] = await loadProducts(undefined, product.id, orgId);
       res.status(201).json(CreateProductResponse.parse(row));
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -125,12 +134,20 @@ router.post(
   },
 );
 
-async function loadCounterparties(filters: { kind?: string; search?: string; id?: number }) {
+async function loadCounterparties(filters: {
+  kind?: string;
+  search?: string;
+  id?: number;
+  organizationId?: number | null;
+}) {
   const rows = await db
     .select()
     .from(counterpartiesTable)
     .where(
       and(
+        filters.organizationId != null
+          ? eq(counterpartiesTable.organizationId, filters.organizationId)
+          : undefined,
         filters.kind ? eq(counterpartiesTable.kind, filters.kind) : undefined,
         filters.id ? eq(counterpartiesTable.id, filters.id) : undefined,
         filters.search
@@ -143,7 +160,12 @@ async function loadCounterparties(filters: { kind?: string; search?: string; id?
       ),
     )
     .orderBy(asc(counterpartiesTable.name));
-  const debts = await loadDebts({ mode: await getDataMode() });
+  const debts = await loadDebts(
+    withTenant(
+      { locals: { organizationId: filters.organizationId, userRole: filters.organizationId == null ? "platform_admin" : "admin" } },
+      { mode: await getDataMode() },
+    ),
+  );
   return rows.map((row) => {
     const own = debts.filter((debt) => debt.counterpartyId === row.id);
     const sum = (kind: string) =>
@@ -176,6 +198,7 @@ router.get("/counterparties", async (req, res): Promise<void> => {
       await loadCounterparties({
         kind: parsed.data.kind,
         search: parsed.data.search?.trim(),
+        organizationId: catalogOrgId(res),
       }),
     ),
   );
@@ -192,11 +215,13 @@ router.post(
     }
     const input = parsed.data;
     const actor = actorOf(res.locals);
+    const orgId = catalogOrgId(res);
     try {
       const created = await db.transaction(async (tx) => {
         const [row] = await tx
           .insert(counterpartiesTable)
           .values({
+            organizationId: typeof orgId === "number" && orgId > 0 ? orgId : null,
             name: input.name.trim(),
             kind: input.kind,
             taxId: input.taxId?.trim() ?? "",
