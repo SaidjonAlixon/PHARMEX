@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BadgePercent, Building2, Check, Crown, Loader2, Send } from 'lucide-react';
+import { BadgePercent, Building2, Check, Loader2, Send, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { PageHeading, Panel } from '@/components/kit';
 import { formatUzs, type PlanCode } from '@/lib/plans';
@@ -83,17 +83,17 @@ export function PlansPage() {
             <ul>{p.features.map((f) => <li key={f}><Check size={14} />{f}</li>)}</ul>
             <button
               type="button"
-              className="button primary"
+              className="button primary plan-buy"
               disabled={checkout.isPending || (p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter')}
               onClick={() => checkout.mutate(p.code)}
               data-testid={`button-checkout-${p.code}`}
             >
-              {checkout.isPending ? <Loader2 className="spin" size={16} /> : <Crown size={16} />}
+              {checkout.isPending && checkout.variables === p.code
+                ? <Loader2 className="spin" size={16} />
+                : <Wallet size={16} />}
               {p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter'
                 ? 'Hozir bepul sinovdasiz'
-                : p.code === 'starter'
-                  ? 'Starter — Click toʻlov'
-                  : `${p.name} — Click toʻlov`}
+                : 'Obuna sotib olish'}
             </button>
           </article>
         ))}
