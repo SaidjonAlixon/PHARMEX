@@ -123,7 +123,7 @@ function Footer() {
         <div className="s-footer-col"><b>Platforma</b><Link href="/">Bosh sahifa</Link>{sitePages.map(p => <Link key={p.href} href={p.href}>{p.label}</Link>)}</div>
         <div className="s-footer-col"><b>Modullar</b>{modules.slice(0, 7).map(m => <AnchorLink key={m.id} href={`/imkoniyatlar#${m.id}`}>{m.title}</AnchorLink>)}</div>
         <div className="s-footer-col"><b>Boshlash</b>
-          <Show when="signed-out"><Link href="/sign-up">Akkaunt ochish</Link><Link href="/sign-in">Tizimga kirish</Link></Show>
+          <Show when="signed-out"><Link href="/sign-up">7 kun bepul ariza</Link><Link href="/sign-in">Tizimga kirish</Link></Show>
           <Show when="signed-in"><Link href="/">Kabinetga oʻtish</Link></Show>
           <Link href="/integratsiya">FOM ni ulash</Link><Link href="/qanday-ishlaydi">Birinchi kun</Link><Link href="/savollar">Yordam</Link>
         </div>

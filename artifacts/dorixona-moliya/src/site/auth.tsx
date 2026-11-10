@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, Redirect, useSearch } from 'wouter';
 import {
-  AlertCircle, ArrowLeft, ArrowRight, BadgeCheck, Check, ClipboardList, Clock3, Eye, EyeOff, Hourglass, Info, KeyRound, Loader2, Lock, Mail,
+  AlertCircle, ArrowLeft, ArrowRight, BadgeCheck, Building2, Check, ClipboardList, Clock3, Crown, Eye, EyeOff, Hourglass, Info, KeyRound, Loader2, Lock, Mail,
   MailCheck, Phone, RefreshCw, ShieldCheck, Sparkles, User, UserCheck, type LucideIcon,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/brand-logo';
@@ -200,13 +200,15 @@ function CodeInput({ value, onChange, onComplete, disabled, invalid }: { value: 
 // --- shared screens --------------------------------------------------------
 
 function PendingCard({ kind }: { kind: Done }) {
-  const steps = kind === 'request'
-    ? [{ icon: ClipboardList, title: 'Ariza yuborildi', text: 'Maʼlumotlaringiz xavfsiz saqlandi', state: 'done' }, { icon: UserCheck, title: 'Administrator koʻrib chiqadi', text: 'Rol va huquqlar belgilanadi', state: 'now' }, { icon: KeyRound, title: 'Email va parol bilan kirasiz', text: 'Tasdiqlangach darhol', state: 'next' }]
-    : [{ icon: MailCheck, title: 'Email tasdiqlandi', text: 'Akkaunt yaratildi', state: 'done' }, { icon: UserCheck, title: 'Administrator tasdigʻi', text: 'Rol va huquqlar belgilanadi', state: 'now' }, { icon: KeyRound, title: 'Tizimga kirasiz', text: 'Tasdiqlangach darhol', state: 'next' }];
+  const steps = [
+    { icon: ClipboardList, title: 'Ariza yuborildi', text: 'Maʼlumotlaringiz xavfsiz saqlandi', state: 'done' as const },
+    { icon: UserCheck, title: 'Platforma admini koʻrib chiqadi', text: 'Starter — 7 kun bepul ochiladi', state: 'now' as const },
+    { icon: KeyRound, title: 'Login va parol beriladi', text: 'Keyin «Kirish» orqali kabinetga kirasiz', state: 'next' as const },
+  ];
   return <div className="s-pending" data-testid="status-signup-pending">
     <div className="s-pending-orb"><span /><span /><Hourglass size={30} /></div>
-    <h1>{kind === 'request' ? 'Arizangiz qabul qilindi' : 'Akkauntingiz yaratildi'}</h1>
-    <p>{kind === 'request' ? 'Administrator arizangizni koʻrib chiqadi. Tasdiqlangach, roʻyxatdan oʻtishda kiritgan email va parolingiz bilan tizimga kirasiz.' : 'Administrator tasdiqlagach, tizimga kirishingiz mumkin. Odatda bu uzoq vaqt olmaydi.'}</p>
+    <h1>Arizangiz qabul qilindi</h1>
+    <p>Tez orada platforma administratori akkauntingizni ochadi va <b>login / parol</b>ni sizga yetkazadi. Shu maʼlumotlar bilan «Kirish» orqali tizimga kirasiz.</p>
     <ol className="s-pending-steps">{steps.map((s, i) => <li key={s.title} className={s.state} style={{ ['--i' as string]: i }}>
       <span className="s-pending-dot">{s.state === 'done' ? <Check size={15} /> : <s.icon size={15} />}</span>
       <div><b>{s.title}</b><small>{s.text}</small></div>
@@ -254,20 +256,18 @@ function SignInView({ options }: { options: AuthOptions | null }) {
   };
 
   return <>
-    <AuthHead eyebrow="KIRISH" title="Hisobingizga kiring" text="Savdo, kassa, zaxira va qarzlar — barchasi sizni kutmoqda." />
+    <AuthHead eyebrow="KIRISH" title="Hisobingizga kiring" text="Platforma admini bergan login va parol bilan kabinetga kiring." />
     {message && <Notice tone={message.tone} icon={message.tone === 'info' ? Hourglass : undefined}>{message.text}</Notice>}
-    <GoogleButton intent="sign-in" enabled={options?.google} label="Google bilan kirish" />
-    <Divider>yoki email va parol bilan</Divider>
     <form className="s-auth-form" onSubmit={submit}>
-      <Field label="Email yoki login" icon={Mail}>
-        <input required autoComplete="username" value={identifier} onChange={e => setIdentifier(e.target.value)} placeholder="siz@gmail.com" data-testid="input-login-identifier" />
+      <Field label="Login yoki email" icon={Mail} hint="Administrator bergan login">
+        <input required autoComplete="username" value={identifier} onChange={e => setIdentifier(e.target.value)} placeholder="login yoki email" data-testid="input-login-identifier" />
       </Field>
       <PasswordField value={password} onChange={setPassword} autoComplete="current-password" testId="input-login-password" />
       <button className="s-btn primary s-auth-submit" disabled={pending} data-testid="button-login">
         {pending ? <><Loader2 size={18} className="s-spin" /> Tekshirilmoqda…</> : <>Kirish <ArrowRight size={17} /></>}
       </button>
     </form>
-    <p className="s-auth-switch">Akkauntingiz yoʻqmi? <Link href="/sign-up" data-testid="link-to-sign-up">Boshlash</Link></p>
+    <p className="s-auth-switch">Hali akkauntingiz yoʻqmi? <Link href="/sign-up" data-testid="link-to-sign-up">7 kun bepul ariza</Link></p>
   </>;
 }
 
@@ -421,18 +421,24 @@ function formatPhone(input: string) {
 }
 
 function RequestPane({ onDone }: { onDone: (d: Done) => void }) {
-  const [form, setForm] = useState({ firstName: '', lastName: '', phone: '+998 ', email: '', password: '', confirm: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', phone: '+998 ', email: '', companyName: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (form.password !== form.confirm) { setError('Parollar bir xil emas.'); return; }
     if (form.phone.replace(/\D/g, '').length !== 12) { setError('Telefon raqamini toʻliq kiriting: +998 XX XXX XX XX'); return; }
+    if (form.companyName.trim().length < 2) { setError('Kompaniya (dorixona) nomini kiriting.'); return; }
     setBusy(true);
     try {
-      await api('/auth/register/request', { firstName: form.firstName, lastName: form.lastName, phone: form.phone, email: form.email, password: form.password });
+      await api('/auth/register/request', {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        phone: form.phone,
+        email: form.email,
+        companyName: form.companyName,
+      });
       onDone('request');
       return;
     } catch (err) {
@@ -442,72 +448,69 @@ function RequestPane({ onDone }: { onDone: (d: Done) => void }) {
   };
 
   return <form className="s-auth-pane s-auth-form" onSubmit={submit}>
+    <div className="s-trial-callout" data-testid="banner-trial-7">
+      <Crown size={18} />
+      <div><b>Starter — 7 kun bepul</b><span>Ariza tasdiqlangach kabinet ochiladi. Business / Enterprise — Tariflar boʻlimidan Click toʻlov.</span></div>
+    </div>
     <div className="s-field-row">
       <Field label="Ism" icon={User}><input required autoComplete="given-name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} data-testid="input-request-first-name" /></Field>
       <Field label="Familiya"><input required autoComplete="family-name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} data-testid="input-request-last-name" /></Field>
     </div>
+    <Field label="Kompaniya / dorixona nomi" icon={Building2}>
+      <input required value={form.companyName} onChange={e => setForm({ ...form, companyName: e.target.value })} placeholder="Masalan: Pharma Plus" data-testid="input-request-company" />
+    </Field>
     <Field label="Telefon raqami" icon={Phone}>
       <input required type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhone(e.target.value) })} data-testid="input-request-phone" />
     </Field>
-    <Field label="Gmail manzili" icon={Mail} hint="Tasdiqlangach shu email bilan kirasiz">
-      <input required type="email" autoComplete="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="siz@gmail.com" data-testid="input-request-email" />
+    <Field label="Email" icon={Mail} hint="Aloqa uchun — kirish loginini admin beradi">
+      <input required type="email" autoComplete="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="siz@email.com" data-testid="input-request-email" />
     </Field>
-    <PasswordField value={form.password} onChange={v => setForm({ ...form, password: v })} autoComplete="new-password" testId="input-request-password" meter />
-    <PasswordField label="Parolni takrorlang" value={form.confirm} onChange={v => setForm({ ...form, confirm: v })} autoComplete="new-password" testId="input-request-confirm" />
     {error && <Notice tone="error">{error}</Notice>}
     <button className="s-btn primary s-auth-submit" disabled={busy} data-testid="button-submit-request">
-      {busy ? <><Loader2 size={18} className="s-spin" /> Yuborilmoqda…</> : <>Roʻyxatdan oʻtish <ArrowRight size={17} /></>}
+      {busy ? <><Loader2 size={18} className="s-spin" /> Yuborilmoqda…</> : <>Ariza qoldirish <ArrowRight size={17} /></>}
     </button>
-    <p className="s-auth-fine"><UserCheck size={14} /> Arizangizni administrator koʻrib chiqadi va rolingizni belgilaydi.</p>
+    <p className="s-auth-fine"><UserCheck size={14} /> Google yoki mustaqil roʻyxat yoʻq — faqat ariza. Tasdiqdan keyin login/parol beriladi.</p>
   </form>;
 }
 
-function SignUpView({ options }: { options: AuthOptions | null }) {
+function SignUpView({ options: _options }: { options: AuthOptions | null }) {
   const params = new URLSearchParams(useSearch());
-  const initial = params.get('method');
-  const [method, setMethod] = useState<Method>(initial === 'google' || initial === 'request' ? initial : 'email');
   const [done, setDone] = useState<Done | null>(null);
   const fromQuery = queryMessages[params.get('error') ?? ''];
 
   if (done) return <PendingCard kind={done} />;
   return <>
-    <AuthHead eyebrow="BOSHLASH" title="PHARMXS da akkaunt oching" text="Oʻzingizga qulay usulni tanlang — uchala yoʻl ham xavfsiz." />
+    <AuthHead eyebrow="7 KUN BEPUL" title="Ariza qoldiring" text="Platforma admini koʻrib chiqadi, Starter sinovini ochadi va login/parol beradi." />
     {fromQuery && <Notice tone={fromQuery.tone}>{fromQuery.text}</Notice>}
-    <MethodPicker value={method} onChange={setMethod} />
-    <div key={method} className="s-auth-swap">
-      {method === 'google' && <GooglePane options={options} />}
-      {method === 'email' && <EmailPane options={options} onDone={setDone} />}
-      {method === 'request' && <RequestPane onDone={setDone} />}
-    </div>
-    <p className="s-auth-switch">Akkauntingiz bormi? <Link href="/sign-in" data-testid="link-to-sign-in">Kirish</Link></p>
+    <RequestPane onDone={setDone} />
+    <p className="s-auth-switch">Akkaunt ochilganmi? <Link href="/sign-in" data-testid="link-to-sign-in">Kirish</Link></p>
   </>;
 }
 
 // --- page shell ---------------------------------------------------------------
 
 function Showcase({ mode }: { mode: 'sign-in' | 'sign-up' }) {
-  const code = ['7', 'K', '2', 'Q', '9', 'M'];
   return <aside className="s-auth-side" aria-hidden="true">
     <div className="s-auth-side-glow"><i /><i /></div>
     <div className="s-auth-side-grid" />
     <Link href="/" className="s-auth-side-logo"><BrandLogo /></Link>
     <div className="s-auth-side-copy">
       <span className="s-auth-side-tag"><ShieldCheck size={13} /> Xavfsiz kirish</span>
-      <h2>{mode === 'sign-in' ? <>Qaytganingizdan<br /><span>xursandmiz.</span></> : <>Guruh moliyasi —<br /><span>bitta akkauntda.</span></>}</h2>
-      <p>Har bir filialning savdosi, kassasi, zaxirasi va qarzlari real vaqtda, manbasi bilan.</p>
+      <h2>{mode === 'sign-in' ? <>Login va parol<br /><span>bilan kiring.</span></> : <>7 kun bepul —<br /><span>ariza qoldiring.</span></>}</h2>
+      <p>Starter sinovi admin tasdigʻidan keyin ochiladi. Keyin kabinetdagi Tariflar orqali Click toʻlov.</p>
     </div>
     <div className="s-auth-mock">
       <div className="s-auth-mail">
-        <div className="s-auth-mail-head"><span className="s-auth-mail-ava">P</span><div><b>PHARMXS</b><small>Tasdiqlash kodi</small></div><em>hozir</em></div>
-        <div className="s-auth-mail-code">{code.map((c, i) => <span key={i} style={{ ['--i' as string]: i }}>{c}</span>)}</div>
+        <div className="s-auth-mail-head"><span className="s-auth-mail-ava">P</span><div><b>PHARMXS</b><small>Login / parol</small></div><em>admin</em></div>
+        <div className="s-auth-mail-code">{['L', 'O', 'G', 'I', 'N'].map((c, i) => <span key={i} style={{ ['--i' as string]: i }}>{c}</span>)}</div>
       </div>
-      <div className="s-auth-chip c1"><BadgeCheck size={15} /> Email tasdiqlandi</div>
-      <div className="s-auth-chip c2"><UserCheck size={15} /> Admin tasdiqladi</div>
+      <div className="s-auth-chip c1"><BadgeCheck size={15} /> Ariza qabul qilindi</div>
+      <div className="s-auth-chip c2"><UserCheck size={15} /> Admin akkaunt ochdi</div>
     </div>
     <ul className="s-auth-points">
-      <li><Lock size={16} /><span><b>Shifrlangan parollar</b>Parollar scrypt bilan saqlanadi, hech kim koʻra olmaydi</span></li>
-      <li><MailCheck size={16} /><span><b>6 xonali kod</b>Email egasi ekaningiz tasdiqlanadi</span></li>
-      <li><UserCheck size={16} /><span><b>Admin nazorati</b>Har bir yangi akkaunt va rol nazorat ostida</span></li>
+      <li><Lock size={16} /><span><b>Login admin beradi</b>Mustaqil Google/email roʻyxat yoʻq</span></li>
+      <li><Crown size={16} /><span><b>Starter 7 kun</b>Faqat birinchi tarif bepul sinovda</span></li>
+      <li><UserCheck size={16} /><span><b>Platforma nazorati</b>Har bir kompaniya alohida ochiladi</span></li>
     </ul>
   </aside>;
 }

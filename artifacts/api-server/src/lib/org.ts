@@ -76,6 +76,16 @@ export function publicOrganization(org: Organization | null) {
   if (status === "trialing" && trialEnds && trialEnds < now) status = "past_due";
   if (status === "active" && planEnds && planEnds < now) status = "past_due";
   const plan = isPlanCode(org.planCode) ? PLANS[org.planCode] : PLANS.starter;
+  const endsAt =
+    status === "trialing"
+      ? trialEnds
+      : status === "active"
+        ? planEnds
+        : trialEnds && planEnds
+          ? Math.max(trialEnds, planEnds)
+          : trialEnds ?? planEnds;
+  const daysLeft =
+    endsAt && endsAt > now ? Math.ceil((endsAt - now) / 86400000) : status === "trialing" || status === "active" ? 0 : null;
   return {
     id: org.id,
     name: org.name,
@@ -85,6 +95,7 @@ export function publicOrganization(org: Organization | null) {
     subscriptionStatus: status,
     trialEndsAt: org.trialEndsAt,
     planExpiresAt: org.planExpiresAt,
+    daysLeft,
     branchLimit: org.branchLimit,
     telegramEnabled: plan.telegram,
     telegramLinked: Boolean(org.telegramChatId),

@@ -84,12 +84,16 @@ export function PlansPage() {
             <button
               type="button"
               className="button primary"
-              disabled={checkout.isPending}
+              disabled={checkout.isPending || (p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter')}
               onClick={() => checkout.mutate(p.code)}
               data-testid={`button-checkout-${p.code}`}
             >
               {checkout.isPending ? <Loader2 className="spin" size={16} /> : <Crown size={16} />}
-              Click orqali toʻlash
+              {p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter'
+                ? 'Hozir bepul sinovdasiz'
+                : p.code === 'starter'
+                  ? 'Starter — Click toʻlov'
+                  : `${p.name} — Click toʻlov`}
             </button>
           </article>
         ))}

@@ -410,22 +410,23 @@ export function PricingPage() {
       icon={Crown}
       title="7 kun bepul,"
       accent="keyin aniq tarif."
-      text="Har bir kompaniya alohida panelga ega. Google yoki email orqali oching — 7 kun toʻliq sinov, soʻng Click orqali oylik tarif."
-      chips={['7 kun trial', 'Click toʻlov', 'CRM multi-tenant', '3 ta tarif']}
+      text="Ariza qoldiring — platforma admini Starter tarifini 7 kun bepul ochadi. Business va Enterprise faqat kabinetdagi Tariflar orqali Click toʻlovdan keyin."
+      chips={['Starter 7 kun bepul', 'Ariza → admin ochadi', 'Click toʻlov', '3 ta tarif']}
     />
     <section className="s-section tight">
       <div className="s-wrap">
-        <SectionHead center eyebrow="OYLIK" title="Kompaniyangiz oʻsishiga" accent="mos tarif." text="Filial soni va imkoniyatlar boʻyicha tanlang. Istalgan vaqtda yuqoriroq tarifga oʻtishingiz mumkin." />
+        <SectionHead center eyebrow="OYLIK" title="Kompaniyangiz oʻsishiga" accent="mos tarif." text="Boshida faqat Starter bepul sinov. Qolgan tariflar toʻlovdan keyin ochiladi." />
         <div className="s-price-grid">
           {PUBLIC_PLANS.map((p, i) => (
             <article key={p.code} className={`s-price-card ${p.highlight ? 'featured' : ''}`} data-reveal style={delay(i)}>
-              {p.highlight && <span className="s-price-badge">Eng koʻp tanlanadi</span>}
+              {p.code === 'starter' && <span className="s-price-badge">7 kun bepul</span>}
+              {p.highlight && p.code !== 'starter' && <span className="s-price-badge">Eng koʻp tanlanadi</span>}
               <h3>{p.name}</h3>
               <div className="s-price-amount"><b>{formatUzs(p.priceUzs)}</b><small>/ oy</small></div>
               <p className="s-price-limit">{p.branchLimit == null ? 'Istalgancha filial' : `${p.branchLimit} ta filial`}</p>
               <ul>{p.features.map(f => <li key={f}><Check size={15} />{f}</li>)}</ul>
-              <Link href="/sign-up" className={`s-btn ${p.highlight ? 'primary' : 'ghost'} lg`} data-testid={`link-plan-${p.code}`}>
-                7 kun bepul boshlash <ArrowRight size={16} />
+              <Link href={p.code === 'starter' ? '/sign-up' : '/sign-in'} className={`s-btn ${p.code === 'starter' ? 'primary' : 'ghost'} lg`} data-testid={`link-plan-${p.code}`}>
+                {p.code === 'starter' ? <>7 kun bepul ariza <ArrowRight size={16} /></> : <>Kabinetdan toʻlash <ArrowRight size={16} /></>}
               </Link>
             </article>
           ))}

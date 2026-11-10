@@ -29,6 +29,8 @@ export const appUsersTable = pgTable(
     // admin | google | email | request
     signupMethod: text("signup_method").notNull().default("admin"),
     phone: text("phone").notNull().default(""),
+    // Company name from public application (ariza); used when platform admin approves.
+    companyName: text("company_name").notNull().default(""),
     googleSub: text("google_sub"),
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),

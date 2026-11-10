@@ -38,7 +38,9 @@ CREATE INDEX IF NOT EXISTS pharmacy_payments_org_idx ON pharmacy_payments (organ
 CREATE INDEX IF NOT EXISTS pharmacy_payments_click_trans_idx ON pharmacy_payments (click_trans_id);
 
 ALTER TABLE pharmacy_app_users ADD COLUMN IF NOT EXISTS organization_id integer;
+ALTER TABLE pharmacy_app_users ADD COLUMN IF NOT EXISTS company_name text NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS pharmacy_app_users_org_idx ON pharmacy_app_users (organization_id);
+CREATE INDEX IF NOT EXISTS pharmacy_app_users_status_idx ON pharmacy_app_users (status);
 
 ALTER TABLE pharmacy_branches ADD COLUMN IF NOT EXISTS organization_id integer;
 CREATE INDEX IF NOT EXISTS pharmacy_branches_org_idx ON pharmacy_branches (organization_id);

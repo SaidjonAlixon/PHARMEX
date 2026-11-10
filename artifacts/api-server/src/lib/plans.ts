@@ -18,11 +18,11 @@ export const PLANS: Record<PlanCode, PlanDef> = {
     branchLimit: 2,
     telegram: false,
     features: [
+      "7 kun bepul sinov (faqat Starter)",
       "2 ta filial",
       "Savdo, zaxira, kassa",
       "Asosiy hisobotlar",
       "Foydalanuvchilar (kompaniya ichida)",
-      "7 kun bepul sinov",
     ],
   },
   business: {
@@ -33,11 +33,11 @@ export const PLANS: Record<PlanCode, PlanDef> = {
     telegram: false,
     highlight: true,
     features: [
+      "Click toʻlovdan keyin ochiladi",
       "5 ta filial",
       "Barcha modullar toʻliq",
       "Qarzlar, foyda-zarar, Excel/PDF",
       "FOM F-APTEKA integratsiyasi",
-      "Kompaniya admin paneli",
     ],
   },
   enterprise: {
@@ -47,11 +47,11 @@ export const PLANS: Record<PlanCode, PlanDef> = {
     branchLimit: null,
     telegram: true,
     features: [
+      "Click toʻlovdan keyin ochiladi",
       "Istalgancha filial",
       "Business dagi barcha imkoniyatlar",
       "Telegram bot xabarnomalari",
       "Ustuvor qoʻllab-quvvatlash",
-      "Kengaytirilgan monitoring",
     ],
   },
 };

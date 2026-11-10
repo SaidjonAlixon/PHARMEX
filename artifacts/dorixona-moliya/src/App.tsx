@@ -322,7 +322,8 @@ function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: 
     <Route path="/"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><DashboardPage filters={filters} /></Shell></Show><Show when="signed-out"><SiteLayout><HomePage /></SiteLayout></Show></Route>
     <Route path="/imkoniyatlar"><SiteLayout><FeaturesPage /></SiteLayout></Route>
     <Route path="/tariflar"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlansPage /></Shell></Show><Show when="signed-out"><SiteLayout><PricingPage /></SiteLayout></Show></Route>
-    <Route path="/platform"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlatformPage /></Shell></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
+    <Route path="/platform"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlatformPage /></Shell></Show><Show when="signed-out"><Redirect to="/sign-in" /></Show></Route>
+    <Route path="/admin"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlatformPage /></Shell></Show><Show when="signed-out"><Redirect to="/sign-in" /></Show></Route>
     <Route path="/yechimlar"><SiteLayout><SolutionsPage /></SiteLayout></Route>
     <Route path="/qanday-ishlaydi"><SiteLayout><HowPage /></SiteLayout></Route>
     <Route path="/integratsiya"><SiteLayout><IntegrationPage /></SiteLayout></Route>
