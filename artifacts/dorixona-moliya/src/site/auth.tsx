@@ -245,8 +245,8 @@ function SignInView({ options }: { options: AuthOptions | null }) {
     setPending(true);
     setMessage(null);
     try {
-      await api('/auth/login', { identifier, password });
-      window.location.assign(homeUrl);
+      const user = await api<{ role?: string }>('/auth/login', { identifier, password });
+      window.location.assign(user?.role === 'platform_admin' ? `${homeUrl.replace(/\/?$/, '/')}owner` : homeUrl);
       return;
     } catch (err) {
       const error = err as AuthError;

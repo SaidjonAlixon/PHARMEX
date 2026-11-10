@@ -34,6 +34,7 @@ type AccountsResponse = {
   me: number;
   ownerId: number | null;
   isOwner: boolean;
+  canManageUsers?: boolean;
   mail: { configured: boolean; devMode: boolean };
   google: boolean;
 };
@@ -63,7 +64,7 @@ export function usePendingAccounts() {
 export const roleMenu: MenuOption[] = [
   { value: 'viewer', label: 'Kuzatuvchi', hint: 'Hammasi koʻrinadi · tugmalar ishlamaydi · yuklab olish mumkin', icon: Eye, color: '#6b7a96' },
   { value: 'finance', label: 'Moliya xodimi', hint: 'Hujjat va pul amallari', icon: Calculator, color: '#1f5fd0' },
-  { value: 'admin', label: 'Administrator', hint: 'Platforma maʼlumotlari · foydalanuvchi qoʻsha olmaydi', icon: Crown, color: '#0fb3c7' },
+  { value: 'admin', label: 'Administrator', hint: 'Kompaniya maʼlumotlari · foydalanuvchi yaratish', icon: Crown, color: '#0fb3c7' },
 ];
 const roleLabel = (r: string) => roleMenu.find(m => m.value === r)?.label ?? r;
 
@@ -276,6 +277,7 @@ export function UsersPage() {
 
   const data = q.data;
   const isOwner = !!data?.isOwner;
+  const canManage = !!data?.canManageUsers || isOwner;
   const ownerId = data?.ownerId ?? null;
 
   const patch = useMutation({
@@ -367,7 +369,7 @@ export function UsersPage() {
       eyebrow="KIRISH VA HUQUQLAR"
       title="Foydalanuvchilar"
       subtitle="Qoʻlda yaratish · rollar · login/parol · kuzatuvchi faqat koʻradi"
-      actions={isOwner && (
+      actions={canManage && (
         <button type="button" className="button primary" onClick={() => { setFormError(null); setCreating(true); }} data-testid="button-create-user">
           <Plus size={16} /> Foydalanuvchi yaratish
         </button>
@@ -383,9 +385,9 @@ export function UsersPage() {
         { label: 'Rad etilgan / bloklangan', value: counts.rejected + counts.disabled, count: true, icon: UserX },
       ]} />
       {message && <div className={`notice ${message.tone}`} data-testid="status-accounts-message">{message.text}</div>}
-      {!isOwner && (
+      {!canManage && (
         <div className="notice warn">
-          Foydalanuvchi yaratish, tahrirlash va oʻchirish faqat <b>bosh administrator</b>ga ruxsat etilgan. Siz platforma maʼlumotlarini boshqara olasiz.
+          Faqat administrator foydalanuvchi yaratadi va boshqaradi. Kuzatuvchi faqat koʻradi.
         </div>
       )}
 
@@ -405,7 +407,7 @@ export function UsersPage() {
                   <div className="acc-req-tags"><MethodTag method={u.signupMethod} /><small>{dateTime(u.createdAt)}</small></div>
                 </div>
               </div>
-              {isOwner && (
+              {canManage && (
                 <div className="acc-req-actions">
                   <SelectMenu ariaLabel="Rol" caption="ROL" value={role} onChange={v => setRoles({ ...roles, [u.id]: v })} options={roleMenu} align="right" testId={`select-role-${u.id}`} />
                   <button className="button primary" disabled={busy} onClick={() => act(u.id, { status: 'active', role })} data-testid={`button-approve-${u.id}`}><Check size={15} />Tasdiqlash</button>
@@ -441,7 +443,7 @@ export function UsersPage() {
                 ? 'Google yoki email-kod orqali roʻyxatdan oʻtganlar «Kuzatuvchi» roli bilan darhol kiradi.'
                 : 'Hozir barcha yangi akkauntlar bosh admin tasdigʻini kutadi.'}</small>
             </div>
-            <Switch checked={data.policy.autoApproveVerified} disabled={!isOwner || policy.isPending} onChange={v => policy.mutate(v)} label="Tasdiqlangan email bilan darhol kirish" />
+            <Switch checked={data.policy.autoApproveVerified} disabled={!canManage || policy.isPending} onChange={v => policy.mutate(v)} label="Tasdiqlangan email bilan darhol kirish" />
           </div>
           <p className="field-hint"><ShieldCheck size={14} /> Kuzatuvchi hamma boʻlimni koʻradi, filter va yuklab olish ishlaydi; oʻzgartirish tugmalari oʻchirilgan.</p>
         </Panel>
@@ -482,14 +484,14 @@ export function UsersPage() {
               <td className="acc-phone">{u.phone ? phoneView(u.phone) : '—'}</td>
               <td><MethodTag method={u.signupMethod} /></td>
               <td>
-                {!isOwner || self || isTargetOwner || u.status !== 'active'
+                {!canManage || self || isTargetOwner || u.status !== 'active'
                   ? <span className="acc-role">{roleLabel(u.role)}</span>
                   : <SelectMenu ariaLabel="Rol" value={u.role} onChange={role => role !== u.role && act(u.id, { role })} options={roleMenu} className="acc-role-menu" testId={`select-row-role-${u.id}`} />}
               </td>
               <td><StatusBadge tone={s.tone}>{s.label}</StatusBadge></td>
               <td>{u.lastLoginAt ? dateTime(u.lastLoginAt) : <span className="muted">Hali kirmagan</span>}</td>
               <td className="acc-actions">
-                {isOwner && !isTargetOwner && !self && (
+                {canManage && !isTargetOwner && !self && (
                   <>
                     <button type="button" className="button ghost small" disabled={busy} title="Tahrirlash" onClick={() => { setFormError(null); setEditing(u); }} data-testid={`button-edit-${u.id}`}>
                       <Pencil size={13} />
@@ -515,7 +517,7 @@ export function UsersPage() {
                     </button>
                   </>
                 )}
-                {isOwner && self && u.username && (
+                {canManage && self && u.username && (
                   <button type="button" className="button secondary small" disabled={busy} onClick={() => {
                     if (confirm('Oʻzingiz uchun yangi parol yaratilsinmi?')) resetPassword.mutate(u.id);
                   }} data-testid="button-reset-own-password">

@@ -116,6 +116,7 @@ export function PlatformPage() {
     onError: (e: Error) => setMsg(e.message),
   });
 
+  if (access.loaded && access.isPlatformAdmin) return <Redirect to="/owner" />;
   if (access.loaded && !access.isPlatformAdmin) return <Redirect to="/" />;
 
   const o = overview.data;

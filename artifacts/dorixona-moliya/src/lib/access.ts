@@ -29,8 +29,8 @@ export function useAccess() {
     isPlatformAdmin,
     /** Platforma maʼlumotlarini kiritish / oʻzgartirish (kuzatuvchida yoʻq). */
     canEdit: role === 'admin' || role === 'finance' || isPlatformAdmin,
-    /** Faqat bosh admin — foydalanuvchi yaratish / oʻchirish / parol. */
-    canManageUsers: isOwner || isPlatformAdmin,
+    /** Kompaniya admini — faqat oʻz org foydalanuvchilari; platforma admini — hammasi. */
+    canManageUsers: role === 'admin' || isPlatformAdmin,
     isOwner,
     readOnly: role === 'viewer',
     subscriptionStatus: sub,

@@ -127,6 +127,7 @@ router.get("/accounts", requireRole("admin"), async (_req, res): Promise<void> =
     me,
     ownerId,
     isOwner: ownerId != null && ownerId === me,
+    canManageUsers: true,
     mail: { configured: mailConfigured(), devMode: mailDevFallback() },
     google: googleConfig() !== null,
   });
@@ -135,12 +136,6 @@ router.get("/accounts", requireRole("admin"), async (_req, res): Promise<void> =
 router.put("/accounts/policy", requireRole("admin"), async (req, res): Promise<void> => {
   const orgId = requireOrg(res);
   if (orgId == null) return;
-  const me = Number(res.locals.appUserId);
-  const ownerId = await ownerAdminId(orgId);
-  if (ownerId !== me) {
-    res.status(403).json({ error: "Kirish siyosatini faqat bosh administrator oʻzgartira oladi." });
-    return;
-  }
   if (typeof req.body?.autoApproveVerified !== "boolean") {
     res.status(400).json({ error: "autoApproveVerified true yoki false boʻlishi kerak." });
     return;
@@ -162,11 +157,6 @@ router.post("/accounts", requireRole("admin"), async (req, res): Promise<void> =
   const orgId = requireOrg(res);
   if (orgId == null) return;
   const me = Number(res.locals.appUserId);
-  const ownerId = await ownerAdminId(orgId);
-  if (ownerId !== me) {
-    res.status(403).json({ error: "Foydalanuvchi yaratish faqat bosh administratorga ruxsat etilgan." });
-    return;
-  }
 
   const displayName = cleanName(req.body?.displayName);
   const phoneRaw = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
@@ -182,7 +172,7 @@ router.post("/accounts", requireRole("admin"), async (req, res): Promise<void> =
     return;
   }
   if (!role || !ROLES.includes(role)) {
-    res.status(400).json({ error: "Rolni tanlang: Administrator, Moliya xodimi yoki Kuzatuvchi." });
+    res.status(400).json({ error: "Rolni tanlang: Administrator yoki Kuzatuvchi (yoki Moliya)." });
     return;
   }
 
@@ -271,19 +261,13 @@ router.patch("/accounts/:id", requireRole("admin"), async (req, res): Promise<vo
   if (orgId == null) return;
   const me = Number(res.locals.appUserId);
   const ownerId = await ownerAdminId(orgId);
-  const isOwner = ownerId === me;
 
   if (id === me && ((status && status !== "active") || (role && role !== "admin"))) {
     res.status(409).json({ error: "Oʻz akkauntingizni bloklab yoki adminlikdan chiqarib boʻlmaydi." });
     return;
   }
-  if (ownerId === id && !isOwner) {
-    res.status(403).json({ error: "Bosh administratorga tegib boʻlmaydi." });
-    return;
-  }
-  if (!isOwner && (status !== undefined || role !== undefined || displayName !== undefined || phone !== undefined)) {
-    // Oddiy admin foydalanuvchilarni boshqara olmaydi — faqat platforma maʼlumotlari
-    res.status(403).json({ error: "Foydalanuvchilarni faqat bosh administrator boshqaradi." });
+  if (ownerId === id && me !== ownerId) {
+    res.status(403).json({ error: "Kompaniya egasiga tegib boʻlmaydi." });
     return;
   }
 
@@ -378,16 +362,12 @@ router.post("/accounts/:id/reset-password", requireRole("admin"), async (req, re
   const id = Number(req.params.id);
   const me = Number(res.locals.appUserId);
   const ownerId = await ownerAdminId(orgId);
-  if (ownerId !== me) {
-    res.status(403).json({ error: "Parolni faqat bosh administrator yangilay oladi." });
-    return;
-  }
   if (!Number.isInteger(id) || id <= 0) {
     res.status(400).json({ error: "Foydalanuvchi ID notoʻgʻri." });
     return;
   }
   if (ownerId === id && me !== id) {
-    res.status(403).json({ error: "Bosh administrator parolini boshqa hech kim yangilay olmaydi." });
+    res.status(403).json({ error: "Kompaniya egasi parolini boshqa hech kim yangilay olmaydi." });
     return;
   }
 
@@ -431,16 +411,12 @@ router.delete("/accounts/:id", requireRole("admin"), async (req, res): Promise<v
   const id = Number(req.params.id);
   const me = Number(res.locals.appUserId);
   const ownerId = await ownerAdminId(orgId);
-  if (ownerId !== me) {
-    res.status(403).json({ error: "Foydalanuvchini faqat bosh administrator oʻchira oladi." });
-    return;
-  }
   if (!Number.isInteger(id) || id <= 0) {
     res.status(400).json({ error: "Foydalanuvchi ID notoʻgʻri." });
     return;
   }
   if (id === me || id === ownerId) {
-    res.status(409).json({ error: "Bosh administratorni oʻchirib boʻlmaydi." });
+    res.status(409).json({ error: "Kompaniya egasini oʻchirib boʻlmaydi." });
     return;
   }
 

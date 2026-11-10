@@ -7,7 +7,7 @@ import {
   Activity, AlertCircle, ArrowDownLeft, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Boxes, Building2,
   Check, ChevronDown, CircleHelp, ClipboardList, Clock3, Download, FileBarChart2, Filter, HandCoins, LogOut,
   Menu, PackageSearch, Plus, RefreshCw, Search, Settings2, ShieldCheck, ShoppingCart, Truck, Wallet, Warehouse, X,
-  CalendarCheck, CalendarDays, CalendarClock, CalendarRange, Infinity as InfinityIcon, Layers, Store, UserCog, BadgePercent, Shield
+  CalendarCheck, CalendarDays, CalendarClock, CalendarRange, Infinity as InfinityIcon, Layers, Store, UserCog, BadgePercent
 } from 'lucide-react';
 import { SelectMenu, type MenuOption } from '@/components/select-menu';
 import {
@@ -44,7 +44,7 @@ import { FaqPage, FeaturesPage, HowPage, IntegrationPage, PricingPage, SecurityP
 import { AuthPage } from '@/site/auth';
 import { UsersPage, usePendingAccounts } from '@/pages/users';
 import { PlansPage } from '@/pages/plans';
-import { PlatformPage } from '@/pages/platform';
+import { OwnerConsolePage, OwnerLoginPage } from '@/pages/owner';
 import { roleLabel, useAccess } from '@/lib/access';
 import { Route, Switch, useLocation, Router as WouterRouter, Redirect, Link } from 'wouter';
 
@@ -96,7 +96,6 @@ const navItems = [
   { href: '/settings', label: 'Sozlamalar', icon: Settings2 },
 ];
 const usersNavItem = { href: '/users', label: 'Foydalanuvchilar', icon: UserCog };
-const platformNavItem = { href: '/platform', label: 'Platforma', icon: Shield };
 
 const periodOptions: MenuOption[] = [
   { value: 'today', label: 'Bugun', hint: 'Faqat bugungi kun (Toshkent vaqti)', icon: CalendarCheck, color: '#0fb3c7' },
@@ -160,7 +159,8 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const access = useAccess();
   let items = [...navItems];
   if (localAuth && accounts.isAdmin) items = [...items.slice(0, -1), usersNavItem, items[items.length - 1]!];
-  if (access.isPlatformAdmin) items = [platformNavItem, ...items];
+  if (access.isPlatformAdmin) return <Redirect to="/owner" />;
+  // platform admin uses /owner console only
   const period = filters.period ?? DEFAULT_PERIOD;
   // The range bar edits a draft; data follows only after “Tasdiqlash”.
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -322,8 +322,10 @@ function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: 
     <Route path="/"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><DashboardPage filters={filters} /></Shell></Show><Show when="signed-out"><SiteLayout><HomePage /></SiteLayout></Show></Route>
     <Route path="/imkoniyatlar"><SiteLayout><FeaturesPage /></SiteLayout></Route>
     <Route path="/tariflar"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlansPage /></Shell></Show><Show when="signed-out"><SiteLayout><PricingPage /></SiteLayout></Show></Route>
-    <Route path="/platform"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlatformPage /></Shell></Show><Show when="signed-out"><Redirect to="/sign-in" /></Show></Route>
-    <Route path="/admin"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlatformPage /></Shell></Show><Show when="signed-out"><Redirect to="/sign-in" /></Show></Route>
+    <Route path="/owner/kirish"><OwnerLoginPage /></Route>
+    <Route path="/owner"><Show when="signed-in"><OwnerConsolePage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></Route>
+    <Route path="/platform"><Show when="signed-in"><Redirect to="/owner" /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></Route>
+    <Route path="/admin"><Show when="signed-in"><Redirect to="/owner" /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></Route>
     <Route path="/yechimlar"><SiteLayout><SolutionsPage /></SiteLayout></Route>
     <Route path="/qanday-ishlaydi"><SiteLayout><HowPage /></SiteLayout></Route>
     <Route path="/integratsiya"><SiteLayout><IntegrationPage /></SiteLayout></Route>

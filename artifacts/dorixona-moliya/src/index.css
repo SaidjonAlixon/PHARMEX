@@ -1985,3 +1985,85 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
   .acc-policy { align-items: flex-start; }
 }
 .acc-phone { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Platform owner console */
+.owner-auth {
+  min-height: 100dvh; display: grid; place-items: center; padding: 24px;
+  background:
+    radial-gradient(900px 420px at 10% -10%, rgba(15,179,199,.18), transparent 55%),
+    radial-gradient(700px 380px at 100% 110%, rgba(47,207,90,.12), transparent 50%),
+    #f4f7f8;
+}
+.owner-auth-card {
+  width: min(420px, 100%); display: grid; gap: 14px; padding: 28px 24px;
+  border-radius: 22px; background: #fff; border: 1px solid #e4ece8;
+  box-shadow: 0 24px 60px rgba(11,30,74,.08);
+}
+.owner-auth-card h1 { margin: 8px 0 0; font-size: 26px; letter-spacing: -.04em; }
+.owner-auth-card > p { margin: 0; color: #6d7c74; font-size: 13px; line-height: 1.5; }
+.owner-auth-card label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; color: #4d5c55; }
+.owner-auth-card input {
+  min-height: 44px; border-radius: 12px; border: 1px solid #d7e2db; padding: 0 12px; font: inherit;
+}
+.owner-shell { min-height: 100dvh; background: #f3f6f7; color: var(--ink); }
+.owner-top {
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 14px max(18px, 3vw); background: rgba(255,255,255,.92); backdrop-filter: blur(10px);
+  border-bottom: 1px solid #e5ece7;
+}
+.owner-brand { display: flex; align-items: center; gap: 12px; }
+.owner-brand .brand-logo { height: 34px; }
+.owner-brand b { display: block; font-size: 15px; }
+.owner-brand span { color: #7a8a82; font-size: 12px; }
+.owner-body { display: grid; gap: 16px; padding: 18px max(18px, 3vw) 40px; }
+.owner-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.owner-tabs button {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px;
+  border-radius: 999px; border: 1px solid #d7e2db; background: #fff; font: 650 13px var(--app-font);
+  cursor: pointer; color: #405049;
+}
+.owner-tabs button.on { background: var(--px-grad); color: #fff; border-color: transparent; }
+.owner-panel {
+  display: grid; gap: 14px; padding: 18px; border-radius: 18px; background: #fff; border: 1px solid #e5ece7;
+}
+.owner-panel h2 { margin: 0; font-size: 18px; letter-spacing: -.03em; }
+.owner-panel h3 { margin: 12px 0 8px; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #466054; }
+.owner-table-wrap { overflow: auto; border: 1px solid #e8efea; border-radius: 14px; }
+.owner-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.owner-table-wrap th, .owner-table-wrap td { padding: 10px 12px; border-bottom: 1px solid #eef3f0; text-align: left; vertical-align: top; }
+.owner-table-wrap th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #7a8a82; background: #f8fbf9; }
+.owner-company-list { display: grid; gap: 10px; }
+.owner-company { border: 1px solid #e5ece7; border-radius: 16px; background: #fff; overflow: hidden; }
+.owner-company.muted { opacity: .88; }
+.owner-company-head {
+  width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+  padding: 14px 14px; border: 0; background: transparent; text-align: left; cursor: pointer;
+}
+.owner-company-meta { display: grid; gap: 2px; }
+.owner-company-meta b { font-size: 15px; }
+.owner-company-meta span { color: #718078; font-size: 12px; }
+.owner-company-days { font-size: 12px; font-weight: 800; color: #0b6f86; background: rgba(15,179,199,.1); padding: 6px 10px; border-radius: 999px; }
+.owner-company-body { display: grid; gap: 10px; padding: 0 14px 16px; border-top: 1px solid #eef3f0; }
+.owner-actions-row { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; }
+.owner-inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.owner-inline-form input, .owner-inline-form select, .owner-company-body select {
+  min-height: 38px; border-radius: 10px; border: 1px solid #d7e2db; padding: 0 10px; font: inherit; background: #fff;
+}
+.owner-creds {
+  display: flex; justify-content: space-between; gap: 16px; align-items: flex-start;
+  padding: 16px; border-radius: 16px; background: #ecfbf3; border: 1px solid #b9e8cb;
+}
+.owner-pill {
+  display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  text-transform: uppercase; color: #0b6f86; background: rgba(15,179,199,.12); padding: 2px 7px; border-radius: 999px;
+}
+.dark .owner-auth, .dark .owner-shell { background: #071024; color: #e8eefc; }
+.dark .owner-auth-card, .dark .owner-panel, .dark .owner-company, .dark .owner-tabs button { background: #0b1630; border-color: #1c2b4d; color: inherit; }
+.dark .owner-top { background: rgba(8,18,42,.92); border-bottom-color: #1c2b4d; }
+.dark .owner-table-wrap th { background: #0e1a36; color: #9aabc8; }
+.dark .owner-table-wrap th, .dark .owner-table-wrap td { border-bottom-color: #1a2948; }
+@media (max-width: 720px) {
+  .owner-company-head { grid-template-columns: auto 1fr; }
+  .owner-company-days { grid-column: 2; justify-self: start; }
+  .owner-creds { flex-direction: column; }
+}
