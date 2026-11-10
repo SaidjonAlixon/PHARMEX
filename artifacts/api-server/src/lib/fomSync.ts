@@ -987,7 +987,7 @@ function localTime(t: string | undefined, day: string | undefined): Date | null 
 }
 
 /**
- * Unit price that makes `qty` (milli-units) times it come out at `amount` cents. PHARMEX keeps
+ * Unit price that makes `qty` (milli-units) times it come out at `amount` cents. PHARMXS keeps
  * three decimals of quantity while F-APTEKA keeps six, so exact line amounts come from SQL and
  * the stored unit figures are derived from them.
  */
@@ -1585,7 +1585,7 @@ const RECONCILE_DAYS = Number(process.env.FOM_RECONCILE_DAYS) || 7;
 const MISSING_BATCH = 1500;
 
 /**
- * F-APTEKA document ids (from fomSqlRecentDocIds) that PHARMEX does not hold yet. Receipts are
+ * F-APTEKA document ids (from fomSqlRecentDocIds) that PHARMXS does not hold yet. Receipts are
  * `chk:ID`, transfers `tr:ID`, other stock documents `doc:inv:ID` / `doc:inc:ID`, purchases `inc:ID`.
  */
 async function missingDocuments(rows: FomRow[], from: Date): Promise<{ inv: string[]; inc: string[] }> {

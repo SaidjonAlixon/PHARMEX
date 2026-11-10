@@ -16,7 +16,7 @@ const scrypt = promisify(scryptCallback) as (
 ) => Promise<Buffer>;
 
 export const localAuthEnabled = process.env.AUTH_MODE === "local";
-export const SESSION_COOKIE = "pharmex_session";
+export const SESSION_COOKIE = "pharmxs_session";
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 function sessionSecret(): string {

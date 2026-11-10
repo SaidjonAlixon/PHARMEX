@@ -40,7 +40,7 @@ const router: IRouter = Router();
 
 const MAX_FAILURES = 10;
 const FAILURE_WINDOW_MS = 15 * 60 * 1000;
-const OAUTH_COOKIE = "pharmex_oauth";
+const OAUTH_COOKIE = "pharmxs_oauth";
 const SIGNUP_PURPOSE = "signup";
 const HOUR = 60 * 60 * 1000;
 const failures = new Map<string, { count: number; resetAt: number }>();
@@ -143,9 +143,9 @@ async function notifyAdmin(user: AppUser, req: Request): Promise<void> {
   const methods = { google: "Google", email: "Email + kod", request: "Ariza" } as Record<string, string>;
   await sendMail({
     to,
-    subject: `PHARMEX: yangi foydalanuvchi tasdiq kutmoqda — ${user.displayName}`,
+    subject: `PHARMXS: yangi foydalanuvchi tasdiq kutmoqda — ${user.displayName}`,
     text: `${user.displayName} (${user.email}${user.phone ? `, ${user.phone}` : ""}) ${methods[user.signupMethod] ?? user.signupMethod} orqali roʻyxatdan oʻtdi va tasdiq kutmoqda. Foydalanuvchilar boʻlimida koʻrib chiqing.`,
-    html: `<p><b>${user.displayName}</b> (${user.email}${user.phone ? `, ${user.phone}` : ""}) ${methods[user.signupMethod] ?? user.signupMethod} orqali roʻyxatdan oʻtdi va tasdiq kutmoqda.</p><p>PHARMEX → Foydalanuvchilar boʻlimida koʻrib chiqing.</p>`,
+    html: `<p><b>${user.displayName}</b> (${user.email}${user.phone ? `, ${user.phone}` : ""}) ${methods[user.signupMethod] ?? user.signupMethod} orqali roʻyxatdan oʻtdi va tasdiq kutmoqda.</p><p>PHARMXS → Foydalanuvchilar boʻlimida koʻrib chiqing.</p>`,
   }).catch((err) => req.log.warn({ err }, "Admin notification failed"));
 }
 

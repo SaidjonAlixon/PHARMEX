@@ -128,8 +128,8 @@ function Footer() {
           <Link href="/integratsiya">FOM ni ulash</Link><Link href="/qanday-ishlaydi">Birinchi kun</Link><Link href="/savollar">Yordam</Link>
         </div>
       </div>
-      <div className="s-footer-word" aria-hidden="true">PHARMEX</div>
-      <div className="s-footer-bottom"><span>© {new Date().getFullYear()} PHARMEX · Dorixona moliyaviy boshqaruvi</span><span>Oʻzbekiston dorixonalari uchun yaratilgan</span></div>
+      <div className="s-footer-word" aria-hidden="true">PHARMXS</div>
+      <div className="s-footer-bottom"><span>© {new Date().getFullYear()} PHARMXS · Dorixona moliyaviy boshqaruvi</span><span>Oʻzbekiston dorixonalari uchun yaratilgan</span></div>
     </div>
   </footer>;
 }
@@ -164,7 +164,7 @@ export function SiteLayout({ children }: { children: ReactNode }) {
     <Link href="/integratsiya" className="s-announce" data-testid="link-announce"><span className="s-announce-tag"><PlugZap size={12} /> Yangi</span>FOM F-APTEKA bilan real vaqt integratsiyasi — IP va portni kiriting, maʼlumot oʻzi keladi<ArrowRight size={14} /></Link>
     <header className={`s-nav ${scrolled ? 'scrolled' : ''} ${menu ? 'menu-open' : ''}`}>
       <div className="s-nav-inner">
-        <Link href="/" className="s-logo" aria-label="PHARMEX bosh sahifa" data-testid="link-site-home"><BrandLogo /></Link>
+        <Link href="/" className="s-logo" aria-label="PHARMXS bosh sahifa" data-testid="link-site-home"><BrandLogo /></Link>
         <nav aria-label="Asosiy menyu"><NavLinks /></nav>
         <div className="s-nav-actions">
           <ThemeToggle />

@@ -1999,7 +1999,7 @@ export const GetFomStatusResponse = zod.object({
   "from": zod.coerce.date().nullable(),
   "to": zod.coerce.date().nullable(),
   "count": zod.number().int()
-})).describe('First and last FOM record held in the PHARMEX database, per section')
+})).describe('First and last FOM record held in the PHARMXS database, per section')
 })
 
 

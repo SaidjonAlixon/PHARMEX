@@ -270,7 +270,7 @@ const bindScope = (scope: FomScope) => (request: sql.Request) => {
 };
 
 /**
- * Posted documents dated from `floor`, ids only: compared with what PHARMEX holds to find rows
+ * Posted documents dated from `floor`, ids only: compared with what PHARMXS holds to find rows
  * that reached F-APTEKA's database after the change window had passed them.
  * Columns: T inv / inc, ID.
  */

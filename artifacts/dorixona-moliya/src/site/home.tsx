@@ -61,7 +61,7 @@ function LiveBoard() {
 
   return <div className="s-board-wrap" onPointerMove={onMove} onPointerLeave={reset}>
     <div className="s-board" ref={card}>
-      <div className="s-board-head"><span className="s-dots"><i /><i /><i /></span><span>pharmex · Bosh dashboard</span><span className="s-live"><i /> LIVE</span></div>
+      <div className="s-board-head"><span className="s-dots"><i /><i /><i /></span><span>pharmxs · Bosh dashboard</span><span className="s-live"><i /> LIVE</span></div>
       <div className="s-board-body">
         <div className="s-board-kpis">
           <div className="k1"><span>Bugungi savdo</span><b key={sales} className="s-tickup">{fmt(sales)}</b><small><TrendingUp size={12} /> +12,4% oʻtgan haftaga</small></div>
@@ -127,10 +127,10 @@ function BeforeAfter() {
   const list = after ? gains : pains;
   return <section className="s-section">
     <div className="s-wrap">
-      <SectionHead center eyebrow="NIMA UCHUN PHARMEX" title="Tarqoq hisobdan" accent="aniq nazoratga." text="Dorixona guruhida eng qimmat narsa — kechikkan va bir-biriga mos kelmaydigan raqamlar. PHARMEX ularni bitta haqiqatga aylantiradi." />
+      <SectionHead center eyebrow="NIMA UCHUN PHARMXS" title="Tarqoq hisobdan" accent="aniq nazoratga." text="Dorixona guruhida eng qimmat narsa — kechikkan va bir-biriga mos kelmaydigan raqamlar. PHARMXS ularni bitta haqiqatga aylantiradi." />
       <div className="s-ba-toggle" data-reveal role="tablist">
-        <button role="tab" aria-selected={!after} className={!after ? 'on' : ''} onClick={() => setAfter(false)}><FileSpreadsheet size={15} /> PHARMEX dan oldin</button>
-        <button role="tab" aria-selected={after} className={after ? 'on' : ''} onClick={() => setAfter(true)}><Sparkles size={15} /> PHARMEX bilan</button>
+        <button role="tab" aria-selected={!after} className={!after ? 'on' : ''} onClick={() => setAfter(false)}><FileSpreadsheet size={15} /> PHARMXS dan oldin</button>
+        <button role="tab" aria-selected={after} className={after ? 'on' : ''} onClick={() => setAfter(true)}><Sparkles size={15} /> PHARMXS bilan</button>
         <span className={`s-ba-thumb ${after ? 'right' : ''}`} aria-hidden="true" />
       </div>
       <div className={`s-ba-grid ${after ? 'after' : 'before'}`} key={String(after)}>
@@ -236,7 +236,7 @@ export function HomePage() {
         <div className="s-hero-copy">
           <Eyebrow icon={Sparkles}>DORIXONA GURUHLARI UCHUN MOLIYAVIY MARKAZ</Eyebrow>
           <h1 className="s-hero-title">Har bir filialning <RotatingWord /><br />bitta ekranda.</h1>
-          <p className="s-hero-lead" data-reveal style={delay(1)}>PHARMEX — savdo, zaxira, kassa, qarz va sof foydani FOM F-APTEKA maʼlumotlari bilan real vaqtda jamlaydigan boshqaruv platformasi. Excel eksport kutmasdan, har bir raqamning manbasini koʻrib qaror qiling.</p>
+          <p className="s-hero-lead" data-reveal style={delay(1)}>PHARMXS — savdo, zaxira, kassa, qarz va sof foydani FOM F-APTEKA maʼlumotlari bilan real vaqtda jamlaydigan boshqaruv platformasi. Excel eksport kutmasdan, har bir raqamning manbasini koʻrib qaror qiling.</p>
           <div className="s-hero-ctas" data-reveal style={delay(2)}><PrimaryCta large label="Boshqaruvni boshlash" /><Link href="/imkoniyatlar" className="s-btn ghost lg">Imkoniyatlar <ArrowRight size={17} /></Link></div>
           <div className="s-hero-proof" data-reveal style={delay(3)}>
             <span><ShieldCheck size={15} /> Manbasi koʻrsatilgan raqamlar</span>

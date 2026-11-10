@@ -108,7 +108,7 @@ export function SolutionsPage() {
   const [roleId, setRoleId] = useState(roles[0].id);
   const role = roles.find(r => r.id === roleId) ?? roles[0];
   return <>
-    <PageHero eyebrow="YECHIMLAR" icon={Users} title="Har bir xodimga —" accent="kerakli raqam, oʻz vaqtida." text="PHARMEX guruhdagi har bir rol uchun oʻz savoliga tez javob beradi. Bir xil maʼlumot, lekin har kim oʻziga keraklisini koʻradi." chips={['Rahbar', 'Bosh hisobchi', 'Filial mudiri', 'Omborchi']}>
+    <PageHero eyebrow="YECHIMLAR" icon={Users} title="Har bir xodimga —" accent="kerakli raqam, oʻz vaqtida." text="PHARMXS guruhdagi har bir rol uchun oʻz savoliga tez javob beradi. Bir xil maʼlumot, lekin har kim oʻziga keraklisini koʻradi." chips={['Rahbar', 'Bosh hisobchi', 'Filial mudiri', 'Omborchi']}>
       <div className="s-roles-art">{roles.map((r, i) => <span key={r.id} style={delay(i, 120)}><r.icon size={20} />{r.title}</span>)}</div>
     </PageHero>
 
@@ -121,7 +121,7 @@ export function SolutionsPage() {
           <div className="s-role-q"><role.icon size={22} /><p>{role.question}</p></div>
           <div className="s-role-cols">
             <div className="s-role-col pains"><b>Bugungi muammo</b>{role.pains.map((p, i) => <span key={p} style={delay(i, 70)}><X size={14} />{p}</span>)}</div>
-            <div className="s-role-col gains"><b>PHARMEX beradi</b>{role.gains.map((g, i) => <span key={g} style={delay(i, 70)}><Check size={14} />{g}</span>)}</div>
+            <div className="s-role-col gains"><b>PHARMXS beradi</b>{role.gains.map((g, i) => <span key={g} style={delay(i, 70)}><Check size={14} />{g}</span>)}</div>
             <div className="s-role-col screens"><b>Asosiy boʻlimlar</b>{role.screens.map(id => { const m = modules.find(x => x.id === id)!; return <AnchorLink key={id} href={`/imkoniyatlar#${id}`} className="s-role-screen"><span style={{ ['--c' as string]: m.color }}><m.icon size={16} /></span>{m.title}<ArrowRight size={14} /></AnchorLink>; })}</div>
           </div>
         </div>
@@ -130,16 +130,16 @@ export function SolutionsPage() {
 
     <section className="s-section">
       <div className="s-wrap">
-        <SectionHead eyebrow="NIMA UCHUN AYNAN PHARMEX" title="Sakkiz sabab," accent="bitta natija." text="Aniq raqam — tez qaror. PHARMEX shunga xizmat qiladi." />
+        <SectionHead eyebrow="NIMA UCHUN AYNAN PHARMXS" title="Sakkiz sabab," accent="bitta natija." text="Aniq raqam — tez qaror. PHARMXS shunga xizmat qiladi." />
         <div className="s-cards four">{reasons.map((r, i) => <FeatureCard key={r.title} i={i} {...r} />)}</div>
       </div>
     </section>
 
     <section className="s-section">
       <div className="s-wrap">
-        <SectionHead center eyebrow="SOLISHTIRING" title="Excel, kassa dasturi" accent="va PHARMEX." />
+        <SectionHead center eyebrow="SOLISHTIRING" title="Excel, kassa dasturi" accent="va PHARMXS." />
         <div className="s-compare" data-reveal>
-          <div className="s-compare-row head"><span /><span><FileSpreadsheet size={16} /> Excel</span><span><Receipt size={16} /> Kassa dasturi</span><span className="px"><Sparkles size={16} /> PHARMEX</span></div>
+          <div className="s-compare-row head"><span /><span><FileSpreadsheet size={16} /> Excel</span><span><Receipt size={16} /> Kassa dasturi</span><span className="px"><Sparkles size={16} /> PHARMXS</span></div>
           {compare.map((c, i) => <div key={c.label} className="s-compare-row" style={delay(i, 50)}><span>{c.label}</span><span>{markIcon(c.excel)}</span><span>{markIcon(c.pos)}</span><span className="px">{markIcon(c.px)}</span></div>)}
         </div>
       </div>
@@ -195,7 +195,7 @@ export function HowPage() {
   ];
   const firstDay = ['FOM ulanishini sozlash yoki filiallarni qoʻshish', 'Kassa va bank hisoblarini ochish', 'Boshlangʻich qoldiq va qarzlarni kiritish', 'Xodimlarga rol berish', 'Birinchi davr hisobotini koʻrish'];
   return <>
-    <PageHero eyebrow="QANDAY ISHLAYDI" icon={Workflow} title="Bitta hujjat —" accent="hamma joyda toʻgʻri raqam." text="PHARMEX hujjatlar zanjiri asosida ishlaydi: har bir kirim, chek yoki toʻlov qoldiqni, kassani va qarzni bir vaqtda, izchil yangilaydi." chips={['Hujjat zanjiri', 'Teskari yozuv', 'Dublikatsiz import']}>
+    <PageHero eyebrow="QANDAY ISHLAYDI" icon={Workflow} title="Bitta hujjat —" accent="hamma joyda toʻgʻri raqam." text="PHARMXS hujjatlar zanjiri asosida ishlaydi: har bir kirim, chek yoki toʻlov qoldiqni, kassani va qarzni bir vaqtda, izchil yangilaydi." chips={['Hujjat zanjiri', 'Teskari yozuv', 'Dublikatsiz import']}>
       <div className="s-chain">{chain.map((c, i) => <div key={c.label} className="s-chain-node" style={delay(i, 160)}><span><c.icon size={18} /></span><b>{c.label}</b><small>{c.sub}</small></div>)}<div className="s-chain-pulse" aria-hidden="true" /></div>
     </PageHero>
     <section className="s-section tight">
@@ -240,15 +240,15 @@ export function IntegrationPage() {
   const setup: Array<{ icon: LucideIcon; t: string; d: string }> = [
     { icon: Laptop, t: 'REPORT.exe ni ishga tushiring', d: 'F-APTEKA bazasi turgan apteka kompyuterida FOM ning REPORT.exe (SERVICEREPORTS) xizmati ishlab turishi kerak.' },
     { icon: Network, t: 'Tarmoqni bogʻlang', d: 'Server va apteka kompyuteri bitta tarmoqda boʻlsin: lokal tarmoq, Radmin VPN (26.x.x.x) yoki ochiq IP.' },
-    { icon: KeyRound, t: 'Sozlamalarni kiriting', d: 'PHARMEX → Sozlamalar → «FOM ulanishi»: IP manzil, port va filial ID lari (masalan 1, 2, 3).' },
+    { icon: KeyRound, t: 'Sozlamalarni kiriting', d: 'PHARMXS → Sozlamalar → «FOM ulanishi»: IP manzil, port va filial ID lari (masalan 1, 2, 3).' },
     { icon: Zap, t: '«Saqlash va ulash»', d: 'Tizim ulanishni tekshiradi va barcha hisobotlarni tortadi. Keyin har N daqiqada oʻzi yangilaydi.' },
   ];
   return <>
-    <PageHero eyebrow="FOM F-APTEKA INTEGRATSIYASI" icon={PlugZap} title="Mavjud dasturingiz qoladi —" accent="maʼlumot oʻzi keladi." text="PHARMEX FOM F-APTEKA bilan REPORT.exe va SITE.exe orqali bogʻlanadi. Kassada hech narsa oʻzgarmaydi; filiallar, tovarlar, qoldiq, kirim va cheklar avtomatik yuklanadi." chips={['REPORT.exe', 'SITE.exe', 'Radmin VPN', 'Har 5 daqiqa']}>
+    <PageHero eyebrow="FOM F-APTEKA INTEGRATSIYASI" icon={PlugZap} title="Mavjud dasturingiz qoladi —" accent="maʼlumot oʻzi keladi." text="PHARMXS FOM F-APTEKA bilan REPORT.exe va SITE.exe orqali bogʻlanadi. Kassada hech narsa oʻzgarmaydi; filiallar, tovarlar, qoldiq, kirim va cheklar avtomatik yuklanadi." chips={['REPORT.exe', 'SITE.exe', 'Radmin VPN', 'Har 5 daqiqa']}>
       <div className="s-net">
         <div className="s-net-node a"><Laptop size={20} /><b>Apteka</b><small>F-APTEKA · REPORT.exe</small></div>
         <div className="s-net-link"><i /><i /><i /><span>VPN / tarmoq</span></div>
-        <div className="s-net-node b"><Server size={20} /><b>PHARMEX</b><small>server · baza</small></div>
+        <div className="s-net-node b"><Server size={20} /><b>PHARMXS</b><small>server · baza</small></div>
         <div className="s-net-link"><i /><i /><i /><span>HTTPS</span></div>
         <div className="s-net-node c"><LayoutDashboard size={20} /><b>Dashboard</b><small>real vaqt</small></div>
       </div>
@@ -257,10 +257,10 @@ export function IntegrationPage() {
     <section className="s-section tight">
       <div className="s-wrap">
         <div className="s-cards two">
-          <FeatureCard i={0} icon={RefreshCw} color="#0fb3c7" title="REPORT.exe — biz soʻraymiz" text="PHARMEX FOM serveridan P_GetReport_XML orqali 8 ta hisobotni davr va filial boʻyicha tortadi. Maʼlumotnomalar va qoldiqlar toʻliq, hujjatlar tanlangan davr boʻyicha.">
+          <FeatureCard i={0} icon={RefreshCw} color="#0fb3c7" title="REPORT.exe — biz soʻraymiz" text="PHARMXS FOM serveridan P_GetReport_XML orqali 8 ta hisobotni davr va filial boʻyicha tortadi. Maʼlumotnomalar va qoldiqlar toʻliq, hujjatlar tanlangan davr boʻyicha.">
             <div className="s-card-tags"><span>Pull</span><span>8 hisobot</span><span>Avto-interval</span></div>
           </FeatureCard>
-          <FeatureCard i={1} icon={Cloud} color="#1fb84f" title="SITE.exe — FOM yuboradi" text="FOM texnigi SETUP.ini ga PHARMEX manzili va tokenini yozadi; SITE.exe qoldiqlarni XML koʻrinishida oʻzi joʻnatadi. Token serverda tekshiriladi.">
+          <FeatureCard i={1} icon={Cloud} color="#1fb84f" title="SITE.exe — FOM yuboradi" text="FOM texnigi SETUP.ini ga PHARMXS manzili va tokenini yozadi; SITE.exe qoldiqlarni XML koʻrinishida oʻzi joʻnatadi. Token serverda tekshiriladi.">
             <div className="s-card-tags"><span>Push</span><span>Qoldiqlar</span><span>Token bilan</span></div>
           </FeatureCard>
         </div>
@@ -271,7 +271,7 @@ export function IntegrationPage() {
       <div className="s-wrap">
         <SectionHead eyebrow="QAYSI MAʼLUMOTLAR KELADI" title="8 ta FOM hisoboti —" accent="8 ta boʻlimga." />
         <div className="s-table" data-reveal>
-          <div className="s-table-row head"><span>ID</span><span>FOM hisoboti</span><span>PHARMEX da</span></div>
+          <div className="s-table-row head"><span>ID</span><span>FOM hisoboti</span><span>PHARMXS da</span></div>
           {fomReports.map(([id, name, target], i) => <div key={id} className="s-table-row" style={delay(i, 40)}><span><code>{id}</code></span><span>{name}</span><span>{target}</span></div>)}
         </div>
       </div>
@@ -317,7 +317,7 @@ export function SecurityPage() {
     ['Filial qoʻshish va foydalanuvchilar', 'yes', 'no', 'no'],
   ];
   return <>
-    <PageHero eyebrow="XAVFSIZLIK" icon={ShieldCheck} title="Moliyaviy maʼlumot —" accent="ishonchli qoʻllarda." text="Pul va qoldiq bilan ishlaydigan tizimda eng muhimi — kim nima qilganini bilish va izsiz oʻzgarishga yoʻl qoʻymaslik. PHARMEX shu tamoyilda qurilgan." chips={['Rollar', 'Audit', 'Teskari yozuv', 'scrypt']}>
+    <PageHero eyebrow="XAVFSIZLIK" icon={ShieldCheck} title="Moliyaviy maʼlumot —" accent="ishonchli qoʻllarda." text="Pul va qoldiq bilan ishlaydigan tizimda eng muhimi — kim nima qilganini bilish va izsiz oʻzgarishga yoʻl qoʻymaslik. PHARMXS shu tamoyilda qurilgan." chips={['Rollar', 'Audit', 'Teskari yozuv', 'scrypt']}>
       <div className="s-shield"><i className="r1" /><i className="r2" /><i className="r3" /><span><ShieldCheck size={46} /></span></div>
     </PageHero>
     <section className="s-section tight">
@@ -352,8 +352,8 @@ export function SecurityPage() {
 /* ------------------------------------------------------------------ Savollar */
 
 const faqs: Array<{ cat: string; q: string; a: string }> = [
-  { cat: 'Umumiy', q: 'PHARMEX nima?', a: 'Dorixona guruhlari uchun moliyaviy boshqaruv platformasi: savdo, kirim, zaxira harakati, kassa va bank, qarzlar, foyda va zarar hamda hisobotlarni filiallar kesimida bitta joyda yuritadi.' },
-  { cat: 'Umumiy', q: 'FOM F-APTEKA ni almashtirish kerakmi?', a: 'Yoʻq. PHARMEX FOM ni almashtirmaydi — uning maʼlumotlarini REPORT.exe va SITE.exe orqali oladi. Kassada odatdagidek F-APTEKA ishlaydi, rahbariyat esa PHARMEX da umumiy manzarani koʻradi.' },
+  { cat: 'Umumiy', q: 'PHARMXS nima?', a: 'Dorixona guruhlari uchun moliyaviy boshqaruv platformasi: savdo, kirim, zaxira harakati, kassa va bank, qarzlar, foyda va zarar hamda hisobotlarni filiallar kesimida bitta joyda yuritadi.' },
+  { cat: 'Umumiy', q: 'FOM F-APTEKA ni almashtirish kerakmi?', a: 'Yoʻq. PHARMXS FOM ni almashtirmaydi — uning maʼlumotlarini REPORT.exe va SITE.exe orqali oladi. Kassada odatdagidek F-APTEKA ishlaydi, rahbariyat esa PHARMXS da umumiy manzarani koʻradi.' },
   { cat: 'Umumiy', q: 'Qaysi qurilmalarda ishlaydi?', a: 'Brauzer orqali — kompyuter, planshet va telefonda. Hech narsa oʻrnatish shart emas. Kunduzgi va tungi rejim mavjud.' },
   { cat: 'Integratsiya', q: 'FOM ni qanday ulayman?', a: 'Apteka kompyuterida REPORT.exe ishlab turishi kerak. Sozlamalar → «FOM ulanishi» boʻlimida server IP manzili, port va filial ID larini kiritib «Saqlash va ulash» ni bosing — tizim ulanishni tekshiradi va maʼlumotni tortadi.' },
   { cat: 'Integratsiya', q: 'Maʼlumotlar qanchalik tez yangilanadi?', a: 'Avto-yangilash oraligʻi sozlamalarda belgilanadi (masalan har 5 daqiqada). Maʼlumotnomalar alohida, kamroq yangilanadi. Istalgan vaqtda «Yangilash» tugmasi bilan qoʻlda ham tortish mumkin.' },
@@ -373,7 +373,7 @@ export function FaqPage() {
   const [open, setOpen] = useState<string | null>(faqs[0].q);
   const shown = faqs.filter(f => (cat === 'Barchasi' || f.cat === cat) && `${f.q} ${f.a}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <>
-    <PageHero eyebrow="SAVOLLAR" icon={CircleHelp} title="Savolingiz bormi?" accent="Javob shu yerda." text="PHARMEX, FOM integratsiyasi, hisob-kitob va xavfsizlik boʻyicha eng koʻp beriladigan savollar." />
+    <PageHero eyebrow="SAVOLLAR" icon={CircleHelp} title="Savolingiz bormi?" accent="Javob shu yerda." text="PHARMXS, FOM integratsiyasi, hisob-kitob va xavfsizlik boʻyicha eng koʻp beriladigan savollar." />
     <section className="s-section tight">
       <div className="s-wrap s-faq-wrap">
         <div className="s-faq-tools" data-reveal>

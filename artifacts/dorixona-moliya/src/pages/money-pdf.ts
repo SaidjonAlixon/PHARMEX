@@ -49,7 +49,7 @@ export async function downloadMoneyTransactionPdf(
   doc.setFont('NotoSans', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]);
-  doc.text('PHARMEX', margin, y);
+  doc.text('PHARMXS', margin, y);
   doc.setFont('NotoSans', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
@@ -137,7 +137,7 @@ export async function downloadMoneyTransactionPdf(
   doc.setFont('NotoSans', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-  doc.text(`PHARMEX · Pul harakati PDF · ${new Date().toLocaleString('uz-UZ')}`, margin, y + 5);
+  doc.text(`PHARMXS · Pul harakati PDF · ${new Date().toLocaleString('uz-UZ')}`, margin, y + 5);
 
   doc.save(`Pul_operatsiya_${tx.id}.pdf`);
 }

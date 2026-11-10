@@ -191,7 +191,7 @@ export async function exportPurchasesExcel(
   options?: { sheets?: PurchasesExcelSheet[] },
 ) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'PHARMEX';
+  wb.creator = 'PHARMXS';
   wb.created = new Date();
 
   const extra = (options?.sheets || []).filter(s => s.rows.length > 0);

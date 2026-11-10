@@ -252,7 +252,7 @@ export async function exportWarehouseExcel(
   options?: { sheets?: WarehouseExcelSheet[] },
 ) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'PHARMEX';
+  wb.creator = 'PHARMXS';
   wb.created = new Date();
 
   const extra = (options?.sheets || []).filter(s => s.rows.length > 0);

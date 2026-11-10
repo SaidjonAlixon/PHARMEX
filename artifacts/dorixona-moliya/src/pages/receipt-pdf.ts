@@ -94,7 +94,7 @@ export async function downloadReceiptPdf(detail: ReceiptDetail) {
   doc.setFont('NotoSans', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]);
-  doc.text('PHARMEX', margin, y);
+  doc.text('PHARMXS', margin, y);
   doc.setFont('NotoSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
@@ -318,7 +318,7 @@ export async function downloadReceiptPdf(detail: ReceiptDetail) {
   doc.setFont('NotoSans', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-  doc.text(`PHARMEX · Chek PDF · ${new Date().toLocaleString('uz-UZ')}`, margin, bottom + 5);
+  doc.text(`PHARMXS · Chek PDF · ${new Date().toLocaleString('uz-UZ')}`, margin, bottom + 5);
 
   const safeNo = String(r.receiptNo).replace(/[\\/:*?"<>|]+/g, '_');
   doc.save(`Chek_${safeNo}.pdf`);

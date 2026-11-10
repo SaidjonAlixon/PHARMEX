@@ -160,7 +160,7 @@ export function SettingsPage() {
         <StatusBadge tone={status.connected ? 'good' : status.configured ? 'bad' : 'warn'}>{status.connected ? 'Ulangan' : status.configured ? 'Javob yoʻq' : 'Sozlanmagan'}</StatusBadge>
       </div> : <div className={`integration-banner ${status.connected ? 'connected' : 'disconnected'}`} data-testid="status-fom-connection">
         <div className="integration-icon">{status.connected ? <Check size={20} /> : <AlertCircle size={20} />}</div>
-        <div><span className="eyebrow">APTEKA → PHARMEX</span><b>{status.site.lastAt ? `Oxirgi qabul: ${dateTime(status.site.lastAt)}` : 'Apteka kompyuteridan hali maʼlumot kelmagan'}</b>
+        <div><span className="eyebrow">APTEKA → PHARMXS</span><b>{status.site.lastAt ? `Oxirgi qabul: ${dateTime(status.site.lastAt)}` : 'Apteka kompyuteridan hali maʼlumot kelmagan'}</b>
           <span>{status.site.configured
             ? (status.site.lastMessage
               ? status.site.lastMessage
@@ -193,7 +193,7 @@ export function SettingsPage() {
         <div className="form-stack">
           {pull && <Panel title="Sinxronlash" subtitle="Yangi va oʻzgargan hujjatlar avtomatik qoʻshiladi; davr boʻyicha tortish faqat zarur boʻlsa">
             <div className="data-range" data-testid="fom-data-range">
-              <span className="eyebrow">PHARMEX BAZASIDA</span>
+              <span className="eyebrow">PHARMXS BAZASIDA</span>
               {status.dataRanges.map(range => <div className="data-range-row" key={range.key}>
                 <span>{range.label}</span>
                 <b>{range.from ? `${dateTime(range.from)} — ${dateTime(range.to)}` : 'hali yoʻq'}</b>

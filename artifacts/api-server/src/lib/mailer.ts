@@ -25,7 +25,7 @@ function smtpConfig(): SmtpConfig | null {
     user,
     pass,
     from: process.env.SMTP_FROM?.trim() || user,
-    fromName: process.env.SMTP_FROM_NAME?.trim() || "PHARMEX",
+    fromName: process.env.SMTP_FROM_NAME?.trim() || "PHARMXS",
   };
 }
 
@@ -45,7 +45,7 @@ const wrap76 = (b64: string) => b64.replace(/.{1,76}/g, (line) => `${line}\r\n`)
 
 function buildMessage(cfg: SmtpConfig, msg: MailMessage): string {
   const boundary = `px-${randomBytes(12).toString("hex")}`;
-  const domain = cfg.from.split("@")[1] || "pharmex.local";
+  const domain = cfg.from.split("@")[1] || "pharmxs.local";
   const lines = [
     `From: ${encodeHeader(cfg.fromName)} <${cfg.from}>`,
     `To: <${msg.to}>`,
@@ -161,7 +161,7 @@ export async function sendMail(msg: MailMessage): Promise<void> {
   }
 
   const session = new SmtpSession(await connect(cfg));
-  const helo = "pharmex.local";
+  const helo = "pharmxs.local";
   try {
     await session.expect([220]);
     let ehlo = await session.expect([250], `EHLO ${helo}`);

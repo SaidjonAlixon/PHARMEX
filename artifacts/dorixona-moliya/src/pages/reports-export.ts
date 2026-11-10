@@ -30,7 +30,7 @@ export async function exportReportExcel(opts: {
 }) {
   const { report, title, periodLabel, branchLabel } = opts;
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'PHARMEX';
+  wb.creator = 'PHARMXS';
   wb.created = new Date();
   const ws = wb.addWorksheet(sheetName(title));
   const cols = report.columns;
@@ -39,7 +39,7 @@ export async function exportReportExcel(opts: {
 
   ws.mergeCells(1, 1, 1, Math.max(1, cols.length));
   const meta = ws.getCell(1, 1);
-  meta.value = `PHARMEX · ${title} · ${branchLabel} · Davr: ${periodLabel} · ${report.rows.length} qator · Jami: ${money(report.total)}`;
+  meta.value = `PHARMXS · ${title} · ${branchLabel} · Davr: ${periodLabel} · ${report.rows.length} qator · Jami: ${money(report.total)}`;
   meta.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF13306E' } };
   meta.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F7FA' } };
   meta.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
@@ -102,7 +102,7 @@ export async function exportReportPdf(opts: {
   doc.setFont('NotoSans', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]);
-  doc.text('PHARMEX', margin, 12);
+  doc.text('PHARMXS', margin, 12);
   doc.setFontSize(16);
   doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
   doc.text(title, margin, 20);
@@ -145,7 +145,7 @@ export async function exportReportPdf(opts: {
   doc.setFont('NotoSans', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-  doc.text(`PHARMEX · Hisobot PDF · ${new Date().toLocaleString('uz-UZ')}`, margin, finalY + 6);
+  doc.text(`PHARMXS · Hisobot PDF · ${new Date().toLocaleString('uz-UZ')}`, margin, finalY + 6);
 
   doc.save(`${title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
 }

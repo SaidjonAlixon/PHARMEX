@@ -28,7 +28,7 @@ export interface FomReportDef {
   dated: boolean;
 }
 
-/** REPORT.exe (P_GetReport_XML) reports that PHARMEX imports. */
+/** REPORT.exe (P_GetReport_XML) reports that PHARMXS imports. */
 export const FOM_REPORTS = {
   organizations: { id: 189, key: "organizations", label: "Tashkilotlar maʼlumotnomasi", target: "Filiallar, yetkazib beruvchilar, mijozlar", dated: false },
   catalog: { id: 188, key: "catalog", label: "Tovarlar maʼlumotnomasi", target: "Tovarlar (nomi, ishlab chiqaruvchi, IKPU, birlik)", dated: false },

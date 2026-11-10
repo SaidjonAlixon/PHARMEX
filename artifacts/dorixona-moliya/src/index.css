@@ -271,7 +271,7 @@
 }
 
 :root {
-  /* PHARMEX logo palette */
+  /* PHARMXS logo palette */
   --px-navy: #0b1e4a;
   --px-navy-2: #13306e;
   --px-blue: #1f5fd0;
@@ -315,9 +315,9 @@ a { color: inherit; text-decoration: none; }
 .brand-mark span { transform: translateY(-1px); }
 .brand-name { font-family: var(--app-font-serif); font-size: 18px; font-weight: 800; letter-spacing: -.8px; color: #1b392d; line-height: 1.1; }
 .brand-name > span { color: var(--green); }
-.brand-logo { display: block; height: 36px; width: auto; max-width: 100%; object-fit: contain; object-position: left center; flex-shrink: 0; }
+.brand-logo { display: block; height: 36px; width: auto; max-width: 100%; object-fit: contain; object-position: left center; flex-shrink: 0; border-radius: 8px; background: #0a0a0a; padding: 4px 8px; }
 .sidebar .brand-lockup { display: flex; width: 100%; min-height: 44px; }
-.sidebar .brand-logo { width: 100%; height: auto; max-height: 48px; object-fit: contain; }
+.sidebar .brand-logo { width: 100%; height: auto; max-height: 52px; object-fit: contain; background: #0a0a0a; padding: 6px 8px; border-radius: 10px; }
 .landing-nav .brand-logo { height: 48px; }
 .landing-footer .brand-logo { height: 40px; }
 .auth-intro .brand-logo { height: 68px; }
@@ -787,7 +787,7 @@ td.muted { color: var(--muted-ink); font-size: 10.5px; }
 @keyframes fom-pulse { 50% { opacity: .35; } }
 @media (max-width: 767px) { .fom-live small { display: none; } }
 
-/* ===================== PHARMEX premium theme (logo: navy · teal · green) ===================== */
+/* ===================== PHARMXS premium theme (logo: navy · teal · green) ===================== */
 body { background: var(--wash); }
 .app-shell {
   background:

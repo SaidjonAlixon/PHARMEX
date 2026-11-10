@@ -296,7 +296,7 @@ function GooglePane({ options }: { options: AuthOptions | null }) {
   return <div className="s-auth-pane">
     <ol className="s-flow">{steps.map((s, i) => <li key={s} style={{ ['--i' as string]: i }}><span>{i + 1}</span>{s}</li>)}</ol>
     <GoogleButton intent="sign-up" enabled={options?.google} label="Google bilan davom etish" />
-    <p className="s-auth-fine"><ShieldCheck size={14} /> PHARMEX faqat ismingiz va email manzilingizni oladi. Parolingiz Google da qoladi.</p>
+    <p className="s-auth-fine"><ShieldCheck size={14} /> PHARMXS faqat ismingiz va email manzilingizni oladi. Parolingiz Google da qoladi.</p>
   </div>;
 }
 
@@ -471,7 +471,7 @@ function SignUpView({ options }: { options: AuthOptions | null }) {
 
   if (done) return <PendingCard kind={done} />;
   return <>
-    <AuthHead eyebrow="BOSHLASH" title="PHARMEX da akkaunt oching" text="Oʻzingizga qulay usulni tanlang — uchala yoʻl ham xavfsiz." />
+    <AuthHead eyebrow="BOSHLASH" title="PHARMXS da akkaunt oching" text="Oʻzingizga qulay usulni tanlang — uchala yoʻl ham xavfsiz." />
     {fromQuery && <Notice tone={fromQuery.tone}>{fromQuery.text}</Notice>}
     <MethodPicker value={method} onChange={setMethod} />
     <div key={method} className="s-auth-swap">
@@ -498,7 +498,7 @@ function Showcase({ mode }: { mode: 'sign-in' | 'sign-up' }) {
     </div>
     <div className="s-auth-mock">
       <div className="s-auth-mail">
-        <div className="s-auth-mail-head"><span className="s-auth-mail-ava">P</span><div><b>PHARMEX</b><small>Tasdiqlash kodi</small></div><em>hozir</em></div>
+        <div className="s-auth-mail-head"><span className="s-auth-mail-ava">P</span><div><b>PHARMXS</b><small>Tasdiqlash kodi</small></div><em>hozir</em></div>
         <div className="s-auth-mail-code">{code.map((c, i) => <span key={i} style={{ ['--i' as string]: i }}>{c}</span>)}</div>
       </div>
       <div className="s-auth-chip c1"><BadgeCheck size={15} /> Email tasdiqlandi</div>
@@ -528,7 +528,7 @@ export function AuthPage({ mode }: { mode: 'sign-in' | 'sign-up' }) {
       <div className="s-auth-card" key={mode}>
         {mode === 'sign-in' ? <SignInView options={options} /> : <SignUpView options={options} />}
       </div>
-      <p className="s-auth-legal">Davom etish orqali siz maʼlumotlaringiz PHARMEX tizimida xavfsiz saqlanishiga rozilik bildirasiz.</p>
+      <p className="s-auth-legal">Davom etish orqali siz maʼlumotlaringiz PHARMXS tizimida xavfsiz saqlanishiga rozilik bildirasiz.</p>
     </main>
   </div>;
 }

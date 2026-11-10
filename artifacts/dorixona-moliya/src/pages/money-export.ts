@@ -220,7 +220,7 @@ export async function exportCashRegisterExcel(opts: {
   } = opts;
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'PHARMEX';
+  wb.creator = 'PHARMXS';
   wb.created = new Date();
 
   fillRegisterSheet(
@@ -261,7 +261,7 @@ export async function exportMoneyTransactionsExcel(opts: {
   } = opts;
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'PHARMEX';
+  wb.creator = 'PHARMXS';
   wb.created = new Date();
 
   fillTxSheet(

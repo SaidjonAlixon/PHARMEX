@@ -1858,7 +1858,7 @@ components:
         totals:
           $ref: "#/components/schemas/FomTotals"
         dataRanges:
-          description: First and last FOM record held in the PHARMEX database, per section
+          description: First and last FOM record held in the PHARMXS database, per section
           type: array
           items:
             type: object

@@ -180,24 +180,24 @@ function layout(title: string, body: string): string {
   return `<!doctype html><html><body style="margin:0;background:#eef3f9;font-family:Segoe UI,Arial,sans-serif;color:#0b1e4a">
 <table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px"><tr><td align="center">
 <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 12px 40px -18px rgba(11,30,74,.35)">
-<tr><td style="background:linear-gradient(135deg,#0fb3c7,#2fcf5a);padding:22px 28px;color:#fff;font-size:20px;font-weight:800;letter-spacing:.04em">PHARMEX</td></tr>
+<tr><td style="background:linear-gradient(135deg,#0fb3c7,#2fcf5a);padding:22px 28px;color:#fff;font-size:20px;font-weight:800;letter-spacing:.04em">PHARMXS</td></tr>
 <tr><td style="padding:28px">
 <h1 style="margin:0 0 12px;font-size:20px">${escapeHtml(title)}</h1>
 ${body}
-<p style="margin:26px 0 0;font-size:12px;color:#7b8aa5">Bu xat PHARMEX tizimi tomonidan avtomatik yuborildi. Agar siz soʻramagan boʻlsangiz, eʼtibor bermang.</p>
+<p style="margin:26px 0 0;font-size:12px;color:#7b8aa5">Bu xat PHARMXS tizimi tomonidan avtomatik yuborildi. Agar siz soʻramagan boʻlsangiz, eʼtibor bermang.</p>
 </td></tr></table></td></tr></table></body></html>`;
 }
 
 export function signupCodeMail(name: string, code: string) {
   const minutes = Math.round(CODE_TTL_MS / 60000);
   return {
-    subject: `PHARMEX tasdiqlash kodi: ${code}`,
-    text: `Assalomu alaykum, ${name}!\n\nPHARMEX da roʻyxatdan oʻtish uchun tasdiqlash kodingiz: ${code}\n\nKod ${minutes} daqiqa amal qiladi. Uni hech kimga bermang.`,
+    subject: `PHARMXS tasdiqlash kodi: ${code}`,
+    text: `Assalomu alaykum, ${name}!\n\nPHARMXS da roʻyxatdan oʻtish uchun tasdiqlash kodingiz: ${code}\n\nKod ${minutes} daqiqa amal qiladi. Uni hech kimga bermang.`,
     html: layout(
       "Tasdiqlash kodi",
-      `<p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#3d4f70">Assalomu alaykum, ${escapeHtml(name)}! PHARMEX da roʻyxatdan oʻtishni yakunlash uchun quyidagi kodni kiriting:</p>
+      `<p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#3d4f70">Assalomu alaykum, ${escapeHtml(name)}! PHARMXS da roʻyxatdan oʻtishni yakunlash uchun quyidagi kodni kiriting:</p>
 <div style="text-align:center;margin:8px 0 18px"><span style="display:inline-block;padding:14px 22px;border-radius:14px;background:#f1f7fc;border:1px solid #d6e3f2;font:800 30px/1 Consolas,monospace;letter-spacing:10px;color:#0b1e4a">${escapeHtml(code)}</span></div>
-<p style="margin:0;font-size:13px;color:#5b6b88">Kod ${minutes} daqiqa amal qiladi. Uni hech kimga bermang — PHARMEX xodimlari kodni soʻramaydi.</p>`,
+<p style="margin:0;font-size:13px;color:#5b6b88">Kod ${minutes} daqiqa amal qiladi. Uni hech kimga bermang — PHARMXS xodimlari kodni soʻramaydi.</p>`,
     ),
   };
 }
@@ -205,7 +205,7 @@ export function signupCodeMail(name: string, code: string) {
 export function reviewMail(name: string, approved: boolean, loginUrl: string) {
   return approved
     ? {
-        subject: "PHARMEX: akkauntingiz tasdiqlandi",
+        subject: "PHARMXS: akkauntingiz tasdiqlandi",
         text: `Assalomu alaykum, ${name}!\n\nAdministrator akkauntingizni tasdiqladi. Endi tizimga kirishingiz mumkin: ${loginUrl}`,
         html: layout(
           "Akkauntingiz tasdiqlandi",
@@ -214,7 +214,7 @@ export function reviewMail(name: string, approved: boolean, loginUrl: string) {
         ),
       }
     : {
-        subject: "PHARMEX: roʻyxatdan oʻtish arizasi",
+        subject: "PHARMXS: roʻyxatdan oʻtish arizasi",
         text: `Assalomu alaykum, ${name}!\n\nAfsuski, roʻyxatdan oʻtish arizangiz administrator tomonidan rad etildi.`,
         html: layout(
           "Ariza rad etildi",

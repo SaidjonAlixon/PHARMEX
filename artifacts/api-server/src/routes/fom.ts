@@ -178,7 +178,7 @@ async function readStatus() {
   });
 }
 
-/** First / last FOM record per section in the PHARMEX database (cached briefly; polled often). */
+/** First / last FOM record per section in the PHARMXS database (cached briefly; polled often). */
 let rangesCache: { at: number; value: Array<{ key: string; label: string; from: Date | null; to: Date | null; count: number }> } | null = null;
 async function dataRanges() {
   if (rangesCache && Date.now() - rangesCache.at < 10_000) return rangesCache.value;

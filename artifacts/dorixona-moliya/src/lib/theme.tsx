@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 
 export type Theme = 'light' | 'dark';
-const STORAGE_KEY = 'pharmex-theme';
+const STORAGE_KEY = 'pharmxs-theme';
+const LEGACY_STORAGE_KEY = 'pharmex-theme';
 
 function readTheme(): Theme {
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
@@ -14,7 +15,10 @@ function applyTheme(theme: Theme) {
   root.classList.toggle('dark', theme === 'dark');
   root.style.colorScheme = theme;
   window.setTimeout(() => root.classList.remove('theme-anim'), 450);
-  try { localStorage.setItem(STORAGE_KEY, theme); } catch { /* private mode */ }
+  try {
+    localStorage.setItem(STORAGE_KEY, theme);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch { /* private mode */ }
 }
 
 export function ThemeToggle({ className = '' }: { className?: string }) {

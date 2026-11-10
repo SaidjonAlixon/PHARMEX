@@ -143,7 +143,7 @@ export async function exportDashboardExcel(opts: {
 }) {
   const { dashboard: d, periodLabel, branchLabel, expiring, expired } = opts;
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'PHARMEX';
+  wb.creator = 'PHARMXS';
   wb.created = new Date();
 
   // KPI sheet

@@ -38,6 +38,6 @@ export interface FomStatus {
   reports: FomReportState[];
   site: FomSiteState;
   totals: FomTotals;
-  /** First and last FOM record held in the PHARMEX database, per section */
+  /** First and last FOM record held in the PHARMXS database, per section */
   dataRanges: FomStatusDataRangesItem[];
 }

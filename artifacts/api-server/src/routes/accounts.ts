@@ -51,7 +51,7 @@ async function ownerAdminId(): Promise<number | null> {
 
 function generatePassword(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  let out = "Phx";
+  let out = "Pxs";
   for (let i = 0; i < 7; i++) out += alphabet[randomInt(alphabet.length)];
   if (!/\d/.test(out)) out = `${out.slice(0, -1)}${randomInt(10)}`;
   return out;

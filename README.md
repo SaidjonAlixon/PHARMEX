@@ -1,4 +1,4 @@
-# PHARMEX — Dorixona moliyaviy boshqaruvi
+# PHARMXS — Dorixona moliyaviy boshqaruvi
 
 Dorixonalar tarmogʻi uchun savdo, kassa, zaxira, qarz va foyda-zarar hisobi; FOM GROUP (F-APTEKA) bilan integratsiya.
 

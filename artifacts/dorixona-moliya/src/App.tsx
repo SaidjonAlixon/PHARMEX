@@ -56,7 +56,7 @@ const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path
 const appearance = {
   theme: shadcn,
   cssLayerName: 'clerk',
-  options: { logoPlacement: 'inside' as const, logoLinkUrl: basePath || '/', logoImageUrl: `${window.location.origin}${basePath}/Phrmexslogo.png` },
+  options: { logoPlacement: 'inside' as const, logoLinkUrl: basePath || '/', logoImageUrl: `${window.location.origin}${basePath}/logo_pharmxs.png` },
   variables: {
     colorPrimary: '#0b8fa3', colorForeground: '#0b1e4a', colorMutedForeground: '#5b6b88',
     colorDanger: '#bd3a32', colorBackground: '#ffffff', colorInput: '#f6f9fd',
@@ -103,7 +103,7 @@ const periodOptions: MenuOption[] = [
   { value: 'custom', label: 'Barcha davr', hint: 'Sana cheklovisiz', icon: InfinityIcon, color: '#6d4fd8' },
 ];
 const DEFAULT_PERIOD = 'this-month';
-const FILTERS_KEY = 'pharmex.filters.v1';
+const FILTERS_KEY = 'pharmxs.filters.v1';
 
 /** Dates of a relative period, computed from today's Tashkent day each time it is applied. */
 function periodRange(period: string): { dateFrom: string; dateTo: string } {
@@ -243,7 +243,7 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
           <button type="button" className="button secondary small" onClick={() => setRangeOpen(false)} data-testid="button-cancel-range">Bekor qilish</button>
         </form>}
       </section>}{branches.some(b => b.source === 'demo') && location !== '/' && location !== '/profit' && location !== '/reports' && (!location.startsWith('/branches/') || location === '/branches') && <DataMode mode="demo" />}{children}</div>
-      <footer className="app-footer"><span>PHARMEX <span className="footer-dot">/</span> Moliyaviy boshqaruv</span><span>Maʼlumotlar manbasi va yangilanish vaqti har bir boʻlimda koʻrsatiladi</span></footer>
+      <footer className="app-footer"><span>PHARMXS <span className="footer-dot">/</span> Moliyaviy boshqaruv</span><span>Maʼlumotlar manbasi va yangilanish vaqti har bir boʻlimda koʻrsatiladi</span></footer>
     </main>
   </div>;
 }
