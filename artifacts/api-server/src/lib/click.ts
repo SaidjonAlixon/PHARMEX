@@ -47,6 +47,8 @@ export function clickPayUrl(opts: {
   amount: number;
   merchantTransId: string;
   returnUrl: string;
+  /** UI hint only — Click hosted page still offers card + app/QR. */
+  paymentMethod?: "card" | "click";
 }): string {
   const u = new URL("https://my.click.uz/services/pay");
   u.searchParams.set("service_id", opts.serviceId);
@@ -55,6 +57,8 @@ export function clickPayUrl(opts: {
   u.searchParams.set("transaction_param", opts.merchantTransId);
   u.searchParams.set("return_url", opts.returnUrl);
   if (opts.merchantUserId) u.searchParams.set("merchant_user_id", opts.merchantUserId);
+  // Prefer card form vs Click-app/QR entry on the hosted cashier when supported.
+  if (opts.paymentMethod === "card") u.searchParams.set("card_type", "uzcard");
   return u.toString();
 }
 

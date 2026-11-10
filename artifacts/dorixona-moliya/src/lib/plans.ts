@@ -13,8 +13,8 @@ export type PlanCard = {
 export const PUBLIC_PLANS: PlanCard[] = [
   {
     code: 'starter',
-    name: 'Starter',
-    priceUzs: 300_000,
+    name: 'Boshlangʻich',
+    priceUzs: 299_000,
     branchLimit: 2,
     telegram: false,
     features: [
@@ -27,8 +27,8 @@ export const PUBLIC_PLANS: PlanCard[] = [
   },
   {
     code: 'business',
-    name: 'Business',
-    priceUzs: 450_000,
+    name: 'Biznes',
+    priceUzs: 499_000,
     branchLimit: 5,
     telegram: false,
     highlight: true,
@@ -42,14 +42,14 @@ export const PUBLIC_PLANS: PlanCard[] = [
   },
   {
     code: 'enterprise',
-    name: 'Enterprise',
-    priceUzs: 700_000,
+    name: 'Korxona',
+    priceUzs: 799_000,
     branchLimit: null,
     telegram: true,
     features: [
       'Click toʻlovdan keyin ochiladi',
       'Istalgancha filial',
-      'Business dagi barcha imkoniyatlar',
+      'Biznes dagi barcha imkoniyatlar',
       'Telegram bot xabarnomalari',
       'Ustuvor qoʻllab-quvvatlash',
     ],

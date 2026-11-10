@@ -133,7 +133,7 @@ export function PlatformPage() {
             <div><span className="eyebrow">Login</span><b data-testid="text-issued-username">{creds.username}</b></div>
             <div><span className="eyebrow">Parol</span><b data-testid="text-issued-password">{creds.password}</b></div>
           </div>
-          <p className="muted-line" style={{ marginTop: 10 }}>Mijoz «Kirish» orqali shu login va parol bilan kabinetiga kiradi. Starter — 7 kun bepul.</p>
+          <p className="muted-line" style={{ marginTop: 10 }}>Mijoz «Kirish» orqali shu login va parol bilan kabinetiga kiradi. Boshlangʻich — 7 kun bepul.</p>
           <button type="button" className="button ghost" onClick={() => setCreds(null)}>Yopish</button>
         </Panel>
       )}
@@ -185,8 +185,8 @@ export function PlatformPage() {
                   <td>{daysText(row)}</td>
                   <td className="row-actions">
                     <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { planCode: 'starter', extendDays: 7 } })}>+7 kun</button>
-                    <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { planCode: 'business', extendMonths: 1 } })}>Business</button>
-                    <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { planCode: 'enterprise', extendMonths: 1 } })}>Enterprise</button>
+                    <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { planCode: 'business', extendMonths: 1 } })}>Biznes</button>
+                    <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { planCode: 'enterprise', extendMonths: 1 } })}>Korxona</button>
                     <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { subscriptionStatus: 'canceled' } })}>Bekor</button>
                   </td>
                 </tr>

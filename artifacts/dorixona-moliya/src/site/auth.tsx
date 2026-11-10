@@ -202,7 +202,7 @@ function CodeInput({ value, onChange, onComplete, disabled, invalid }: { value: 
 function PendingCard({ kind }: { kind: Done }) {
   const steps = [
     { icon: ClipboardList, title: 'Ariza yuborildi', text: 'Maʼlumotlaringiz xavfsiz saqlandi', state: 'done' as const },
-    { icon: UserCheck, title: 'Platforma admini koʻrib chiqadi', text: 'Starter — 7 kun bepul ochiladi', state: 'now' as const },
+    { icon: UserCheck, title: 'Platforma admini koʻrib chiqadi', text: 'Boshlangʻich — 7 kun bepul ochiladi', state: 'now' as const },
     { icon: KeyRound, title: 'Login va parol beriladi', text: 'Keyin «Kirish» orqali kabinetga kirasiz', state: 'next' as const },
   ];
   return <div className="s-pending" data-testid="status-signup-pending">
@@ -450,7 +450,7 @@ function RequestPane({ onDone }: { onDone: (d: Done) => void }) {
   return <form className="s-auth-pane s-auth-form" onSubmit={submit}>
     <div className="s-trial-callout" data-testid="banner-trial-7">
       <Crown size={18} />
-      <div><b>Starter — 7 kun bepul</b><span>Ariza tasdiqlangach kabinet ochiladi. Business / Enterprise — Tariflar boʻlimidan Click toʻlov.</span></div>
+      <div><b>Boshlangʻich — 7 kun bepul</b><span>Ariza tasdiqlangach kabinet ochiladi. Biznes / Korxona — Tariflar boʻlimidan Click toʻlov.</span></div>
     </div>
     <div className="s-field-row">
       <Field label="Ism" icon={User}><input required autoComplete="given-name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} data-testid="input-request-first-name" /></Field>
@@ -480,7 +480,7 @@ function SignUpView({ options: _options }: { options: AuthOptions | null }) {
 
   if (done) return <PendingCard kind={done} />;
   return <>
-    <AuthHead eyebrow="7 KUN BEPUL" title="Ariza qoldiring" text="Platforma admini koʻrib chiqadi, Starter sinovini ochadi va login/parol beradi." />
+    <AuthHead eyebrow="7 KUN BEPUL" title="Ariza qoldiring" text="Platforma admini koʻrib chiqadi, Boshlangʻich sinovini ochadi va login/parol beradi." />
     {fromQuery && <Notice tone={fromQuery.tone}>{fromQuery.text}</Notice>}
     <RequestPane onDone={setDone} />
     <p className="s-auth-switch">Akkaunt ochilganmi? <Link href="/sign-in" data-testid="link-to-sign-in">Kirish</Link></p>
@@ -497,7 +497,7 @@ function Showcase({ mode }: { mode: 'sign-in' | 'sign-up' }) {
     <div className="s-auth-side-copy">
       <span className="s-auth-side-tag"><ShieldCheck size={13} /> Xavfsiz kirish</span>
       <h2>{mode === 'sign-in' ? <>Login va parol<br /><span>bilan kiring.</span></> : <>7 kun bepul —<br /><span>ariza qoldiring.</span></>}</h2>
-      <p>Starter sinovi admin tasdigʻidan keyin ochiladi. Keyin kabinetdagi Tariflar orqali Click toʻlov.</p>
+      <p>Boshlangʻich sinovi admin tasdigʻidan keyin ochiladi. Keyin kabinetdagi Tariflar orqali Click toʻlov.</p>
     </div>
     <div className="s-auth-mock">
       <div className="s-auth-mail">
@@ -509,7 +509,7 @@ function Showcase({ mode }: { mode: 'sign-in' | 'sign-up' }) {
     </div>
     <ul className="s-auth-points">
       <li><Lock size={16} /><span><b>Login admin beradi</b>Mustaqil Google/email roʻyxat yoʻq</span></li>
-      <li><Crown size={16} /><span><b>Starter 7 kun</b>Faqat birinchi tarif bepul sinovda</span></li>
+      <li><Crown size={16} /><span><b>Boshlangʻich 7 kun</b>Faqat birinchi tarif bepul sinovda</span></li>
       <li><UserCheck size={16} /><span><b>Platforma nazorati</b>Har bir kompaniya alohida ochiladi</span></li>
     </ul>
   </aside>;

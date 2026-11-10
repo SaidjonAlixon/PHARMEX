@@ -410,12 +410,12 @@ export function PricingPage() {
       icon={Crown}
       title="7 kun bepul,"
       accent="keyin aniq tarif."
-      text="Ariza qoldiring — platforma admini Starter tarifini 7 kun bepul ochadi. Business va Enterprise faqat kabinetdagi Tariflar orqali Click toʻlovdan keyin."
-      chips={['Starter 7 kun bepul', 'Ariza → admin ochadi', 'Click toʻlov', '3 ta tarif']}
+      text="Ariza qoldiring — platforma admini Boshlangʻich tarifini 7 kun bepul ochadi. Biznes va Korxona faqat kabinetdagi Tariflar orqali Click toʻlovdan keyin."
+      chips={['Boshlangʻich 7 kun bepul', 'Ariza → admin ochadi', 'Click toʻlov', '3 ta tarif']}
     />
     <section className="s-section tight">
       <div className="s-wrap">
-        <SectionHead center eyebrow="OYLIK" title="Kompaniyangiz oʻsishiga" accent="mos tarif." text="Boshida faqat Starter bepul sinov. Qolgan tariflar toʻlovdan keyin ochiladi." />
+        <SectionHead center eyebrow="OYLIK" title="Kompaniyangiz oʻsishiga" accent="mos tarif." text="Boshida faqat Boshlangʻich bepul sinov. Qolgan tariflar toʻlovdan keyin ochiladi." />
         <div className="s-price-grid">
           {PUBLIC_PLANS.map((p, i) => (
             <article key={p.code} className={`s-price-card ${p.highlight ? 'featured' : ''}`} data-reveal style={delay(i)}>

@@ -214,7 +214,7 @@ router.post("/platform/applications/:id/approve", async (req, res): Promise<void
     action: "application.approved",
     entityType: "user",
     entityId: String(activated.id),
-    summary: `${activated.displayName} uchun Starter 7 kunlik sinov ochildi · login ${username}`,
+    summary: `${activated.displayName} uchun Boshlangʻich 7 kunlik sinov ochildi · login ${username}`,
   });
 
   res.json({

@@ -75,6 +75,7 @@ router.post("/billing/checkout", requireClerkUser, async (req, res): Promise<voi
     return;
   }
   const plan = PLANS[planCode];
+  const paymentMethod = req.body?.paymentMethod === "click" ? "click" : "card";
   const merchantTransId = newMerchantTransId();
   await db.insert(paymentsTable).values({
     organizationId: orgId,
@@ -90,9 +91,10 @@ router.post("/billing/checkout", requireClerkUser, async (req, res): Promise<voi
     merchantUserId: cfg.merchantUserId,
     amount: plan.priceUzs,
     merchantTransId,
-    returnUrl: `${origin}/tariflar?paid=1`,
+    returnUrl: `${origin}/tariflar?paid=1&method=${paymentMethod}`,
+    paymentMethod,
   });
-  res.json({ url, merchantTransId, amount: plan.priceUzs, planCode });
+  res.json({ url, merchantTransId, amount: plan.priceUzs, planCode, paymentMethod });
 });
 
 async function handleClick(req: Request, res: Response): Promise<void> {
@@ -262,7 +264,7 @@ router.post("/billing/telegram", requireClerkUser, requireRole("admin"), async (
   }
   const org = await loadOrganization(orgId);
   if (!org || !isPlanCode(org.planCode) || !PLANS[org.planCode].telegram) {
-    res.status(403).json({ error: "Telegram faqat Enterprise tarifida." });
+    res.status(403).json({ error: "Telegram faqat Korxona tarifida." });
     return;
   }
   const chatId = typeof req.body?.chatId === "string" ? req.body.chatId.trim() : "";
