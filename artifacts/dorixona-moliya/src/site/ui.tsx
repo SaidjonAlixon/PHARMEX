@@ -108,11 +108,12 @@ export function PrimaryCta({ large = false, label = 'Boshlash' }: { large?: bool
   return <>
     <Show when="signed-out">
       <Link href="/sign-up" className={`s-btn primary s-cta-trial ${large ? 'lg' : ''}`} data-testid="link-site-signup">
-        <span className="s-cta-label">{label} <ArrowRight size={large ? 18 : 16} /></span>
+        <span className="s-cta-label">{label}</span>
         <em className="s-cta-chip">7 kun bepul</em>
+        <ArrowRight size={large ? 17 : 15} />
       </Link>
     </Show>
-    <Show when="signed-in"><Link href="/" className={`s-btn primary ${large ? 'lg' : ''}`} data-testid="link-site-cabinet">Kabinetga oʻtish <ArrowRight size={large ? 18 : 16} /></Link></Show>
+    <Show when="signed-in"><Link href="/" className={`s-btn primary ${large ? 'lg' : ''}`} data-testid="link-site-cabinet">Kabinetga oʻtish <ArrowRight size={large ? 17 : 15} /></Link></Show>
   </>;
 }
 
