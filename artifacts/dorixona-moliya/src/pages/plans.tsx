@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BadgePercent, Building2, Check, CreditCard, Loader2, QrCode, Send, Wallet, X } from 'lucide-react';
-import { useState } from 'react';
+import {
+  BadgePercent, Building2, Check, Clock3, CreditCard, Loader2, QrCode, Send, Sparkles, Wallet, X,
+} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
-import { Modal, PageHeading, Panel } from '@/components/kit';
+import { Modal, PageHeading, Panel, StatusBadge } from '@/components/kit';
 import { useAccess } from '@/lib/access';
 import { formatUzs, type PlanCode } from '@/lib/plans';
 
@@ -14,6 +16,7 @@ type OrgSub = {
   subscriptionStatus: string;
   trialEndsAt: string | null;
   planExpiresAt: string | null;
+  daysLeft: number | null;
   branchLimit: number | null;
   telegramEnabled: boolean;
   telegramLinked: boolean;
@@ -50,6 +53,8 @@ type CheckoutResult = {
   widget: ClickWidget;
   returnUrl: string;
 };
+
+type Remain = { days: number; hours: number; minutes: number; seconds: number; totalMs: number };
 
 declare global {
   interface Window {
@@ -94,13 +99,51 @@ async function openCardWidget(widget: ClickWidget, returnUrl: string): Promise<v
   }
   await new Promise<void>((resolve) => {
     window.createPaymentRequest!(widget, (data) => {
-      // status: <0 error, 0 created/pending, 1 processing, 2 success
-      if (data?.status >= 0) {
-        window.location.assign(returnUrl);
-      }
+      if (data?.status >= 0) window.location.assign(returnUrl);
       resolve();
     });
   });
+}
+
+function statusView(status: string): { label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' | 'info' } {
+  if (status === 'active') return { label: 'Faol', tone: 'good' };
+  if (status === 'trialing') return { label: 'Sinov', tone: 'info' };
+  if (status === 'past_due') return { label: 'Muddati tugagan', tone: 'bad' };
+  if (status === 'canceled') return { label: 'Bekor qilingan', tone: 'neutral' };
+  return { label: status, tone: 'neutral' };
+}
+
+function expiryTarget(org: OrgSub): { at: Date; label: string } | null {
+  const plan = org.planExpiresAt ? new Date(org.planExpiresAt) : null;
+  const trial = org.trialEndsAt ? new Date(org.trialEndsAt) : null;
+  if (org.subscriptionStatus === 'trialing' && trial) return { at: trial, label: 'Sinov tugashiga' };
+  if (plan) return { at: plan, label: 'Obuna tugashiga' };
+  if (trial) return { at: trial, label: 'Muddat tugashiga' };
+  return null;
+}
+
+function calcRemain(target: Date, now: number): Remain {
+  const totalMs = Math.max(0, target.getTime() - now);
+  const totalSec = Math.floor(totalMs / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  return { days, hours, minutes, seconds, totalMs };
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function useCountdown(target: Date | null): Remain | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!target) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [target?.getTime()]);
+  return useMemo(() => (target ? calcRemain(target, now) : null), [target, now]);
 }
 
 export function PlansPage() {
@@ -142,6 +185,11 @@ export function PlansPage() {
         ? 'Toʻlovni faqat kompaniya administratori qila oladi.'
         : '';
 
+  const expiry = org ? expiryTarget(org) : null;
+  const remain = useCountdown(expiry?.at ?? null);
+  const st = org ? statusView(org.subscriptionStatus) : null;
+  const ended = remain != null && remain.totalMs <= 0;
+
   const openPay = (p: PlanRow) => {
     setMsg('');
     if (!canPay) {
@@ -159,7 +207,6 @@ export function PlansPage() {
     try {
       const data = await checkout.mutateAsync({ planCode: payPlan.code, paymentMethod: method });
       if (method === 'card') {
-        // In-page Click card form — does not open Click app / QR deeplink.
         setPayPlan(null);
         await openCardWidget(data.widget, data.returnUrl || '/tariflar?paid=1&method=card');
       } else {
@@ -177,8 +224,8 @@ export function PlansPage() {
   const busy = paying || checkout.isPending;
 
   return (
-    <div className="page-stack">
-      <PageHeading title="Tariflar" subtitle="Joriy obuna va Click orqali yangilash" icon={BadgePercent} />
+    <div className="page-stack plans-page">
+      <PageHeading title="Tariflar" subtitle="Joriy obuna, muddat va Click orqali yangilash" icon={BadgePercent} />
       {msg && <div className="notice error" data-testid="notice-checkout-error">{msg}</div>}
       {payHint && (
         <div className="notice warn" data-testid="notice-checkout-hint">
@@ -187,25 +234,68 @@ export function PlansPage() {
           {!org && !access.isPlatformAdmin && <Link href="/sign-in">Kirish →</Link>}
         </div>
       )}
-      {org && (
-        <Panel title="Joriy holat">
-          <div className="plan-current">
-            <div><span className="eyebrow">Kompaniya</span><b>{org.name}</b></div>
-            <div><span className="eyebrow">Tarif</span><b>{org.planName}</b></div>
-            <div><span className="eyebrow">Status</span><b>{org.subscriptionStatus}</b></div>
-            <div><span className="eyebrow">Filial limiti</span><b>{org.branchLimit == null ? 'Cheksiz' : org.branchLimit}</b></div>
-            {org.trialEndsAt && <div><span className="eyebrow">Sinov tugashi</span><b>{new Date(org.trialEndsAt).toLocaleString('uz-UZ')}</b></div>}
-            {org.planExpiresAt && <div><span className="eyebrow">Amal qiladi</span><b>{new Date(org.planExpiresAt).toLocaleString('uz-UZ')}</b></div>}
+
+      {org && st && (
+        <section className={`sub-hero ${ended ? 'ended' : st.tone === 'good' ? 'ok' : ''}`} data-testid="panel-subscription-hero">
+          <div className="sub-hero-top">
+            <div className="sub-hero-brand">
+              <span className="sub-hero-icon"><Sparkles size={18} /></span>
+              <div>
+                <span className="eyebrow">JORIY OBUNA</span>
+                <h2>{org.planName}</h2>
+                <p>{org.name}</p>
+              </div>
+            </div>
+            <StatusBadge tone={ended ? 'bad' : st.tone}>
+              {ended ? 'Muddati tugagan' : st.label}
+            </StatusBadge>
           </div>
-        </Panel>
+
+          <div className="sub-hero-meta">
+            <div><span>Tarif</span><b>{org.planName}</b></div>
+            <div>
+              <span>Status</span>
+              <b className={`sub-status ${ended ? 'bad' : st.tone === 'good' ? 'good' : ''}`}>
+                <i /> {ended ? 'Tugagan' : st.label}
+              </b>
+            </div>
+            <div><span>Filial limiti</span><b>{org.branchLimit == null ? 'Cheksiz' : `${org.branchLimit} ta`}</b></div>
+            <div>
+              <span>{org.subscriptionStatus === 'trialing' ? 'Sinov tugashi' : 'Amal qiladi'}</span>
+              <b>
+                {new Date(org.planExpiresAt || org.trialEndsAt || Date.now()).toLocaleString('uz-UZ', {
+                  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                })}
+              </b>
+            </div>
+          </div>
+
+          {expiry && remain && (
+            <div className="sub-countdown" data-testid="countdown-subscription">
+              <div className="sub-countdown-head">
+                <Clock3 size={16} />
+                <span>{ended ? 'Muddat tugagan' : expiry.label}</span>
+              </div>
+              <div className="sub-countdown-grid" aria-live="polite">
+                <div className="sub-tick"><b>{remain.days}</b><small>kun</small></div>
+                <div className="sub-tick"><b>{pad2(remain.hours)}</b><small>soat</small></div>
+                <div className="sub-tick"><b>{pad2(remain.minutes)}</b><small>minut</small></div>
+                <div className="sub-tick"><b>{pad2(remain.seconds)}</b><small>soniya</small></div>
+              </div>
+            </div>
+          )}
+        </section>
       )}
+
       <div className="plan-grid">
         {plans.map((p) => {
           const trialLocked = p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter';
+          const isCurrent = org?.planCode === p.code;
           const disabled = busy || trialLocked || !canPay;
           return (
-            <article key={p.code} className={`plan-card ${p.highlight ? 'featured' : ''} ${org?.planCode === p.code ? 'current' : ''}`}>
+            <article key={p.code} className={`plan-card ${p.highlight ? 'featured' : ''} ${isCurrent ? 'current' : ''}`}>
               {p.highlight && <span className="plan-badge">Tavsiya</span>}
+              {isCurrent && <span className="plan-badge current-badge">Joriy</span>}
               <h3>{p.name}</h3>
               <div className="plan-price"><b>{formatUzs(p.priceUzs)}</b><small>/ oy</small></div>
               <p><Building2 size={14} /> {p.branchLimit == null ? 'Istalgancha filial' : `${p.branchLimit} ta filial`}</p>
@@ -218,14 +308,15 @@ export function PlansPage() {
                 data-testid={`button-checkout-${p.code}`}
               >
                 <Wallet size={16} />
-                {trialLocked ? 'Hozir bepul sinovdasiz' : 'Obuna sotib olish'}
+                {trialLocked ? 'Hozir bepul sinovdasiz' : isCurrent ? 'Obunani uzaytirish' : 'Obuna sotib olish'}
               </button>
             </article>
           );
         })}
       </div>
+
       {org?.telegramEnabled && (
-        <Panel title="Telegram xabarnoma (Korxona)">
+        <Panel title="Telegram xabarnoma (Korxona)" subtitle="Muhim eslatmalar bot orqali keladi">
           <p className="muted-line">Botga /start yuboring va chat ID ni kiriting.</p>
           <div className="inline-form">
             <input value={chatId} onChange={(e) => setChatId(e.target.value)} placeholder="Chat ID" data-testid="input-telegram-chat" />
