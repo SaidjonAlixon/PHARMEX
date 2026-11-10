@@ -42,11 +42,11 @@
 /* navbar */
 .s-progress { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 70; transform-origin: left; transform: scaleX(var(--p, 0)); background: var(--s-grad); box-shadow: 0 0 12px rgba(15,179,199,.6); }
 .s-nav { position: sticky; top: 12px; z-index: 50; padding: 12px 16px 0; margin-top: 0; }
-.s-nav-inner { max-width: 1272px; margin: 0 auto; height: 78px; display: flex; align-items: center; gap: 18px; padding: 0 10px 0 16px; border-radius: 22px; background: var(--s-glass); border: 1px solid var(--s-line); backdrop-filter: blur(18px) saturate(1.6); -webkit-backdrop-filter: blur(18px) saturate(1.6); box-shadow: 0 8px 30px -18px rgba(11,30,74,.25); transition: height .3s var(--s-ease), box-shadow .3s, border-color .3s; }
-.s-nav.scrolled .s-nav-inner { height: 68px; box-shadow: var(--s-shadow); border-color: var(--s-line-2); }
-.s-nav.scrolled .s-logo .brand-logo { height: 48px; }
+.s-nav-inner { max-width: 1272px; margin: 0 auto; height: 64px; display: flex; align-items: center; gap: 18px; padding: 0 10px 0 16px; border-radius: 20px; background: var(--s-glass); border: 1px solid var(--s-line); backdrop-filter: blur(18px) saturate(1.6); -webkit-backdrop-filter: blur(18px) saturate(1.6); box-shadow: 0 8px 30px -18px rgba(11,30,74,.25); transition: height .3s var(--s-ease), box-shadow .3s, border-color .3s; }
+.s-nav.scrolled .s-nav-inner { height: 56px; box-shadow: var(--s-shadow); border-color: var(--s-line-2); }
+.s-nav.scrolled .s-logo .brand-logo { height: 32px; }
 .s-logo { display: inline-flex; align-items: center; flex: 0 0 auto; line-height: 0; overflow: visible; padding: 0; background: transparent; border: 0; box-shadow: none; }
-.s-logo .brand-logo { height: 56px; width: auto; max-width: min(360px, 70vw); object-fit: contain; object-position: left center; background: transparent; padding: 0; border-radius: 0; filter: brightness(1.22) contrast(1.1) saturate(1.08); }
+.s-logo .brand-logo { height: 38px; width: auto; max-width: min(220px, 48vw); object-fit: contain; object-position: left center; background: transparent; padding: 0; border-radius: 0; filter: brightness(1.22) contrast(1.1) saturate(1.08); }
 .s-nav nav { flex: 1; display: flex; justify-content: center; min-width: 0; }
 .s-navlinks { position: relative; display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: color-mix(in srgb, var(--s-soft) 70%, transparent); border: 1px solid var(--s-line); }
 .s-navpill { position: absolute; top: 4px; bottom: 4px; left: 0; border-radius: 10px; background: var(--s-solid); box-shadow: 0 4px 14px -6px rgba(11,30,74,.3), inset 0 0 0 1px var(--s-line); opacity: 0; transition: transform .38s var(--s-ease), width .38s var(--s-ease), opacity .2s; pointer-events: none; }
@@ -331,11 +331,11 @@
 
 /* footer */
 .s-footer { position: relative; z-index: 1; padding: 72px 0 28px; border-top: 1px solid var(--s-line); background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--s-bg-2) 70%, transparent)); }
-.s-footer-top { display: grid; grid-template-columns: minmax(280px, 1.35fr) repeat(3, minmax(0, 1fr)); gap: 36px 48px; align-items: start; }
-.s-footer-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 18px; max-width: 420px; }
-.s-footer-brand .s-logo { padding: 0; display: inline-flex; background: transparent; border: 0; border-radius: 0; box-shadow: none; overflow: visible; }
-.s-footer-brand .brand-logo { height: 72px; width: auto; max-width: min(420px, 90vw); background: transparent; padding: 0; border-radius: 0; filter: brightness(1.24) contrast(1.12) saturate(1.08); }
-.s-footer-brand p { font-size: 15px; line-height: 1.65; color: var(--s-t2); max-width: 380px; margin: 0; }
+.s-footer-top { display: grid; grid-template-columns: minmax(220px, 1.15fr) repeat(3, minmax(0, 1fr)); gap: 32px 40px; align-items: start; }
+.s-footer-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; max-width: 300px; min-width: 0; }
+.s-footer-brand .s-logo { padding: 0; display: inline-flex; max-width: 100%; background: transparent; border: 0; border-radius: 0; box-shadow: none; overflow: hidden; }
+.s-footer-brand .brand-logo { height: 42px; width: auto; max-width: 100%; background: transparent; padding: 0; border-radius: 0; filter: brightness(1.24) contrast(1.12) saturate(1.08); }
+.s-footer-brand p { font-size: 14.5px; line-height: 1.65; color: var(--s-t2); max-width: 100%; margin: 0; }
 .s-footer-live { display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border-radius: 99px; border: 1px solid var(--s-line-2); background: color-mix(in srgb, var(--s-bg) 80%, #2fcf5a 6%); font-size: 12.5px; font-weight: 650; color: var(--s-t2); }
 .s-footer-live i { width: 8px; height: 8px; border-radius: 50%; background: #2fcf5a; animation: s-ping 2s infinite; }
 .s-footer-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -579,7 +579,7 @@
 /* responsive */
 @media (max-width: 1320px) {
   .s-nav-inner { gap: 12px; padding-left: 16px; }
-  .s-logo .brand-logo { height: 46px; }
+  .s-logo .brand-logo { height: 34px; }
   .s-navlink { padding: 8px 10px; font-size: 13px; }
   .s-nav-login { padding: 9px 8px; }
   .s-nav-actions .s-btn { padding: 0 13px; }
@@ -599,7 +599,7 @@
   .s-cta-actions { flex-direction: row; flex-wrap: wrap; }
   .s-footer-top { grid-template-columns: 1fr 1fr 1fr; gap: 28px 24px; }
   .s-footer-brand { grid-column: 1 / -1; max-width: none; }
-  .s-footer-brand .brand-logo { height: 64px; max-width: min(380px, 90vw); }
+  .s-footer-brand .brand-logo { height: 40px; }
 }
 @media (max-width: 860px) {
   .s-section { padding: 70px 0; }
@@ -630,7 +630,7 @@
   .s-wrap { width: calc(100% - 32px); }
   .s-announce { font-size: 12px; }
   .s-nav { top: 8px; padding: 8px 10px 0; }
-  .s-nav-inner { height: 58px; padding: 0 8px 0 14px; }
+  .s-nav-inner { height: 54px; padding: 0 8px 0 14px; }
   .s-nav-actions .s-btn { display: none; }
   .s-hero { padding: 44px 0 50px; }
   .s-hero-lead, .s-page-hero-copy > p { font-size: 16px; }
@@ -646,7 +646,7 @@
   .s-shield { width: 240px; height: 240px; }
   .s-cta { padding: 34px 22px; border-radius: 26px; }
   .s-footer-top { grid-template-columns: 1fr 1fr; gap: 24px 18px; }
-  .s-footer-brand .brand-logo { height: 56px; }
+  .s-footer-brand .brand-logo { height: 36px; }
   .s-faq-help { flex-direction: column; align-items: flex-start; }
   .s-ba-toggle button { padding: 0 12px; font-size: 12.5px; }
 }
