@@ -187,7 +187,7 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const showPeriod = !['/settings', '/users', '/catalog', '/tariflar', '/platform'].some(path => location === path || location.startsWith(`${path}/`));
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`}>
-      <Link href="/" className="brand-lockup brand-card" data-testid="link-brand"><BrandLogo /></Link>
+      <Link href="/" className="brand-lockup brand-card" data-testid="link-brand" aria-label="PHARMXS"><BrandLogo /></Link>
       {access.subscriptionBlocked && <div className="sub-banner" data-testid="banner-subscription">Obuna tugagan — <Link href="/tariflar">tarifni yangilang</Link></div>}
       <div className="workspace-label">BOʻLIMLAR</div>
       <nav className="primary-nav" aria-label="Asosiy navigatsiya">{items.map(item => {
