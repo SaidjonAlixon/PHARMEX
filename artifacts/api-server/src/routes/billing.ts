@@ -42,15 +42,31 @@ router.get("/billing/subscription", requireClerkUser, async (_req, res): Promise
   res.json({ organization: publicOrganization(org), plans: planList() });
 });
 
-router.post("/billing/checkout", requireClerkUser, requireRole("admin"), async (req, res): Promise<void> => {
+router.post("/billing/checkout", requireClerkUser, async (req, res): Promise<void> => {
+  const role = String(res.locals.userRole ?? "");
+  if (role === "platform_admin") {
+    res.status(403).json({
+      error: "Platforma egasi toʻlov qilmaydi. Kompaniya admini login/paroli bilan kabinetga kiring, soʻng Tariflar orqali toʻlang.",
+      code: "company_login_required",
+    });
+    return;
+  }
+  if (role !== "admin" && role !== "finance") {
+    res.status(403).json({
+      error: "Obuna toʻlovini faqat kompaniya administratori (yoki moliya) qila oladi. Kuzatuvchiga ruxsat yoʻq.",
+      code: "role_forbidden",
+      role,
+    });
+    return;
+  }
   const cfg = clickConfig();
   if (!cfg) {
-    res.status(503).json({ error: "Click toʻlov hozircha sozlanmagan." });
+    res.status(503).json({ error: "Click toʻlov hozircha sozlanmagan. Platforma egasiga murojaat qiling." });
     return;
   }
   const orgId = requireOrgId(res);
   if (!orgId) {
-    res.status(403).json({ error: "Kompaniya topilmadi." });
+    res.status(403).json({ error: "Kompaniya akkaunti topilmadi. Avval ariza tasdiqlangan login bilan kiring." });
     return;
   }
   const planCode = req.body?.planCode;
@@ -71,6 +87,7 @@ router.post("/billing/checkout", requireClerkUser, requireRole("admin"), async (
   const url = clickPayUrl({
     serviceId: cfg.serviceId,
     merchantId: cfg.merchantId,
+    merchantUserId: cfg.merchantUserId,
     amount: plan.priceUzs,
     merchantTransId,
     returnUrl: `${origin}/tariflar?paid=1`,

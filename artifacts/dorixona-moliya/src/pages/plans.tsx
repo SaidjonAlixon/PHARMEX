@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BadgePercent, Building2, Check, Loader2, Send, Wallet } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'wouter';
 import { PageHeading, Panel } from '@/components/kit';
+import { useAccess } from '@/lib/access';
 import { formatUzs, type PlanCode } from '@/lib/plans';
 
 type OrgSub = {
@@ -36,6 +38,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function PlansPage() {
+  const access = useAccess();
   const qc = useQueryClient();
   const [chatId, setChatId] = useState('');
   const [msg, setMsg] = useState('');
@@ -45,7 +48,13 @@ export function PlansPage() {
   });
   const checkout = useMutation({
     mutationFn: (planCode: PlanCode) => api<{ url: string }>('/api/billing/checkout', { method: 'POST', body: JSON.stringify({ planCode }) }),
-    onSuccess: (data) => { window.location.href = data.url; },
+    onSuccess: (data) => {
+      if (!data?.url) {
+        setMsg('Click havolasi olinmadi. Qayta urinib koʻring.');
+        return;
+      }
+      window.location.assign(data.url);
+    },
     onError: (e: Error) => setMsg(e.message),
   });
   const telegram = useMutation({
@@ -56,11 +65,26 @@ export function PlansPage() {
 
   const org = q.data?.organization;
   const plans = q.data?.plans ?? [];
+  const canPay = !!org && (access.role === 'admin' || access.role === 'finance');
+  const payHint = access.isPlatformAdmin
+    ? 'Platforma egasi toʻlov qilmaydi. Kompaniya admini bilan /sign-in orqali kiring.'
+    : !org
+      ? 'Kompaniya topilmadi. Avval ariza tasdiqlangan kompaniya login/paroli bilan kiring.'
+      : !(access.role === 'admin' || access.role === 'finance')
+        ? 'Toʻlovni faqat kompaniya administratori qila oladi.'
+        : '';
 
   return (
     <div className="page-stack">
       <PageHeading title="Tariflar" subtitle="Joriy obuna va Click orqali yangilash" icon={BadgePercent} />
-      {msg && <div className="notice">{msg}</div>}
+      {msg && <div className="notice error" data-testid="notice-checkout-error">{msg}</div>}
+      {payHint && (
+        <div className="notice warn" data-testid="notice-checkout-hint">
+          {payHint}{' '}
+          {access.isPlatformAdmin && <Link href="/owner">Owner panel →</Link>}
+          {!org && !access.isPlatformAdmin && <Link href="/sign-in">Kirish →</Link>}
+        </div>
+      )}
       {org && (
         <Panel title="Joriy holat">
           <div className="plan-current">
@@ -74,7 +98,10 @@ export function PlansPage() {
         </Panel>
       )}
       <div className="plan-grid">
-        {plans.map((p) => (
+        {plans.map((p) => {
+          const trialLocked = p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter';
+          const disabled = checkout.isPending || trialLocked || !canPay;
+          return (
           <article key={p.code} className={`plan-card ${p.highlight ? 'featured' : ''} ${org?.planCode === p.code ? 'current' : ''}`}>
             {p.highlight && <span className="plan-badge">Tavsiya</span>}
             <h3>{p.name}</h3>
@@ -84,19 +111,25 @@ export function PlansPage() {
             <button
               type="button"
               className="button primary plan-buy"
-              disabled={checkout.isPending || (p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter')}
-              onClick={() => checkout.mutate(p.code)}
+              disabled={disabled}
+              onClick={() => {
+                setMsg('');
+                if (!canPay) {
+                  setMsg(payHint || 'Toʻlov uchun ruxsat yoʻq.');
+                  return;
+                }
+                checkout.mutate(p.code);
+              }}
               data-testid={`button-checkout-${p.code}`}
             >
               {checkout.isPending && checkout.variables === p.code
                 ? <Loader2 className="spin" size={16} />
                 : <Wallet size={16} />}
-              {p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter'
-                ? 'Hozir bepul sinovdasiz'
-                : 'Obuna sotib olish'}
+              {trialLocked ? 'Hozir bepul sinovdasiz' : 'Obuna sotib olish'}
             </button>
           </article>
-        ))}
+          );
+        })}
       </div>
       {org?.telegramEnabled && (
         <Panel title="Telegram xabarnoma (Enterprise)">

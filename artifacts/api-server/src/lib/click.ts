@@ -43,6 +43,7 @@ export function newPrepareId(): number {
 export function clickPayUrl(opts: {
   serviceId: string;
   merchantId: string;
+  merchantUserId?: string;
   amount: number;
   merchantTransId: string;
   returnUrl: string;
@@ -53,6 +54,7 @@ export function clickPayUrl(opts: {
   u.searchParams.set("amount", String(opts.amount));
   u.searchParams.set("transaction_param", opts.merchantTransId);
   u.searchParams.set("return_url", opts.returnUrl);
+  if (opts.merchantUserId) u.searchParams.set("merchant_user_id", opts.merchantUserId);
   return u.toString();
 }
 
