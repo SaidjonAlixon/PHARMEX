@@ -21,7 +21,7 @@ import {
   type AccountStatus,
 } from "../lib/accounts";
 import { mailConfigured, sendMail } from "../lib/mailer";
-import { createOrganizationForOwner, loadOrganization, publicOrganization } from "../lib/org";
+import { loadOrganization, publicOrganization } from "../lib/org";
 import { planList } from "../lib/plans";
 
 const router: IRouter = Router();
@@ -65,28 +65,6 @@ async function publicUser(user: AppUser) {
     organization: publicOrganization(org),
     plans: planList(),
   };
-}
-
-function isPlatformAdminEmail(email: string | null | undefined): boolean {
-  const configured = process.env.PLATFORM_ADMIN_EMAIL?.trim().toLowerCase();
-  if (!configured || !email) return false;
-  return email.trim().toLowerCase() === configured;
-}
-
-async function provisionCompany(user: AppUser, companyName?: string): Promise<AppUser> {
-  if (user.role === "platform_admin" || user.organizationId) return user;
-  if (isPlatformAdminEmail(user.email)) {
-    const [promoted] = await db
-      .update(appUsersTable)
-      .set({ role: "platform_admin", organizationId: null })
-      .where(eq(appUsersTable.id, user.id))
-      .returning();
-    return promoted ?? user;
-  }
-  const name = (companyName?.trim() || `${user.displayName} kompaniyasi`).slice(0, 120);
-  await createOrganizationForOwner({ name, ownerUserId: user.id });
-  const [fresh] = await db.select().from(appUsersTable).where(eq(appUsersTable.id, user.id)).limit(1);
-  return fresh ?? user;
 }
 
 const blockedMessages: Record<Exclude<AccountStatus, "active">, string> = {
