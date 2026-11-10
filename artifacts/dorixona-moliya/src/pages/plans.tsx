@@ -32,11 +32,75 @@ type PlanRow = {
 
 type PayMethod = 'card' | 'click';
 
+type ClickWidget = {
+  service_id: string;
+  merchant_id: string;
+  amount: string;
+  transaction_param: string;
+  merchant_user_id?: string;
+  card_type?: string;
+};
+
+type CheckoutResult = {
+  url: string;
+  merchantTransId: string;
+  amount: number;
+  planCode: PlanCode;
+  paymentMethod: PayMethod;
+  widget: ClickWidget;
+  returnUrl: string;
+};
+
+declare global {
+  interface Window {
+    createPaymentRequest?: (
+      params: ClickWidget,
+      cb?: (data: { status: number }) => void,
+    ) => void;
+  }
+}
+
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { credentials: 'include', ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Xatolik');
   return data as T;
+}
+
+function loadClickCheckoutJs(): Promise<void> {
+  if (typeof window.createPaymentRequest === 'function') return Promise.resolve();
+  const existing = document.querySelector<HTMLScriptElement>('script[data-click-checkout]');
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Click skript yuklanmadi.')), { once: true });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://my.click.uz/pay/checkout.js';
+    s.async = true;
+    s.dataset.clickCheckout = '1';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Click skript yuklanmadi.'));
+    document.head.appendChild(s);
+  });
+}
+
+async function openCardWidget(widget: ClickWidget, returnUrl: string): Promise<void> {
+  await loadClickCheckoutJs();
+  if (typeof window.createPaymentRequest !== 'function') {
+    throw new Error('Click karta oynasi ochilmadi. Qayta urinib koʻring.');
+  }
+  await new Promise<void>((resolve) => {
+    window.createPaymentRequest!(widget, (data) => {
+      // status: <0 error, 0 created/pending, 1 processing, 2 success
+      if (data?.status >= 0) {
+        window.location.assign(returnUrl);
+      }
+      resolve();
+    });
+  });
 }
 
 export function PlansPage() {
@@ -46,6 +110,7 @@ export function PlansPage() {
   const [msg, setMsg] = useState('');
   const [payPlan, setPayPlan] = useState<PlanRow | null>(null);
   const [method, setMethod] = useState<PayMethod>('card');
+  const [paying, setPaying] = useState(false);
 
   const q = useQuery({
     queryKey: ['billing-subscription'],
@@ -54,18 +119,10 @@ export function PlansPage() {
 
   const checkout = useMutation({
     mutationFn: ({ planCode, paymentMethod }: { planCode: PlanCode; paymentMethod: PayMethod }) =>
-      api<{ url: string }>('/api/billing/checkout', {
+      api<CheckoutResult>('/api/billing/checkout', {
         method: 'POST',
         body: JSON.stringify({ planCode, paymentMethod }),
       }),
-    onSuccess: (data) => {
-      if (!data?.url) {
-        setMsg('Click havolasi olinmadi. Qayta urinib koʻring.');
-        return;
-      }
-      window.location.assign(data.url);
-    },
-    onError: (e: Error) => setMsg(e.message),
   });
 
   const telegram = useMutation({
@@ -95,10 +152,29 @@ export function PlansPage() {
     setPayPlan(p);
   };
 
-  const startPay = () => {
-    if (!payPlan) return;
-    checkout.mutate({ planCode: payPlan.code, paymentMethod: method });
+  const startPay = async () => {
+    if (!payPlan || paying) return;
+    setMsg('');
+    setPaying(true);
+    try {
+      const data = await checkout.mutateAsync({ planCode: payPlan.code, paymentMethod: method });
+      if (method === 'card') {
+        // In-page Click card form — does not open Click app / QR deeplink.
+        setPayPlan(null);
+        await openCardWidget(data.widget, data.returnUrl || '/tariflar?paid=1&method=card');
+      } else {
+        if (!data?.url) throw new Error('Click havolasi olinmadi.');
+        window.location.assign(data.url);
+        return;
+      }
+    } catch (e) {
+      setMsg((e as Error).message || 'Toʻlovni boshlab boʻlmadi.');
+    } finally {
+      setPaying(false);
+    }
   };
+
+  const busy = paying || checkout.isPending;
 
   return (
     <div className="page-stack">
@@ -126,7 +202,7 @@ export function PlansPage() {
       <div className="plan-grid">
         {plans.map((p) => {
           const trialLocked = p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter';
-          const disabled = checkout.isPending || trialLocked || !canPay;
+          const disabled = busy || trialLocked || !canPay;
           return (
             <article key={p.code} className={`plan-card ${p.highlight ? 'featured' : ''} ${org?.planCode === p.code ? 'current' : ''}`}>
               {p.highlight && <span className="plan-badge">Tavsiya</span>}
@@ -164,12 +240,12 @@ export function PlansPage() {
         <Modal
           eyebrow="TOʻLOV USULI"
           title={`${payPlan.name} — ${formatUzs(payPlan.priceUzs)}`}
-          onClose={() => !checkout.isPending && setPayPlan(null)}
-          busy={checkout.isPending}
+          onClose={() => !busy && setPayPlan(null)}
+          busy={busy}
           size="md"
         >
           <div className="pay-modal">
-            <p className="pay-modal-lead">Qanday toʻlamoqchisiz? Ikkalasi ham Click orqali xavfsiz oʻtadi.</p>
+            <p className="pay-modal-lead">Qanday toʻlamoqchisiz? Karta — sahifada ochiladi; Click/QR — ilova orqali.</p>
             <div className="pay-method-grid" role="radiogroup" aria-label="Toʻlov usuli">
               <button
                 type="button"
@@ -182,7 +258,7 @@ export function PlansPage() {
                 <span className="pay-method-icon"><CreditCard size={22} /></span>
                 <span className="pay-method-body">
                   <b>Karta orqali</b>
-                  <small>Uzcard / Humo raqamini Click sahifasida kiritasiz. Toʻlov Click orqali amalga oshadi.</small>
+                  <small>Shu yerda Uzcard / Humo raqami va muddatini kiritasiz. QR yoki Click ilovasiga oʻtmaydi.</small>
                 </span>
                 <span className="pay-method-check">{method === 'card' && <Check size={16} />}</span>
               </button>
@@ -197,7 +273,7 @@ export function PlansPage() {
                 <span className="pay-method-icon qr"><QrCode size={22} /></span>
                 <span className="pay-method-body">
                   <b>Click / QR</b>
-                  <small>Click ilovasi yoki QR kod orqali toʻgʻridan-toʻgʻri toʻlaysiz — karta yozish shart emas.</small>
+                  <small>Click ilovasi yoki QR kod orqali toʻlaysiz — karta yozish shart emas.</small>
                 </span>
                 <span className="pay-method-check">{method === 'click' && <Check size={16} />}</span>
               </button>
@@ -207,18 +283,18 @@ export function PlansPage() {
               <b>{formatUzs(payPlan.priceUzs)} <small>/ oy</small></b>
             </div>
             <div className="pay-modal-actions">
-              <button type="button" className="button ghost" disabled={checkout.isPending} onClick={() => setPayPlan(null)}>
+              <button type="button" className="button ghost" disabled={busy} onClick={() => setPayPlan(null)}>
                 <X size={15} /> Bekor
               </button>
               <button
                 type="button"
                 className="button primary plan-buy"
-                disabled={checkout.isPending}
-                onClick={startPay}
+                disabled={busy}
+                onClick={() => void startPay()}
                 data-testid="button-pay-continue"
               >
-                {checkout.isPending ? <Loader2 className="spin" size={16} /> : method === 'card' ? <CreditCard size={16} /> : <QrCode size={16} />}
-                {method === 'card' ? 'Kartaga oʻtish' : 'Click / QR ga oʻtish'}
+                {busy ? <Loader2 className="spin" size={16} /> : method === 'card' ? <CreditCard size={16} /> : <QrCode size={16} />}
+                {method === 'card' ? 'Kartani kiritish' : 'Click / QR ga oʻtish'}
               </button>
             </div>
           </div>

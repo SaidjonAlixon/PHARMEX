@@ -40,6 +40,11 @@ export function newPrepareId(): number {
   return Date.now() % 2147483647;
 }
 
+/** Click expects amount as N.NN (soʻm with 2 decimals). */
+export function clickAmount(amountUzs: number): string {
+  return Number(amountUzs).toFixed(2);
+}
+
 export function clickPayUrl(opts: {
   serviceId: string;
   merchantId: string;
@@ -47,19 +52,39 @@ export function clickPayUrl(opts: {
   amount: number;
   merchantTransId: string;
   returnUrl: string;
-  /** UI hint only — Click hosted page still offers card + app/QR. */
+  /** card → web card form; click → app / QR friendly pay page */
   paymentMethod?: "card" | "click";
 }): string {
   const u = new URL("https://my.click.uz/services/pay");
   u.searchParams.set("service_id", opts.serviceId);
   u.searchParams.set("merchant_id", opts.merchantId);
-  u.searchParams.set("amount", String(opts.amount));
+  u.searchParams.set("amount", clickAmount(opts.amount));
   u.searchParams.set("transaction_param", opts.merchantTransId);
   u.searchParams.set("return_url", opts.returnUrl);
   if (opts.merchantUserId) u.searchParams.set("merchant_user_id", opts.merchantUserId);
-  // Prefer card form vs Click-app/QR entry on the hosted cashier when supported.
-  if (opts.paymentMethod === "card") u.searchParams.set("card_type", "uzcard");
+  // Force web card cashier (Uzcard/Humo). Without this, mobile often opens Click app/QR.
+  if (opts.paymentMethod === "card") {
+    u.searchParams.set("card_type", "uzcard");
+  }
   return u.toString();
+}
+
+/** Public params for Click checkout.js card widget (no secret key). */
+export function clickWidgetParams(opts: {
+  serviceId: string;
+  merchantId: string;
+  merchantUserId?: string;
+  amount: number;
+  merchantTransId: string;
+}) {
+  return {
+    service_id: opts.serviceId,
+    merchant_id: opts.merchantId,
+    amount: clickAmount(opts.amount),
+    transaction_param: opts.merchantTransId,
+    merchant_user_id: opts.merchantUserId || undefined,
+    card_type: "uzcard" as const,
+  };
 }
 
 export function parseClickBody(body: unknown): Record<string, string> {

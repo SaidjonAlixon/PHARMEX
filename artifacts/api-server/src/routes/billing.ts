@@ -5,6 +5,7 @@ import { requireClerkUser, requireRole } from "../middlewares/requireClerkUser";
 import {
   clickConfig,
   clickPayUrl,
+  clickWidgetParams,
   newMerchantTransId,
   newPrepareId,
   parseClickBody,
@@ -85,16 +86,33 @@ router.post("/billing/checkout", requireClerkUser, async (req, res): Promise<voi
     merchantTransId,
   });
   const origin = (process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+  const returnUrl = `${origin}/tariflar?paid=1&method=${paymentMethod}`;
   const url = clickPayUrl({
     serviceId: cfg.serviceId,
     merchantId: cfg.merchantId,
     merchantUserId: cfg.merchantUserId,
     amount: plan.priceUzs,
     merchantTransId,
-    returnUrl: `${origin}/tariflar?paid=1&method=${paymentMethod}`,
+    returnUrl,
     paymentMethod,
   });
-  res.json({ url, merchantTransId, amount: plan.priceUzs, planCode, paymentMethod });
+  const widget = clickWidgetParams({
+    serviceId: cfg.serviceId,
+    merchantId: cfg.merchantId,
+    merchantUserId: cfg.merchantUserId,
+    amount: plan.priceUzs,
+    merchantTransId,
+  });
+  res.json({
+    url,
+    merchantTransId,
+    amount: plan.priceUzs,
+    planCode,
+    paymentMethod,
+    /** Use with checkout.js createPaymentRequest for in-page card form (no app/QR hijack). */
+    widget,
+    returnUrl,
+  });
 });
 
 async function handleClick(req: Request, res: Response): Promise<void> {
