@@ -970,7 +970,7 @@ components:
         id: { type: integer }
         displayName: { type: string }
         email: { type: string }
-        role: { type: string, enum: [admin, finance, viewer] }
+        role: { type: string, enum: [platform_admin, admin, finance, viewer] }
         createdAt: { type: string, format: date-time }
       required: [id, displayName, email, role, createdAt]
     UserRoleInput:

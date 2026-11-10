@@ -23,7 +23,7 @@ export const GetCurrentUserResponse = zod.object({
   "id": zod.number().int(),
   "displayName": zod.string(),
   "email": zod.string(),
-  "role": zod.enum(['admin', 'finance', 'viewer']),
+  "role": zod.enum(['platform_admin', 'admin', 'finance', 'viewer']),
   "createdAt": zod.coerce.date()
 })
 
@@ -35,7 +35,7 @@ export const ListUsersResponseItem = zod.object({
   "id": zod.number().int(),
   "displayName": zod.string(),
   "email": zod.string(),
-  "role": zod.enum(['admin', 'finance', 'viewer']),
+  "role": zod.enum(['platform_admin', 'admin', 'finance', 'viewer']),
   "createdAt": zod.coerce.date()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -59,7 +59,7 @@ export const UpdateUserRoleResponse = zod.object({
   "id": zod.number().int(),
   "displayName": zod.string(),
   "email": zod.string(),
-  "role": zod.enum(['admin', 'finance', 'viewer']),
+  "role": zod.enum(['platform_admin', 'admin', 'finance', 'viewer']),
   "createdAt": zod.coerce.date()
 })
 
