@@ -5,7 +5,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { promisify } from "node:util";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { appUsersTable, db } from "@workspace/db";
 import { logger } from "./logger";
 
@@ -113,16 +113,17 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     throw new Error("ADMIN_PASSWORD must be at least 10 characters.");
   }
 
+  const clerkUserId = `local:${username}`;
   const [existing] = await db
     .select({ id: appUsersTable.id })
     .from(appUsersTable)
-    .where(eq(appUsersTable.username, username))
+    .where(or(eq(appUsersTable.username, username), eq(appUsersTable.clerkUserId, clerkUserId)))
     .limit(1);
   if (existing) return;
 
   const platformEmail = process.env.PLATFORM_ADMIN_EMAIL?.trim().toLowerCase() || "";
   await db.insert(appUsersTable).values({
-    clerkUserId: `local:${username}`,
+    clerkUserId,
     username,
     passwordHash: await hashPassword(password),
     displayName: "Platforma admin",
