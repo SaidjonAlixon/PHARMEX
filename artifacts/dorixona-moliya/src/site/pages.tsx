@@ -434,9 +434,10 @@ export function PricingPage() {
                 <ul>{p.features.map(f => <li key={f}><Check size={15} />{f}</li>)}</ul>
                 {cta.kind === 'free' ? (
                   <Link href={cta.href} className="s-free-cta block" data-testid={`link-plan-${p.code}`}>
-                    <span className="s-free-cta-now"><i /> Hoziroq</span>
+                    <span className="s-free-cta-glow" aria-hidden="true" />
+                    <span className="s-free-cta-mark" aria-hidden="true"><i /><em>7</em></span>
                     <span className="s-free-cta-copy"><small>Bepul sinov</small><b>7 kun bepul</b></span>
-                    <span className="s-free-cta-go" aria-hidden="true"><ArrowRight size={15} strokeWidth={2.5} /></span>
+                    <span className="s-free-cta-go" aria-hidden="true"><ArrowRight size={14} strokeWidth={2.6} /></span>
                   </Link>
                 ) : (
                   <Link href={cta.href} className={`s-btn ${cta.kind === 'apply' ? 'primary' : 'ghost'}`} data-testid={`link-plan-${p.code}`}>

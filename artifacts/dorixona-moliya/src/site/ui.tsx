@@ -105,7 +105,7 @@ export function PageHero({ eyebrow, icon, title, accent, text, chips, children }
 }
 
 export function PrimaryCta({ large = false, compact = false, label }: { large?: boolean; compact?: boolean; label?: string }) {
-  const title = label ?? (compact ? '7 kun bepul' : '7 kun bepul');
+  const title = label ?? '7 kun bepul';
   return <>
     <Show when="signed-out">
       <Link
@@ -113,13 +113,14 @@ export function PrimaryCta({ large = false, compact = false, label }: { large?: 
         className={`s-free-cta ${large ? 'lg' : ''} ${compact ? 'compact' : ''}`}
         data-testid="link-site-signup"
       >
-        <span className="s-free-cta-now"><i /> Hoziroq</span>
+        <span className="s-free-cta-glow" aria-hidden="true" />
+        <span className="s-free-cta-mark" aria-hidden="true"><i /><em>7</em></span>
         <span className="s-free-cta-copy">
           {!compact && <small>Bepul sinov</small>}
           <b>{title}</b>
         </span>
         <span className="s-free-cta-go" aria-hidden="true">
-          <ArrowRight size={large ? 16 : compact ? 13 : 15} strokeWidth={2.5} />
+          <ArrowRight size={large ? 16 : compact ? 13 : 14} strokeWidth={2.6} />
         </span>
       </Link>
     </Show>
