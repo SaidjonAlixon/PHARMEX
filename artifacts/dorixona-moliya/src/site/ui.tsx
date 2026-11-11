@@ -104,16 +104,30 @@ export function PageHero({ eyebrow, icon, title, accent, text, chips, children }
   </section>;
 }
 
-export function PrimaryCta({ large = false, compact = false, label = 'Boshlash' }: { large?: boolean; compact?: boolean; label?: string }) {
+export function PrimaryCta({ large = false, compact = false, label }: { large?: boolean; compact?: boolean; label?: string }) {
+  const title = label ?? (compact ? '7 kun bepul' : '7 kun bepul');
   return <>
     <Show when="signed-out">
-      <Link href="/sign-up" className={`s-btn primary s-cta-trial ${large ? 'lg' : ''} ${compact ? 'compact' : ''}`} data-testid="link-site-signup">
-        <span className="s-cta-label">{label}</span>
-        <em className="s-cta-chip">{compact ? '7 kun' : '7 kun bepul'}</em>
-        <ArrowRight size={large ? 17 : compact ? 14 : 15} strokeWidth={2.4} />
+      <Link
+        href="/sign-up"
+        className={`s-free-cta ${large ? 'lg' : ''} ${compact ? 'compact' : ''}`}
+        data-testid="link-site-signup"
+      >
+        <span className="s-free-cta-now"><i /> Hoziroq</span>
+        <span className="s-free-cta-copy">
+          {!compact && <small>Bepul sinov</small>}
+          <b>{title}</b>
+        </span>
+        <span className="s-free-cta-go" aria-hidden="true">
+          <ArrowRight size={large ? 16 : compact ? 13 : 15} strokeWidth={2.5} />
+        </span>
       </Link>
     </Show>
-    <Show when="signed-in"><Link href="/" className={`s-btn primary ${large ? 'lg' : ''} ${compact ? 'compact' : ''}`} data-testid="link-site-cabinet">Kabinet <ArrowRight size={large ? 17 : compact ? 14 : 15} /></Link></Show>
+    <Show when="signed-in">
+      <Link href="/" className={`s-btn primary ${large ? 'lg' : ''} ${compact ? 'compact' : ''}`} data-testid="link-site-cabinet">
+        Kabinet <ArrowRight size={large ? 17 : compact ? 14 : 15} />
+      </Link>
+    </Show>
   </>;
 }
 

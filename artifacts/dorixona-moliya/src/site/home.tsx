@@ -237,7 +237,7 @@ export function HomePage() {
           <Eyebrow icon={Sparkles}>DORIXONA GURUHLARI UCHUN MOLIYAVIY MARKAZ</Eyebrow>
           <h1 className="s-hero-title">Har bir filialning <RotatingWord /><br />bitta ekranda.</h1>
           <p className="s-hero-lead" data-reveal style={delay(1)}>PHARMXS — savdo, zaxira, kassa, qarz va sof foydani FOM F-APTEKA maʼlumotlari bilan real vaqtda jamlaydigan boshqaruv platformasi. Excel eksport kutmasdan, har bir raqamning manbasini koʻrib qaror qiling.</p>
-          <div className="s-hero-ctas" data-reveal style={delay(2)}><PrimaryCta large label="Boshqaruvni boshlash" /><Link href="/imkoniyatlar" className="s-btn ghost lg">Imkoniyatlar <ArrowRight size={17} /></Link></div>
+          <div className="s-hero-ctas" data-reveal style={delay(2)}><PrimaryCta large /><Link href="/imkoniyatlar" className="s-btn ghost lg">Imkoniyatlar <ArrowRight size={17} /></Link></div>
           <div className="s-hero-proof" data-reveal style={delay(3)}>
             <span><ShieldCheck size={15} /> Manbasi koʻrsatilgan raqamlar</span>
             <span><RefreshCw size={15} /> Har 5 daqiqada yangilanadi</span>

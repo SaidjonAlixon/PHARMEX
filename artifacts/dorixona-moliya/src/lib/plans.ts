@@ -20,7 +20,7 @@ export const PUBLIC_PLANS: PlanCard[] = [
     branchLimit: 2,
     telegram: false,
     features: [
-      '7 kun bepul sinov (faqat shu tarif)',
+      '7 kun bepul sinov',
       '2 ta filial',
       'Savdo, zaxira, kassa',
       'Asosiy hisobotlar',
@@ -35,10 +35,10 @@ export const PUBLIC_PLANS: PlanCard[] = [
     telegram: false,
     highlight: true,
     features: [
-      'Click toʻlovdan keyin ochiladi',
       '5 ta filial',
+      'Qarzdorliklar nazorati',
       'Barcha modullar toʻliq',
-      'Qarzlar, foyda-zarar, Excel/PDF',
+      'Foyda-zarar, Excel/PDF',
       'FOM F-APTEKA integratsiyasi',
     ],
   },
@@ -49,9 +49,9 @@ export const PUBLIC_PLANS: PlanCard[] = [
     branchLimit: 50,
     telegram: true,
     features: [
-      'Click toʻlovdan keyin ochiladi',
       '50 tagacha filial',
-      'Biznes dagi barcha imkoniyatlar',
+      'Sverka va solishtirish',
+      'Biznesdagi barcha imkoniyatlar',
       'Telegram bot xabarnomalari',
       'Ustuvor qoʻllab-quvvatlash',
     ],
@@ -82,12 +82,12 @@ export function planPriceLabel(p: Pick<PlanCard, 'priceUzs' | 'applyOnly' | 'cod
   return formatUzs(p.priceUzs);
 }
 
-export function planCta(p: PlanCard): { href: string; label: string; primary: boolean } {
+export function planCta(p: PlanCard): { href: string; label: string; kind: 'free' | 'pay' | 'apply' } {
   if (p.code === 'starter') {
-    return { href: '/sign-up', label: '7 kun bepul boshlash', primary: true };
+    return { href: '/sign-up', label: 'Bepul boshlash', kind: 'free' };
   }
   if (p.applyOnly || p.code === 'custom') {
-    return { href: '/sign-up?plan=custom', label: 'Ariza qoldirish', primary: true };
+    return { href: '/sign-up?plan=custom', label: 'Ariza qoldirish', kind: 'apply' };
   }
-  return { href: '/sign-in?next=/tariflar', label: 'Obuna olish', primary: false };
+  return { href: '/sign-in?next=/tariflar', label: 'Obuna olish', kind: 'pay' };
 }

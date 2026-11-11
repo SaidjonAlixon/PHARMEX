@@ -169,7 +169,7 @@ export function SiteLayout({ children }: { children: ReactNode }) {
         <div className="s-nav-actions">
           <ThemeToggle />
           <Show when="signed-out"><Link href="/sign-in" className="s-nav-login" data-testid="link-sign-in">Kirish</Link></Show>
-          <PrimaryCta label="Boshlash" compact />
+          <PrimaryCta compact />
           <button type="button" className="s-burger" onClick={() => setMenu(v => !v)} aria-label={menu ? 'Menyuni yopish' : 'Menyuni ochish'} aria-expanded={menu}>{menu ? <X size={20} /> : <Menu size={20} />}</button>
         </div>
       </div>

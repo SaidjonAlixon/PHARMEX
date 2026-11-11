@@ -432,9 +432,17 @@ export function PricingPage() {
                 </div>
                 <p className="s-price-limit">{p.branchLimit == null ? 'Istalgancha filial' : p.branchLimit >= 50 ? `${p.branchLimit} tagacha filial` : `${p.branchLimit} ta filial`}</p>
                 <ul>{p.features.map(f => <li key={f}><Check size={15} />{f}</li>)}</ul>
-                <Link href={cta.href} className={`s-btn ${cta.primary ? 'primary' : 'ghost'}`} data-testid={`link-plan-${p.code}`}>
-                  {cta.label} <ArrowRight size={16} />
-                </Link>
+                {cta.kind === 'free' ? (
+                  <Link href={cta.href} className="s-free-cta block" data-testid={`link-plan-${p.code}`}>
+                    <span className="s-free-cta-now"><i /> Hoziroq</span>
+                    <span className="s-free-cta-copy"><small>Bepul sinov</small><b>7 kun bepul</b></span>
+                    <span className="s-free-cta-go" aria-hidden="true"><ArrowRight size={15} strokeWidth={2.5} /></span>
+                  </Link>
+                ) : (
+                  <Link href={cta.href} className={`s-btn ${cta.kind === 'apply' ? 'primary' : 'ghost'}`} data-testid={`link-plan-${p.code}`}>
+                    {cta.label} <ArrowRight size={16} />
+                  </Link>
+                )}
               </article>
             );
           })}
