@@ -653,7 +653,7 @@ td small { display: block; color: #9aa69f; font-size: 9px; margin-top: 4px; }
 .skeleton-line { width: 55%; height: 7px; border-radius: 10px; background: linear-gradient(90deg,#edf2ed,#f8faf8,#edf2ed); background-size: 200% 100%; animation: shimmer 1.6s ease-in-out infinite; }.skeleton-line.wide { width: 78%; }.skeleton-line.short { width: 35%; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 .modal-backdrop { position: fixed; z-index: 90; inset: 0; background: rgba(19,39,29,.35); backdrop-filter: blur(3px); display: grid; place-items: center; padding: 20px; }
-.modal-card { background: #fff; border: 1px solid #e0e8e2; border-radius: 13px; box-shadow: 0 20px 70px rgba(13,45,28,.2); width: min(100%, 470px); padding: 22px; max-height: min(90dvh, 780px); overflow: auto; animation: rise-in .2s ease-out both; }
+.modal-card { background: #fff; border: 1px solid #e0e8e2; border-radius: 13px; box-shadow: 0 20px 70px rgba(13,45,28,.2); width: min(100%, 470px); padding: 22px; max-height: min(94dvh, 920px); overflow: auto; animation: rise-in .2s ease-out both; }
 @keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }.modal-head h2 { margin: 5px 0 0; font: 750 20px var(--app-font-serif); color: #234232; }
 .icon-button { width: 30px; height: 30px; border: 0; background: transparent; color: #819087; display: grid; place-items: center; border-radius: 6px; }.icon-button:hover { background: #eff5f0; color: #285f45; }
@@ -811,8 +811,8 @@ tfoot td { background: #f8fbf8; border-top: 1px solid #e3ebe5; color: #315342; f
 .notice.info { color: #3f5f73; background: #f1f6fb; border: 1px solid #dbe6f1; }
 
 .modal-card.modal-md { width: min(100%, 560px); }
-.modal-card.modal-lg { width: min(100%, 860px); }
-.modal-card.modal-xl { width: min(100%, 1240px); max-height: min(94dvh, 980px); }
+.modal-card.modal-lg { width: min(100%, 640px); max-height: min(94dvh, 960px); }
+.modal-card.modal-xl { width: min(100%, 1240px); max-height: min(96dvh, 980px); }
 .form-stack textarea { width: 100%; border: 1px solid #dfe8e1; background: #fcfdfc; border-radius: 6px; padding: 10px 11px; min-height: 64px; outline: 0; color: #294b38; font: 11px var(--app-font-sans); resize: vertical; }
 .form-stack textarea:focus { border-color: #7ba991; box-shadow: 0 0 0 3px rgba(23,107,74,.08); }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -2077,8 +2077,40 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 .acc-role { font-size: 13px; font-weight: 600; color: var(--t2); }
 .acc-role-menu { min-width: 170px; }
 .acc-actions { text-align: right; white-space: nowrap; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
-.acc-form-role { display: grid; gap: 6px; }
+.acc-form-role { display: grid; gap: 8px; }
 .acc-form-role > span { font-size: 12.5px; font-weight: 700; color: var(--t2); }
+.user-form { gap: 14px; }
+.user-form label { font-size: 12.5px; color: var(--t2); }
+.user-form input { min-height: 44px; font-size: 14px; border-radius: 12px; padding: 11px 13px; }
+.user-form-hint { margin: 0; padding: 10px 12px; border-radius: 12px; background: rgba(15,179,199,.06); border: 1px solid rgba(15,179,199,.18); color: var(--t2); font-size: 12.5px; line-height: 1.45; }
+.role-pick { display: grid; gap: 8px; }
+.role-pick-card {
+  --role-c: var(--px-teal);
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+  width: 100%; text-align: left; cursor: pointer;
+  padding: 12px 14px; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--surface);
+  transition: border-color .16s, background .16s, box-shadow .16s, transform .16s;
+}
+.role-pick-card:hover { border-color: color-mix(in srgb, var(--role-c) 45%, var(--line)); transform: translateY(-1px); box-shadow: 0 8px 20px -14px rgba(11,30,74,.25); }
+.role-pick-card.on {
+  border-color: color-mix(in srgb, var(--role-c) 55%, transparent);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--role-c) 12%, #fff), color-mix(in srgb, #2fcf5a 6%, #fff));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--role-c) 16%, transparent);
+}
+.role-pick-icon {
+  width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(140deg, color-mix(in srgb, var(--role-c) 75%, #fff), var(--role-c));
+  box-shadow: 0 6px 14px -8px var(--role-c);
+}
+.role-pick-copy { display: grid; gap: 3px; min-width: 0; }
+.role-pick-copy b { font-size: 14px; font-weight: 750; color: var(--px-navy); }
+.role-pick-copy small { font-size: 12px; color: var(--t3); line-height: 1.35; white-space: normal; }
+.role-pick-check { width: 22px; height: 22px; display: grid; place-items: center; color: var(--role-c); }
+.dark .role-pick-card { background: var(--surface); }
+.dark .role-pick-card.on { background: linear-gradient(120deg, color-mix(in srgb, var(--role-c) 18%, #0b1630), #0b1630); }
+.dark .role-pick-copy b { color: var(--ink); }
+.user-form .modal-actions { margin-top: 6px; padding-top: 4px; }
 .acc-creds { display: grid; gap: 14px; }
 .acc-cred-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .acc-cred-row input { font-family: var(--app-font-mono); font-weight: 700; letter-spacing: .02em; }

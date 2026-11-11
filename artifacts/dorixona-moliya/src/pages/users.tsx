@@ -232,8 +232,9 @@ function UserFormModal({
       title={mode === 'create' ? 'Foydalanuvchi yaratish' : 'Foydalanuvchini tahrirlash'}
       onClose={onClose}
       busy={busy}
+      size="lg"
     >
-      <form className="form-stack" onSubmit={submit}>
+      <form className="form-stack user-form" onSubmit={submit}>
         <label>
           Ismi
           <input required value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Masalan: Dilshod Karimov" data-testid="input-user-name" />
@@ -242,12 +243,35 @@ function UserFormModal({
           Telefon
           <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+998 90 123 45 67" inputMode="tel" data-testid="input-user-phone" />
         </label>
-        <div className="acc-form-role">
+        <div className="acc-form-role" role="radiogroup" aria-label="Rol">
           <span>Rol</span>
-          <SelectMenu ariaLabel="Rol" value={role} onChange={setRole} options={roleMenu} testId="select-user-role" />
+          <div className="role-pick" data-testid="select-user-role">
+            {roleMenu.map((opt) => {
+              const Icon = opt.icon;
+              const on = role === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  className={`role-pick-card ${on ? 'on' : ''}`}
+                  onClick={() => setRole(opt.value)}
+                  style={opt.color ? { ['--role-c' as string]: opt.color } : undefined}
+                >
+                  <span className="role-pick-icon">{Icon && <Icon size={16} />}</span>
+                  <span className="role-pick-copy">
+                    <b>{opt.label}</b>
+                    {opt.hint && <small>{opt.hint}</small>}
+                  </span>
+                  <span className="role-pick-check" aria-hidden="true">{on ? <Check size={15} /> : null}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         {mode === 'create' && (
-          <p className="field-hint">
+          <p className="field-hint user-form-hint">
             <KeyRound size={14} /> Yaratilganda login va parol avtomatik beriladi — darhol nusxalashingiz mumkin.
           </p>
         )}
