@@ -9,9 +9,9 @@ export const sitePages: SitePage[] = [
   { href: '/imkoniyatlar', label: 'Imkoniyatlar', short: '10 ta modul: savdodan foydagacha', icon: Sparkles },
   { href: '/tariflar', label: 'Tariflar', short: '7 kun bepul · 3 ta tarif', icon: BadgePercent },
   { href: '/yechimlar', label: 'Yechimlar', short: 'Kimlar uchun va nima uchun', icon: Users },
-  { href: '/qanday-ishlaydi', label: 'Qanday ishlaydi', short: 'Hujjatdan qarorgacha zanjir', icon: Workflow },
+  { href: '/qanday-ishlaydi', label: 'Jarayon', short: 'Hujjatdan qarorgacha zanjir', icon: Workflow },
   { href: '/integratsiya', label: 'Integratsiya', short: 'FOM F-APTEKA bilan real vaqt', icon: PlugZap },
-  { href: '/xavfsizlik', label: 'Xavfsizlik', short: 'Rollar, audit va himoya', icon: ShieldCheck },
+  { href: '/xavfsizlik', label: 'Himoya', short: 'Rollar, audit va himoya', icon: ShieldCheck },
   { href: '/savollar', label: 'Savollar', short: 'Koʻp beriladigan savollar', icon: CircleHelp },
 ];
 
