@@ -516,6 +516,11 @@ function Showcase({ mode }: { mode: 'sign-in' | 'sign-up' }) {
     <div className="s-auth-side-glow"><i /><i /></div>
     <div className="s-auth-side-grid" />
     <Link href="/" className="s-auth-side-logo"><BrandLogo /></Link>
+    <div className="s-auth-side-copy">
+      <span className="s-auth-side-tag"><ShieldCheck size={13} /> Xavfsiz kirish</span>
+      <h2>{mode === 'sign-in' ? <>Login va parol<br /><span>bilan kiring.</span></> : <>7 kun bepul —<br /><span>ariza qoldiring.</span></>}</h2>
+      <p>Boshlangʻich sinovi admin tasdigʻidan keyin ochiladi. Keyin kabinetdagi Tariflar orqali Click toʻlov.</p>
+    </div>
     <div className="s-auth-mock">
       <div className="s-auth-mail">
         <div className="s-auth-mail-head"><span className="s-auth-mail-ava">P</span><div><b>PHARMXS</b><small>Login / parol</small></div><em>admin</em></div>
@@ -523,11 +528,6 @@ function Showcase({ mode }: { mode: 'sign-in' | 'sign-up' }) {
       </div>
       <div className="s-auth-chip c1"><BadgeCheck size={15} /> Ariza qabul qilindi</div>
       <div className="s-auth-chip c2"><UserCheck size={15} /> Admin akkaunt ochdi</div>
-    </div>
-    <div className="s-auth-side-copy">
-      <span className="s-auth-side-tag"><ShieldCheck size={13} /> Xavfsiz kirish</span>
-      <h2>{mode === 'sign-in' ? <>Login va parol<br /><span>bilan kiring.</span></> : <>7 kun bepul —<br /><span>ariza qoldiring.</span></>}</h2>
-      <p>Boshlangʻich sinovi admin tasdigʻidan keyin ochiladi. Keyin kabinetdagi Tariflar orqali Click toʻlov.</p>
     </div>
     <ul className="s-auth-points">
       <li><Lock size={16} /><span><b>Login admin beradi</b>Mustaqil Google/email roʻyxat yoʻq</span></li>
