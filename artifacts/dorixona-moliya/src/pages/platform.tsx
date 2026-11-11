@@ -187,6 +187,7 @@ export function PlatformPage() {
                     <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { planCode: 'starter', extendDays: 7 } })}>+7 kun</button>
                     <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { planCode: 'business', extendMonths: 1 } })}>Biznes</button>
                     <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { planCode: 'enterprise', extendMonths: 1 } })}>Korxona</button>
+                    <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { planCode: 'custom', extendMonths: 1 } })}>Maxsus</button>
                     <button type="button" className="button ghost" onClick={() => patch.mutate({ id: row.id, body: { subscriptionStatus: 'canceled' } })}>Bekor</button>
                   </td>
                 </tr>

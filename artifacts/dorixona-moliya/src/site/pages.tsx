@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { modules } from './content';
-import { PUBLIC_PLANS, formatUzs } from '@/lib/plans';
+import { PUBLIC_PLANS, planCta, planPriceLabel } from '@/lib/plans';
 import { AnchorLink, CtaBand, FeatureCard, PageHero, PrimaryCta, SectionHead, delay } from './ui';
 
 /* ------------------------------------------------------------------ Imkoniyatlar */
@@ -410,26 +410,34 @@ export function PricingPage() {
       icon={Crown}
       title="7 kun bepul,"
       accent="keyin aniq tarif."
-      text="Ariza qoldiring — platforma admini Boshlangʻich tarifini 7 kun bepul ochadi. Biznes va Korxona faqat kabinetdagi Tariflar orqali Click toʻlovdan keyin."
-      chips={['Boshlangʻich 7 kun bepul', 'Ariza → admin ochadi', 'Click toʻlov', '3 ta tarif']}
+      text="Ariza qoldiring — platforma admini Boshlangʻich tarifini 7 kun bepul ochadi. Biznes va Korxona Click toʻlov orqali. Maxsus — moslashuvchan shartlar, ariza bilan."
+      chips={['Boshlangʻich 7 kun bepul', 'Click toʻlov', '50 tagacha filial', 'Maxsus ariza']}
     />
     <section className="s-section tight">
       <div className="s-wrap">
-        <SectionHead center eyebrow="OYLIK" title="Kompaniyangiz oʻsishiga" accent="mos tarif." text="Boshida faqat Boshlangʻich bepul sinov. Qolgan tariflar toʻlovdan keyin ochiladi." />
+        <SectionHead center eyebrow="OYLIK" title="Kompaniyangiz oʻsishiga" accent="mos tarif." text="Boshida Boshlangʻich bepul sinov. Biznes va Korxona — toʻlovdan keyin. Katta tarmoq uchun Maxsus ariza qoldiring." />
         <div className="s-price-grid">
-          {PUBLIC_PLANS.map((p, i) => (
-            <article key={p.code} className={`s-price-card ${p.highlight ? 'featured' : ''}`} data-reveal style={delay(i)}>
-              {p.code === 'starter' && <span className="s-price-badge">7 kun bepul</span>}
-              {p.highlight && p.code !== 'starter' && <span className="s-price-badge">Eng koʻp tanlanadi</span>}
-              <h3>{p.name}</h3>
-              <div className="s-price-amount"><b>{formatUzs(p.priceUzs)}</b><small>/ oy</small></div>
-              <p className="s-price-limit">{p.branchLimit == null ? 'Istalgancha filial' : `${p.branchLimit} ta filial`}</p>
-              <ul>{p.features.map(f => <li key={f}><Check size={15} />{f}</li>)}</ul>
-              <Link href={p.code === 'starter' ? '/sign-up' : '/sign-in'} className={`s-btn ${p.code === 'starter' ? 'primary' : 'ghost'} lg`} data-testid={`link-plan-${p.code}`}>
-                {p.code === 'starter' ? <>7 kun bepul ariza <ArrowRight size={16} /></> : <>Kabinetdan toʻlash <ArrowRight size={16} /></>}
-              </Link>
-            </article>
-          ))}
+          {PUBLIC_PLANS.map((p, i) => {
+            const cta = planCta(p);
+            const price = planPriceLabel(p);
+            return (
+              <article key={p.code} className={`s-price-card ${p.highlight ? 'featured' : ''} ${p.code === 'custom' ? 'custom' : ''}`} data-reveal style={delay(i)}>
+                {p.code === 'starter' && <span className="s-price-badge">7 kun bepul</span>}
+                {p.highlight && <span className="s-price-badge">Eng koʻp tanlanadi</span>}
+                {p.code === 'custom' && <span className="s-price-badge">Moslashuvchan</span>}
+                <h3>{p.name}</h3>
+                <div className="s-price-amount">
+                  <b>{price}</b>
+                  {!p.applyOnly && price !== 'Kelishiladi' && <small>/ oy</small>}
+                </div>
+                <p className="s-price-limit">{p.branchLimit == null ? 'Istalgancha filial' : p.branchLimit >= 50 ? `${p.branchLimit} tagacha filial` : `${p.branchLimit} ta filial`}</p>
+                <ul>{p.features.map(f => <li key={f}><Check size={15} />{f}</li>)}</ul>
+                <Link href={cta.href} className={`s-btn ${cta.primary ? 'primary' : 'ghost'}`} data-testid={`link-plan-${p.code}`}>
+                  {cta.label} <ArrowRight size={16} />
+                </Link>
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>

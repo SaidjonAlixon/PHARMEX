@@ -324,7 +324,10 @@ a { color: inherit; text-decoration: none; }
 .workspace-label { color: #95a39a; font: 600 9px var(--app-font-mono); letter-spacing: .13em; margin: 39px 10px 12px; }
 .sub-banner { margin: 10px 4px 0; padding: 10px 12px; border-radius: 12px; background: #fff4e8; border: 1px solid #f0c48a; color: #8a4b12; font-size: 12px; font-weight: 650; line-height: 1.4; }
 .sub-banner a { color: #0b8fa3; text-decoration: underline; }
-.plan-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.plan-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.plan-card.custom { border-color: #c5d4f0; }
+.dark .plan-card.custom { border-color: #2a3d66; }
+@media (max-width: 1400px) { .plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .plan-card { position: relative; display: grid; gap: 12px; padding: 18px; border-radius: 18px; border: 1px solid var(--line); background: #fff; }
 .plan-card.featured { border-color: rgba(15,179,199,.4); box-shadow: 0 12px 28px rgba(11,30,74,.08); }
 .plan-card.current { outline: 2px solid rgba(47,207,90,.35); }

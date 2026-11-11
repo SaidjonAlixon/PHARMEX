@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Modal, PageHeading, Panel, StatusBadge } from '@/components/kit';
 import { useAccess } from '@/lib/access';
-import { formatUzs, type PlanCode } from '@/lib/plans';
+import { formatUzs, planPriceLabel, type PlanCode } from '@/lib/plans';
 
 type OrgSub = {
   id: number;
@@ -31,6 +31,7 @@ type PlanRow = {
   telegram: boolean;
   features: string[];
   highlight?: boolean;
+  applyOnly?: boolean;
 };
 
 type PayMethod = 'card' | 'click';
@@ -291,25 +292,42 @@ export function PlansPage() {
         {plans.map((p) => {
           const trialLocked = p.code === 'starter' && org?.subscriptionStatus === 'trialing' && org?.planCode === 'starter';
           const isCurrent = org?.planCode === p.code;
-          const disabled = busy || trialLocked || !canPay;
+          const applyOnly = Boolean(p.applyOnly) || p.code === 'custom';
+          const disabled = busy || trialLocked || !canPay || applyOnly;
+          const price = planPriceLabel(p);
           return (
-            <article key={p.code} className={`plan-card ${p.highlight ? 'featured' : ''} ${isCurrent ? 'current' : ''}`}>
+            <article key={p.code} className={`plan-card ${p.highlight ? 'featured' : ''} ${isCurrent ? 'current' : ''} ${applyOnly ? 'custom' : ''}`}>
               {p.highlight && <span className="plan-badge">Tavsiya</span>}
+              {applyOnly && !isCurrent && <span className="plan-badge">Moslashuvchan</span>}
               {isCurrent && <span className="plan-badge current-badge">Joriy</span>}
               <h3>{p.name}</h3>
-              <div className="plan-price"><b>{formatUzs(p.priceUzs)}</b><small>/ oy</small></div>
-              <p><Building2 size={14} /> {p.branchLimit == null ? 'Istalgancha filial' : `${p.branchLimit} ta filial`}</p>
+              <div className="plan-price">
+                <b>{price}</b>
+                {!applyOnly && price !== 'Kelishiladi' && <small>/ oy</small>}
+              </div>
+              <p><Building2 size={14} /> {p.branchLimit == null ? 'Istalgancha filial' : p.branchLimit >= 50 ? `${p.branchLimit} tagacha filial` : `${p.branchLimit} ta filial`}</p>
               <ul>{p.features.map((f) => <li key={f}><Check size={14} />{f}</li>)}</ul>
-              <button
-                type="button"
-                className="button primary plan-buy"
-                disabled={disabled}
-                onClick={() => openPay(p)}
-                data-testid={`button-checkout-${p.code}`}
-              >
-                <Wallet size={16} />
-                {trialLocked ? 'Hozir bepul sinovdasiz' : isCurrent ? 'Obunani uzaytirish' : 'Obuna sotib olish'}
-              </button>
+              {applyOnly ? (
+                <a
+                  className="button ghost plan-buy"
+                  href="mailto:support@pharmxs.uz?subject=Maxsus%20tarif%20arizasi"
+                  data-testid={`button-apply-${p.code}`}
+                >
+                  <Sparkles size={16} />
+                  {isCurrent ? 'Joriy Maxsus tarif' : 'Ariza qoldirish'}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  className="button primary plan-buy"
+                  disabled={disabled}
+                  onClick={() => openPay(p)}
+                  data-testid={`button-checkout-${p.code}`}
+                >
+                  <Wallet size={16} />
+                  {trialLocked ? 'Hozir bepul sinovdasiz' : isCurrent ? 'Obunani uzaytirish' : 'Obuna olish'}
+                </button>
+              )}
             </article>
           );
         })}

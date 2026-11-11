@@ -395,6 +395,7 @@ export function OwnerConsolePage() {
                           <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ id: c.id, body: { planCode: 'starter', extendDays: 7 } })}>+7 kun</button>
                           <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ id: c.id, body: { planCode: 'business', extendMonths: 1 } })}>Biznes</button>
                           <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ id: c.id, body: { planCode: 'enterprise', extendMonths: 1 } })}>Korxona</button>
+                          <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ id: c.id, body: { planCode: 'custom', extendMonths: 1 } })}>Maxsus</button>
                           <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ id: c.id, body: { subscriptionStatus: 'active' } })}><Check size={14} /> Faollashtirish</button>
                           <button type="button" className="button ghost" onClick={() => { if (confirm(`${c.name} ni vaqtincha cheklaysizmi?`)) suspendOrg.mutate(c.id); }}><Ban size={14} /> Cheklash</button>
                           <button type="button" className="button ghost" onClick={() => { if (confirm(`${c.name} ni butunlay oʻchirasizmi?`)) deleteOrg.mutate(c.id); }}><Trash2 size={14} /> Oʻchirish</button>

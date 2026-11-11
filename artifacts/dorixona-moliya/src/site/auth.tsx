@@ -235,6 +235,8 @@ const queryMessages: Record<string, { tone: 'error' | 'info' | 'warn'; text: str
 function SignInView({ options }: { options: AuthOptions | null }) {
   const params = new URLSearchParams(useSearch());
   const fromQuery = queryMessages[params.get('notice') ?? params.get('error') ?? ''];
+  const nextPath = params.get('next');
+  const safeNext = nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null;
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [pending, setPending] = useState(false);
@@ -246,7 +248,13 @@ function SignInView({ options }: { options: AuthOptions | null }) {
     setMessage(null);
     try {
       const user = await api<{ role?: string }>('/auth/login', { identifier, password });
-      window.location.assign(user?.role === 'platform_admin' ? `${homeUrl.replace(/\/?$/, '/')}owner` : homeUrl);
+      if (user?.role === 'platform_admin') {
+        window.location.assign(`${homeUrl.replace(/\/?$/, '/')}owner`);
+      } else if (safeNext) {
+        window.location.assign(safeNext);
+      } else {
+        window.location.assign(homeUrl);
+      }
       return;
     } catch (err) {
       const error = err as AuthError;
@@ -420,7 +428,8 @@ function formatPhone(input: string) {
   return `+${p.join(' ')}`;
 }
 
-function RequestPane({ onDone }: { onDone: (d: Done) => void }) {
+function RequestPane({ onDone, plan }: { onDone: (d: Done) => void; plan?: string | null }) {
+  const isCustom = plan === 'custom';
   const [form, setForm] = useState({ firstName: '', lastName: '', phone: '+998 ', email: '', companyName: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -432,12 +441,13 @@ function RequestPane({ onDone }: { onDone: (d: Done) => void }) {
     if (form.companyName.trim().length < 2) { setError('Kompaniya (dorixona) nomini kiriting.'); return; }
     setBusy(true);
     try {
+      const company = form.companyName.trim();
       await api('/auth/register/request', {
         firstName: form.firstName,
         lastName: form.lastName,
         phone: form.phone,
         email: form.email,
-        companyName: form.companyName,
+        companyName: isCustom ? `${company} · Maxsus tarif` : company,
       });
       onDone('request');
       return;
@@ -448,9 +458,13 @@ function RequestPane({ onDone }: { onDone: (d: Done) => void }) {
   };
 
   return <form className="s-auth-pane s-auth-form" onSubmit={submit}>
-    <div className="s-trial-callout" data-testid="banner-trial-7">
+    <div className="s-trial-callout" data-testid={isCustom ? 'banner-custom-plan' : 'banner-trial-7'}>
       <Crown size={18} />
-      <div><b>Boshlangʻich — 7 kun bepul</b><span>Ariza tasdiqlangach kabinet ochiladi. Biznes / Korxona — Tariflar boʻlimidan Click toʻlov.</span></div>
+      {isCustom ? (
+        <div><b>Maxsus — moslashuvchan tarif</b><span>Arizangiz qabul qilinadi. Platforma egasi siz bilan bogʻlanib, filial soni va narxni kelishadi.</span></div>
+      ) : (
+        <div><b>Boshlangʻich — 7 kun bepul</b><span>Ariza tasdiqlangach kabinet ochiladi. Biznes / Korxona — Tariflar boʻlimidan Click toʻlov. Maxsus — alohida ariza.</span></div>
+      )}
     </div>
     <div className="s-field-row">
       <Field label="Ism" icon={User}><input required autoComplete="given-name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} data-testid="input-request-first-name" /></Field>
@@ -475,14 +489,22 @@ function RequestPane({ onDone }: { onDone: (d: Done) => void }) {
 
 function SignUpView({ options: _options }: { options: AuthOptions | null }) {
   const params = new URLSearchParams(useSearch());
+  const plan = params.get('plan');
+  const isCustom = plan === 'custom';
   const [done, setDone] = useState<Done | null>(null);
   const fromQuery = queryMessages[params.get('error') ?? ''];
 
   if (done) return <PendingCard kind={done} />;
   return <>
-    <AuthHead eyebrow="7 KUN BEPUL" title="Ariza qoldiring" text="Platforma admini koʻrib chiqadi, Boshlangʻich sinovini ochadi va login/parol beradi." />
+    <AuthHead
+      eyebrow={isCustom ? 'MAXSUS TARIF' : '7 KUN BEPUL'}
+      title="Ariza qoldiring"
+      text={isCustom
+        ? 'Maxsus tarif uchun ariza yuboring — istalgancha filial, toʻliq imkoniyatlar. Platforma egasi siz bilan bogʻlanadi.'
+        : 'Platforma admini koʻrib chiqadi, Boshlangʻich sinovini ochadi va login/parol beradi.'}
+    />
     {fromQuery && <Notice tone={fromQuery.tone}>{fromQuery.text}</Notice>}
-    <RequestPane onDone={setDone} />
+    <RequestPane onDone={setDone} plan={plan} />
     <p className="s-auth-switch">Akkaunt ochilganmi? <Link href="/sign-in" data-testid="link-to-sign-in">Kirish</Link></p>
   </>;
 }

@@ -12,7 +12,7 @@ import {
   verifyCompleteSign,
   verifyPrepareSign,
 } from "../lib/click";
-import { PLANS, PLAN_PERIOD_DAYS, isPlanCode, planList } from "../lib/plans";
+import { PLANS, PLAN_PERIOD_DAYS, isPlanCode, isPayablePlan, planList } from "../lib/plans";
 import { loadOrganization, publicOrganization, requireOrgId } from "../lib/org";
 import { notifyOrgTelegram } from "../lib/telegram";
 
@@ -30,6 +30,7 @@ router.get("/billing/plans", (_req, res): void => {
       telegram: p.telegram,
       features: p.features,
       highlight: Boolean(p.highlight),
+      applyOnly: Boolean(p.applyOnly),
     })),
   });
 });
@@ -71,8 +72,12 @@ router.post("/billing/checkout", requireClerkUser, async (req, res): Promise<voi
     return;
   }
   const planCode = req.body?.planCode;
-  if (!isPlanCode(planCode)) {
-    res.status(400).json({ error: "Notoʻgʻri tarif." });
+  if (!isPayablePlan(planCode)) {
+    res.status(400).json({
+      error: isPlanCode(planCode) && PLANS[planCode].applyOnly
+        ? "Maxsus tarif faqat ariza orqali. Platforma egasiga murojaat qiling."
+        : "Notoʻgʻri tarif.",
+    });
     return;
   }
   const plan = PLANS[planCode];

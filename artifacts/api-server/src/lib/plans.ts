@@ -1,4 +1,4 @@
-export type PlanCode = "starter" | "business" | "enterprise";
+export type PlanCode = "starter" | "business" | "enterprise" | "custom";
 
 export type PlanDef = {
   code: PlanCode;
@@ -8,6 +8,8 @@ export type PlanDef = {
   telegram: boolean;
   features: string[];
   highlight?: boolean;
+  /** Maxsus — Click toʻlov yoʻq, faqat ariza */
+  applyOnly?: boolean;
 };
 
 export const PLANS: Record<PlanCode, PlanDef> = {
@@ -44,14 +46,29 @@ export const PLANS: Record<PlanCode, PlanDef> = {
     code: "enterprise",
     name: "Korxona",
     priceUzs: 799_000,
-    branchLimit: null,
+    branchLimit: 50,
     telegram: true,
     features: [
       "Click toʻlovdan keyin ochiladi",
-      "Istalgancha filial",
+      "50 tagacha filial",
       "Biznes dagi barcha imkoniyatlar",
       "Telegram bot xabarnomalari",
       "Ustuvor qoʻllab-quvvatlash",
+    ],
+  },
+  custom: {
+    code: "custom",
+    name: "Maxsus",
+    priceUzs: 0,
+    branchLimit: null,
+    telegram: true,
+    applyOnly: true,
+    features: [
+      "Moslashuvchan narx va shartlar",
+      "Istalgancha filial",
+      "Barcha modullar toʻliq ochiq",
+      "Telegram + shaxsiy menejer",
+      "Individual integratsiya va trening",
     ],
   },
 };
@@ -60,9 +77,13 @@ export const TRIAL_DAYS = 7;
 export const PLAN_PERIOD_DAYS = 30;
 
 export function isPlanCode(v: unknown): v is PlanCode {
-  return v === "starter" || v === "business" || v === "enterprise";
+  return v === "starter" || v === "business" || v === "enterprise" || v === "custom";
+}
+
+export function isPayablePlan(v: unknown): v is Exclude<PlanCode, "custom"> {
+  return isPlanCode(v) && !PLANS[v].applyOnly;
 }
 
 export function planList(): PlanDef[] {
-  return [PLANS.starter, PLANS.business, PLANS.enterprise];
+  return [PLANS.starter, PLANS.business, PLANS.enterprise, PLANS.custom];
 }

@@ -320,9 +320,10 @@
 .s-explore-card:hover .s-explore-arrow { transform: translate(3px, -3px); color: var(--s-teal); }
 
 /* Pricing */
-.s-price-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin-top: 36px; }
-.s-price-card { position: relative; display: flex; flex-direction: column; gap: 14px; padding: 28px 24px; border-radius: 24px; border: 1px solid var(--s-line); background: var(--s-solid); box-shadow: var(--s-shadow); }
-.s-price-card.featured { border-color: rgba(15,179,199,.45); background: linear-gradient(180deg, color-mix(in srgb, #0fb3c7 8%, var(--s-solid)), var(--s-solid)); transform: translateY(-6px); }
+.s-price-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-top: 36px; }
+.s-price-card { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 24px 20px; border-radius: 22px; border: 1px solid var(--s-line); background: var(--s-solid); box-shadow: var(--s-shadow); }
+.s-price-card.featured { border-color: rgba(15,179,199,.45); background: linear-gradient(180deg, color-mix(in srgb, #0fb3c7 8%, var(--s-solid)), var(--s-solid)); transform: translateY(-4px); }
+.s-price-card.custom { border-color: rgba(31,95,208,.35); background: linear-gradient(180deg, color-mix(in srgb, #1f5fd0 7%, var(--s-solid)), var(--s-solid)); }
 .s-price-badge { position: absolute; top: 14px; right: 14px; font: 700 11px var(--s-mono); letter-spacing: .08em; text-transform: uppercase; color: #0b6f86; background: rgba(15,179,199,.12); border: 1px solid rgba(15,179,199,.25); padding: 5px 10px; border-radius: 99px; }
 .s-price-card h3 { margin: 0; font-size: 22px; font-weight: 800; color: var(--s-ink); }
 .s-price-amount { display: flex; align-items: baseline; gap: 8px; }
@@ -333,7 +334,8 @@
 .s-price-card li { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; color: var(--s-t2); font-weight: 600; }
 .s-price-card li svg { color: #1fb84f; flex: 0 0 auto; margin-top: 2px; }
 .s-price-card .s-btn { width: 100%; justify-content: center; margin-top: 8px; }
-@media (max-width: 980px) { .s-price-grid { grid-template-columns: 1fr; } .s-price-card.featured { transform: none; } }
+@media (max-width: 1180px) { .s-price-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .s-price-grid { grid-template-columns: 1fr; } .s-price-card.featured { transform: none; } }
 
 /* CTA band */
 .s-cta { position: relative; overflow: hidden; display: grid; grid-template-columns: 1.4fr auto; align-items: center; gap: 30px; padding: 60px 56px; border-radius: 34px; background: linear-gradient(135deg, #071538 0%, #0b1e4a 40%, #13306e 75%, #0b6f86 100%); color: #fff; box-shadow: 0 40px 80px -40px rgba(11,30,74,.8); }
