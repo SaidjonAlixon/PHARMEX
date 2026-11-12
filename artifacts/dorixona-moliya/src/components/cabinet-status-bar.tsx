@@ -4,6 +4,7 @@ import type { OrgBrief } from '@/lib/access';
 
 const TEST_MARQUEE =
   'Bu platforma test holatda ishlamoqda — barcha imkoniyatlar ketma-ketlik bilan qoʻshib borilmoqda…!';
+const MARQUEE_COPIES = 8;
 
 function pad(n: number) {
   return String(Math.max(0, n)).padStart(2, '0');
@@ -73,8 +74,16 @@ export function CabinetStatusBar({ organization }: { organization: OrgBrief | nu
 
       <div className="cabinet-marquee" role="status" aria-label="Platforma eʼloni">
         <div className="cabinet-marquee-track">
-          <span>{TEST_MARQUEE}</span>
-          <span aria-hidden>{TEST_MARQUEE}</span>
+          {[0, 1].map((group) => (
+            <div key={group} className="cabinet-marquee-group" aria-hidden={group === 1 || undefined}>
+              {Array.from({ length: MARQUEE_COPIES }, (_, i) => (
+                <span key={i} className="cabinet-marquee-item">
+                  <em aria-hidden>●</em>
+                  {TEST_MARQUEE}
+                </span>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </div>
