@@ -1,7 +1,6 @@
 import { randomInt } from "node:crypto";
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
-import { Router, type IRouter } from "express";
-import type { Response } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { db, organizationsTable, paymentsTable, appUsersTable, auditLogTable } from "@workspace/db";
 import { requirePlatformAdmin } from "../middlewares/requireClerkUser";
 import { PLANS, PLAN_PERIOD_DAYS, isPlanCode, planList } from "../lib/plans";
@@ -10,9 +9,11 @@ import {
   ACT_ORG_COOKIE,
   SESSION_TTL_MS,
   createActOrgToken,
+  hashPassword,
 } from "../lib/localAuth";
+import { isHttpsRequest } from "../lib/ownerHost";
 
-function setActOrgCookie(res: Response, orgId: number | null): void {
+function setActOrgCookie(req: Request, res: Response, orgId: number | null): void {
   if (orgId == null) {
     res.clearCookie(ACT_ORG_COOKIE, { path: "/" });
     return;
@@ -20,12 +21,11 @@ function setActOrgCookie(res: Response, orgId: number | null): void {
   res.cookie(ACT_ORG_COOKIE, createActOrgToken(orgId), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttpsRequest(req),
     path: "/",
     maxAge: SESSION_TTL_MS,
   });
 }
-import { hashPassword } from "../lib/localAuth";
 
 const ORG_USER_ROLES = ["admin", "finance", "viewer"] as const;
 const USER_STATUSES = ["active", "disabled", "pending", "rejected"] as const;
@@ -564,7 +564,7 @@ router.post("/platform/organizations/:id/enter", async (req, res): Promise<void>
     res.status(404).json({ error: "Kompaniya topilmadi." });
     return;
   }
-  setActOrgCookie(res, org.id);
+  setActOrgCookie(req, res, org.id);
   res.json({
     ok: true,
     organization: publicOrganization(org),
@@ -572,8 +572,8 @@ router.post("/platform/organizations/:id/enter", async (req, res): Promise<void>
   });
 });
 
-router.post("/platform/exit-company", async (_req, res): Promise<void> => {
-  setActOrgCookie(res, null);
+router.post("/platform/exit-company", async (req, res): Promise<void> => {
+  setActOrgCookie(req, res, null);
   res.json({ ok: true, redirect: "/owner" });
 });
 

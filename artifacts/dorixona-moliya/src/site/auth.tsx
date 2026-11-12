@@ -249,7 +249,10 @@ function SignInView({ options }: { options: AuthOptions | null }) {
     try {
       const user = await api<{ role?: string }>('/auth/login', { identifier, password });
       if (user?.role === 'platform_admin') {
-        window.location.replace(`${homeUrl.replace(/\/?$/, '/')}owner`);
+        // Bosh admin faqat IP owner panelidan
+        setMessage({ tone: 'error', text: 'Platforma egasi paneli alohida manzilda. Domen orqali kirib boʻlmaydi.' });
+        setPending(false);
+        return;
       } else if (safeNext) {
         window.location.replace(safeNext);
       } else {

@@ -22,13 +22,15 @@ if (localAuthEnabled) {
   await ensurePlatformAdminEmail();
 }
 
-app.listen(port, (err) => {
+const listenHost = (process.env.LISTEN_HOST || "127.0.0.1").trim() || "127.0.0.1";
+
+app.listen(port, listenHost, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   }
 
-  logger.info({ port }, "Server listening");
+  logger.info({ port, host: listenHost }, "Server listening");
 });
 
 await loadFomSettings();

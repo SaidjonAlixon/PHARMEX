@@ -148,7 +148,7 @@ export function OwnerLoginPage() {
         body: JSON.stringify({ identifier: identifier.trim(), password }),
       });
       if (user.role !== 'platform_admin') {
-        setError('Bu sahifa faqat platforma egasi uchun. Kompaniya kabineti: /sign-in');
+        setError('Bu sahifa faqat platforma egasi uchun. Kompaniya kabineti: https://pharmxs.uz/sign-in');
         await api('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
         setPending(false);
         return;

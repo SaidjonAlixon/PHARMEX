@@ -102,10 +102,10 @@ NODE
     run(c, script)
     c.close()
     print("\n=== PLATFORM ADMIN CREDENTIALS ===", flush=True)
-    print(f"URL:      https://pharmxs.uz/owner/kirish", flush=True)
+    print(f"URL:      http://138.249.7.30:9080/owner/kirish", flush=True)
     print(f"Login:    {username}", flush=True)
     print(f"Parol:    {password}", flush=True)
-    print(f"Panel:    https://pharmxs.uz/owner", flush=True)
+    print(f"Panel:    http://138.249.7.30:9080/owner", flush=True)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import {
   readSessionToken,
 } from "../lib/localAuth";
 import { attachOrgLocals, loadOrganization } from "../lib/org";
+import { isOwnerSurface, OWNER_PUBLIC_URL } from "../lib/ownerHost";
 
 const bootstrappedUsers = new Set<string>();
 
@@ -166,9 +167,16 @@ export function requireRole(...allowedRoles: string[]): RequestHandler {
   };
 }
 
-export const requirePlatformAdmin: RequestHandler = (_req, res, next) => {
+export const requirePlatformAdmin: RequestHandler = (req, res, next) => {
   if (res.locals.userRole !== "platform_admin") {
     res.status(403).json({ error: "Faqat platforma administratori." });
+    return;
+  }
+  if (!isOwnerSurface(req)) {
+    res.status(404).json({
+      error: `Platforma API faqat owner panelidan: ${OWNER_PUBLIC_URL()}`,
+      code: "owner_surface_required",
+    });
     return;
   }
   next();

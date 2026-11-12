@@ -24,6 +24,12 @@ import {
 import { mailConfigured, sendMail } from "../lib/mailer";
 import { loadOrganization, publicOrganization } from "../lib/org";
 import { planList } from "../lib/plans";
+import {
+  isHttpsRequest,
+  isOwnerSurface,
+  OWNER_PUBLIC_URL,
+  PUBLIC_APP_URL,
+} from "../lib/ownerHost";
 
 const router: IRouter = Router();
 
@@ -74,18 +80,18 @@ const blockedMessages: Record<Exclude<AccountStatus, "active">, string> = {
   disabled: "Akkauntingiz bloklangan. Administratorga murojaat qiling.",
 };
 
-function setSessionCookie(res: Response, token: string): void {
+function setSessionCookie(req: Request, res: Response, token: string): void {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttpsRequest(req),
     path: "/",
     maxAge: SESSION_TTL_MS,
   });
 }
 
-async function startSession(res: Response, user: AppUser): Promise<void> {
-  setSessionCookie(res, createSessionToken(user.id));
+async function startSession(req: Request, res: Response, user: AppUser): Promise<void> {
+  setSessionCookie(req, res, createSessionToken(user.id));
   res.clearCookie(ACT_ORG_COOKIE, { path: "/" });
   await db.update(appUsersTable).set({ lastLoginAt: new Date() }).where(eq(appUsersTable.id, user.id));
 }
@@ -201,7 +207,26 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     res.status(403).json({ error: blockedMessages[status] ?? blockedMessages.disabled, code: status });
     return;
   }
-  await startSession(res, user);
+
+  const onOwner = isOwnerSurface(req);
+  if (user.role === "platform_admin" && !onOwner) {
+    res.status(403).json({
+      error: `Platforma egasi paneli faqat maxsus manzildan ochiladi: ${OWNER_PUBLIC_URL()}`,
+      code: "owner_surface_required",
+      ownerUrl: OWNER_PUBLIC_URL(),
+    });
+    return;
+  }
+  if (user.role !== "platform_admin" && onOwner) {
+    res.status(403).json({
+      error: `Kompaniya kabineti domen orqali: ${PUBLIC_APP_URL()}/sign-in`,
+      code: "company_surface_required",
+      appUrl: `${PUBLIC_APP_URL()}/sign-in`,
+    });
+    return;
+  }
+
+  await startSession(req, res, user);
   res.json(await publicUser(user));
 });
 

@@ -46,6 +46,7 @@ import { UsersPage, usePendingAccounts } from '@/pages/users';
 import { PlansPage } from '@/pages/plans';
 import { OwnerConsolePage, OwnerLoginPage } from '@/pages/owner';
 import { roleLabel, useAccess } from '@/lib/access';
+import { isOwnerSurface, OWNER_PUBLIC_URL } from '@/lib/surface';
 import { Route, Switch, useLocation, Router as WouterRouter, Redirect, Link } from 'wouter';
 
 const queryClient = new QueryClient({
@@ -159,8 +160,14 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const access = useAccess();
   let items = [...navItems];
   if (localAuth && accounts.isAdmin) items = [...items.slice(0, -1), usersNavItem, items[items.length - 1]!];
-  // Platforma egasi — faqat /owner; kompaniyaga kirganda kabinet ochiladi
-  if (access.isPlatformAdmin && !access.actingAsCompany) return <Redirect to="/owner" />;
+  // Platforma egasi — faqat owner IP surface; kompaniyaga kirganda kabinet ochiladi
+  if (access.isPlatformAdmin && !access.actingAsCompany) {
+    if (!isOwnerSurface()) {
+      window.location.replace(OWNER_PUBLIC_URL);
+      return null;
+    }
+    return <Redirect to="/owner" />;
+  }
   const period = filters.period ?? DEFAULT_PERIOD;
   // The range bar edits a draft; data follows only after “Tasdiqlash”.
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -334,15 +341,28 @@ function exportRows(columns: string[], rows: Record<string, unknown>[], filename
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
 }
+function OwnerOnly({ children }: { children: ReactNode }) {
+  if (!isOwnerSurface()) return <NotFound />;
+  return <>{children}</>;
+}
+
+function PublicOnly({ children }: { children: ReactNode }) {
+  if (isOwnerSurface()) return <Redirect to="/owner/kirish" />;
+  return <>{children}</>;
+}
+
 function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: Filters) => void }) {
   return <Switch>
-    <Route path="/"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><DashboardPage filters={filters} /></Shell></Show><Show when="signed-out"><SiteLayout><HomePage /></SiteLayout></Show></Route>
-    <Route path="/imkoniyatlar"><SiteLayout><FeaturesPage /></SiteLayout></Route>
-    <Route path="/tariflar"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlansPage /></Shell></Show><Show when="signed-out"><SiteLayout><PricingPage /></SiteLayout></Show></Route>
-    <Route path="/owner/kirish"><OwnerLoginPage /></Route>
-    <Route path="/owner"><Show when="signed-in"><OwnerConsolePage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></Route>
-    <Route path="/platform"><Show when="signed-in"><Redirect to="/owner" /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></Route>
-    <Route path="/admin"><Show when="signed-in"><Redirect to="/owner" /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></Route>
+    <Route path="/">
+      <Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><DashboardPage filters={filters} /></Shell></Show>
+      <Show when="signed-out">{isOwnerSurface() ? <Redirect to="/owner/kirish" /> : <SiteLayout><HomePage /></SiteLayout>}</Show>
+    </Route>
+    <Route path="/imkoniyatlar"><PublicOnly><SiteLayout><FeaturesPage /></SiteLayout></PublicOnly></Route>
+    <Route path="/tariflar"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlansPage /></Shell></Show><Show when="signed-out"><PublicOnly><SiteLayout><PricingPage /></SiteLayout></PublicOnly></Show></Route>
+    <Route path="/owner/kirish"><OwnerOnly><OwnerLoginPage /></OwnerOnly></Route>
+    <Route path="/owner"><OwnerOnly><Show when="signed-in"><OwnerConsolePage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/platform"><NotFound /></Route>
+    <Route path="/admin"><NotFound /></Route>
     <Route path="/yechimlar"><SiteLayout><SolutionsPage /></SiteLayout></Route>
     <Route path="/qanday-ishlaydi"><SiteLayout><HowPage /></SiteLayout></Route>
     <Route path="/integratsiya"><SiteLayout><IntegrationPage /></SiteLayout></Route>
