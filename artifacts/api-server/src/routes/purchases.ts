@@ -18,6 +18,7 @@ import {
   ListPurchasesResponse,
 } from "@workspace/api-zod";
 import { requireRole } from "../middlewares/requireClerkUser";
+import { requireCompanyContext } from "../lib/org";
 import {
   actorOf,
   applyDebtOperation,
@@ -30,6 +31,7 @@ import {
   requireBranch,
   stockIn,
 } from "../lib/ledger";
+import { tenantOrgId } from "./queries";
 import {
   centsMoney,
   dateConditions,
@@ -45,6 +47,7 @@ import { loadDebtDetail } from "./debts";
 import { loadStockDocuments } from "./stock";
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 
 type PaymentStatus = "paid" | "partial" | "unpaid" | "overdue";
 
@@ -55,11 +58,13 @@ interface PurchaseFilters {
   branchId?: number;
   search?: string;
   paymentStatus?: PaymentStatus;
+  organizationId?: number;
 }
 
 export async function loadPurchases(filters: PurchaseFilters) {
   const pattern = filters.search ? `%${filters.search}%` : null;
   const conditions: Array<SQL | undefined> = [
+    eq(branchesTable.organizationId, filters.organizationId ?? -1),
     filters.ids ? inArray(purchasesTable.id, filters.ids) : undefined,
     dateConditions(purchasesTable.receivedAt, filters.dateFrom, filters.dateTo),
     filters.branchId ? eq(purchasesTable.branchId, filters.branchId) : undefined,
@@ -137,8 +142,8 @@ export async function loadPurchases(filters: PurchaseFilters) {
     : mapped;
 }
 
-async function loadPurchaseDetail(purchaseId: number) {
-  const [purchase] = await loadPurchases({ ids: [purchaseId] });
+async function loadPurchaseDetail(purchaseId: number, organizationId: number) {
+  const [purchase] = await loadPurchases({ ids: [purchaseId], organizationId });
   if (!purchase) return null;
   const items = await db
     .select({ item: purchaseItemsTable, product: productsTable })
@@ -146,8 +151,8 @@ async function loadPurchaseDetail(purchaseId: number) {
     .innerJoin(productsTable, eq(productsTable.id, purchaseItemsTable.productId))
     .where(eq(purchaseItemsTable.purchaseId, purchaseId))
     .orderBy(asc(purchaseItemsTable.id));
-  const debt = purchase.debtId ? await loadDebtDetail(purchase.debtId) : null;
-  const returns = await loadStockDocuments({ purchaseId });
+  const debt = purchase.debtId ? await loadDebtDetail(purchase.debtId, organizationId) : null;
+  const returns = await loadStockDocuments({ purchaseId, organizationId });
   return {
     purchase,
     lines: items.map(({ item, product }) => ({
@@ -181,6 +186,7 @@ router.get("/purchases", async (req, res): Promise<void> => {
     branchId: parsed.data.branchId,
     search: parsed.data.search?.trim() || undefined,
     paymentStatus: parsed.data.paymentStatus,
+    organizationId: tenantOrgId(res),
   });
   res.json(ListPurchasesResponse.parse(rows));
 });
@@ -191,7 +197,7 @@ router.get("/purchase-detail", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const detail = await loadPurchaseDetail(parsed.data.purchaseId);
+  const detail = await loadPurchaseDetail(parsed.data.purchaseId, tenantOrgId(res));
   if (!detail) {
     res.status(404).json({ error: "Kirim hujjati topilmadi." });
     return;
@@ -211,8 +217,9 @@ router.post(
     const input = parsed.data;
     const actor = actorOf(res.locals);
     const purchaseId = await db.transaction(async (tx) => {
-      const branch = await requireBranch(tx, input.branchId);
-      const products = await loadProductsById(tx, input.items.map((item) => item.productId));
+      const orgId = tenantOrgId(res);
+      const branch = await requireBranch(tx, input.branchId, orgId);
+      const products = await loadProductsById(tx, input.items.map((item) => item.productId), orgId);
       const supplier = await findOrCreateCounterparty(tx, {
         id: input.counterpartyId,
         name: input.supplierName,
@@ -366,7 +373,7 @@ router.post(
       await audit(tx, actor.id, "purchase.created", "purchase", purchase.id, `Kirim ${documentNo}: ${supplier.name}, ${centsMoney(totalAmount)} UZS`);
       return purchase.id;
     });
-    res.status(201).json(CreatePurchaseResponse.parse(await loadPurchaseDetail(purchaseId)));
+    res.status(201).json(CreatePurchaseResponse.parse(await loadPurchaseDetail(purchaseId, tenantOrgId(res))));
   },
 );
 

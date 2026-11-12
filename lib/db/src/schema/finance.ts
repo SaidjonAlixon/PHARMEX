@@ -44,6 +44,7 @@ export const cashAccountsTable = pgTable(
     name: text("name").notNull(),
     kind: text("kind").notNull(),
     branchId: integer("branch_id").references(() => branchesTable.id),
+    organizationId: integer("organization_id"),
     openingBalance: numeric("opening_balance", { precision: 16, scale: 2 })
       .notNull()
       .default("0"),
@@ -55,6 +56,7 @@ export const cashAccountsTable = pgTable(
       table.branchId,
       table.name,
     ),
+    index("pharmacy_cash_accounts_org_idx").on(table.organizationId),
   ],
 );
 

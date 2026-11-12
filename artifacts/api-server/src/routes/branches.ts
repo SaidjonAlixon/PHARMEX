@@ -14,7 +14,7 @@ import {
   ListBranchesResponse,
 } from "@workspace/api-zod";
 import { requireRole } from "../middlewares/requireClerkUser";
-import { countOrgBranches } from "../lib/org";
+import { assertCompanyUser, countOrgBranches, requireCompanyContext } from "../lib/org";
 import { loadCashAccounts, loadDebts, loadExpenses, loadInventory, loadSaleLines } from "./queries";
 import {
   centsMoney,
@@ -26,16 +26,15 @@ import {
 import { saleItemsTable, salesTable } from "@workspace/db";
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 
 router.get("/branches", async (_req, res): Promise<void> => {
   const mode = await getDataMode();
-  const orgId = res.locals.organizationId as number | null;
-  const conds = [sourceCondition(branchesTable.source, mode)].filter(Boolean);
-  if (orgId != null) conds.push(eq(branchesTable.organizationId, orgId));
+  const orgId = assertCompanyUser(res);
   const rows = await db
     .select()
     .from(branchesTable)
-    .where(conds.length === 1 ? conds[0]! : and(...conds))
+    .where(and(sourceCondition(branchesTable.source, mode), eq(branchesTable.organizationId, orgId)))
     .orderBy(asc(branchesTable.name));
   res.json(ListBranchesResponse.parse(rows));
 });
@@ -49,11 +48,7 @@ router.post(
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const orgId = res.locals.organizationId as number | null;
-    if (orgId == null) {
-      res.status(403).json({ error: "Kompaniya konteksti yoʻq." });
-      return;
-    }
+    const orgId = assertCompanyUser(res);
     const org = res.locals.organization as { branchLimit: number | null } | null;
     if (org?.branchLimit != null) {
       const used = await countOrgBranches(orgId);
@@ -87,18 +82,14 @@ router.get("/branch-detail", async (req, res): Promise<void> => {
     return;
   }
   const mode = await getDataMode();
-  const orgId = res.locals.organizationId as number | null;
+  const orgId = assertCompanyUser(res);
   const [branch] = await db
     .select()
     .from(branchesTable)
-    .where(eq(branchesTable.id, parsed.data.branchId))
+    .where(and(eq(branchesTable.id, parsed.data.branchId), eq(branchesTable.organizationId, orgId)))
     .limit(1);
 
-  if (
-    !branch ||
-    (mode === "live" && branch.source === "demo") ||
-    (orgId != null && branch.organizationId !== orgId)
-  ) {
+  if (!branch || (mode === "live" && branch.source === "demo")) {
     res.status(404).json({ error: "Filial topilmadi." });
     return;
   }

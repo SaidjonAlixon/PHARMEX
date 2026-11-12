@@ -29,6 +29,8 @@ import {
   VoidReceiptResponse,
 } from "@workspace/api-zod";
 import { requireRole } from "../middlewares/requireClerkUser";
+import { requireCompanyContext } from "../lib/org";
+import { tenantOrgId } from "./queries";
 import {
   actorOf,
   addDays,
@@ -65,6 +67,7 @@ import {
 } from "./financialUtils";
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 const writers = requireRole("admin", "finance");
 const paymentMethods = ["cash", "card", "transfer", "credit", "other"] as const;
 type PaymentMethod = (typeof paymentMethods)[number];
@@ -107,10 +110,12 @@ interface ReceiptFilters {
   status?: string;
   paymentMethod?: string;
   limit?: number;
+  organizationId?: number;
 }
 
 async function loadReceipts(filters: ReceiptFilters) {
   const pattern = filters.search ? `%${filters.search}%` : null;
+  const orgId = filters.organizationId ?? -1;
   const sales = await db
     .select({ sale: salesTable, branchName: branchesTable.name })
     .from(salesTable)
@@ -118,6 +123,7 @@ async function loadReceipts(filters: ReceiptFilters) {
     .where(
       and(
         sourceCondition(salesTable.source, filters.mode),
+        eq(branchesTable.organizationId, orgId),
         filters.ids ? inArray(salesTable.id, filters.ids) : undefined,
         filters.originalSaleId
           ? eq(salesTable.originalSaleId, filters.originalSaleId)
@@ -238,9 +244,9 @@ async function loadReceipts(filters: ReceiptFilters) {
   });
 }
 
-async function loadReceiptDetail(receiptId: number) {
+async function loadReceiptDetail(receiptId: number, organizationId: number) {
   const mode = await getDataMode();
-  const [receipt] = await loadReceipts({ mode, ids: [receiptId] });
+  const [receipt] = await loadReceipts({ mode, ids: [receiptId], organizationId });
   if (!receipt) return null;
   const [items, returned, returns] = await Promise.all([
     db
@@ -260,7 +266,7 @@ async function loadReceiptDetail(receiptId: number) {
           eq(salesTable.status, "completed"),
         ),
       ),
-    loadReceipts({ mode, originalSaleId: receiptId }),
+    loadReceipts({ mode, originalSaleId: receiptId, organizationId }),
   ]);
   const lines = items.map(({ item, product }) => {
     const figures = lineFigures(item);
@@ -304,6 +310,7 @@ router.get("/receipts", async (req, res): Promise<void> => {
     status: parsed.data.status,
     paymentMethod: parsed.data.paymentMethod || undefined,
     limit: parsed.data.limit,
+    organizationId: tenantOrgId(res),
   });
   res.json(ListReceiptsResponse.parse(rows));
 });
@@ -315,8 +322,10 @@ router.get("/receipts/summary", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const orgId = tenantOrgId(res);
   const where = and(
     sourceCondition(salesTable.source, await getDataMode()),
+    eq(branchesTable.organizationId, orgId),
     dateConditions(salesTable.soldAt, parsed.data.dateFrom, parsed.data.dateTo),
     parsed.data.branchId ? eq(salesTable.branchId, parsed.data.branchId) : undefined,
   );
@@ -336,6 +345,7 @@ router.get("/receipts/summary", async (req, res): Promise<void> => {
         noCost: sql<number>`count(${saleItemsTable.id}) filter (where ${saleItemsTable.costPrice} is null)::int`,
       })
       .from(salesTable)
+      .innerJoin(branchesTable, eq(branchesTable.id, salesTable.branchId))
       .leftJoin(saleItemsTable, eq(saleItemsTable.saleId, salesTable.id))
       .where(where)
       .groupBy(salesTable.kind, salesTable.status),
@@ -348,6 +358,7 @@ router.get("/receipts/summary", async (req, res): Promise<void> => {
       })
       .from(salePaymentsTable)
       .innerJoin(salesTable, eq(salesTable.id, salePaymentsTable.saleId))
+      .innerJoin(branchesTable, eq(branchesTable.id, salesTable.branchId))
       .leftJoin(cashAccountsTable, eq(cashAccountsTable.id, salePaymentsTable.accountId))
       .where(and(where, eq(salesTable.status, "completed")))
       .groupBy(sql`1`, salePaymentsTable.method),
@@ -359,6 +370,7 @@ router.get("/receipts/summary", async (req, res): Promise<void> => {
         count: sql<number>`count(distinct ${salesTable.id})::int`,
       })
       .from(salesTable)
+      .innerJoin(branchesTable, eq(branchesTable.id, salesTable.branchId))
       .innerJoin(saleItemsTable, eq(saleItemsTable.saleId, salesTable.id))
       .where(
         and(
@@ -406,7 +418,7 @@ router.get("/receipt-detail", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const detail = await loadReceiptDetail(parsed.data.receiptId);
+  const detail = await loadReceiptDetail(parsed.data.receiptId, tenantOrgId(res));
   if (!detail) {
     res.status(404).json({ error: "Chek topilmadi." });
     return;
@@ -442,8 +454,9 @@ router.post("/receipts", writers, async (req, res): Promise<void> => {
   const input = parsed.data;
   const actor = actorOf(res.locals);
   const saleId = await db.transaction(async (tx) => {
-    const branch = await requireBranch(tx, input.branchId);
-    const products = await loadProductsById(tx, input.items.map((item) => item.productId));
+    const orgId = tenantOrgId(res);
+    const branch = await requireBranch(tx, input.branchId, orgId);
+    const products = await loadProductsById(tx, input.items.map((item) => item.productId), orgId);
 
     const lines = input.items.map((item) => {
       const product = products.get(item.productId)!;
@@ -596,7 +609,7 @@ router.post("/receipts", writers, async (req, res): Promise<void> => {
     await audit(tx, actor.id, "sale.created", "sale", sale.id, `Chek ${receiptNo}: ${centsMoney(total)} UZS`);
     return sale.id;
   });
-  res.status(201).json(CreateReceiptResponse.parse(await loadReceiptDetail(saleId)));
+  res.status(201).json(CreateReceiptResponse.parse(await loadReceiptDetail(saleId, tenantOrgId(res))));
 });
 
 async function lockSale(tx: Tx, saleId: number) {
@@ -704,7 +717,7 @@ router.post("/receipts/void", writers, async (req, res): Promise<void> => {
       .where(eq(salesTable.id, sale.id));
     await audit(tx, actor.id, "sale.voided", "sale", sale.id, `Chek ${sale.receiptNo} bekor qilindi: ${reason}`);
   });
-  res.json(VoidReceiptResponse.parse(await loadReceiptDetail(parsed.data.receiptId)));
+  res.json(VoidReceiptResponse.parse(await loadReceiptDetail(parsed.data.receiptId, tenantOrgId(res))));
 });
 
 router.post("/receipts/return", writers, async (req, res): Promise<void> => {
@@ -877,7 +890,7 @@ router.post("/receipts/return", writers, async (req, res): Promise<void> => {
     await audit(tx, actor.id, "sale.returned", "sale", returnSale.id, `Qaytarish ${receiptNo}: ${centsMoney(refund)} UZS`);
     return returnSale.id;
   });
-  res.status(201).json(ReturnReceiptResponse.parse(await loadReceiptDetail(returnId)));
+  res.status(201).json(ReturnReceiptResponse.parse(await loadReceiptDetail(returnId, tenantOrgId(res))));
 });
 
 export default router;

@@ -60,20 +60,31 @@ export async function audit(
   });
 }
 
-export async function requireBranch(tx: Tx, branchId: number) {
+export async function requireBranch(tx: Tx, branchId: number, organizationId?: number) {
   const [branch] = await tx
     .select()
     .from(branchesTable)
-    .where(eq(branchesTable.id, branchId))
+    .where(
+      organizationId != null
+        ? and(eq(branchesTable.id, branchId), eq(branchesTable.organizationId, organizationId))
+        : eq(branchesTable.id, branchId),
+    )
     .limit(1);
   if (!branch) fail("Filial topilmadi.", 404);
   return branch;
 }
 
-export async function loadProductsById(tx: Tx, productIds: number[]) {
+export async function loadProductsById(tx: Tx, productIds: number[], organizationId?: number) {
   const ids = [...new Set(productIds)];
   const rows = ids.length
-    ? await tx.select().from(productsTable).where(inArray(productsTable.id, ids))
+    ? await tx
+        .select()
+        .from(productsTable)
+        .where(
+          organizationId != null
+            ? and(inArray(productsTable.id, ids), eq(productsTable.organizationId, organizationId))
+            : inArray(productsTable.id, ids),
+        )
     : [];
   const byId = new Map(rows.map((row) => [row.id, row]));
   for (const id of ids) {

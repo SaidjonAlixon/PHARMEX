@@ -24,7 +24,7 @@ import {
   SyncFomResponse,
   TestFomConnectionResponse,
 } from "@workspace/api-zod";
-import { requireRole } from "../middlewares/requireClerkUser";
+import { requirePlatformAdmin, requireRole } from "../middlewares/requireClerkUser";
 import {
   FOM_REPORTS,
   decodeXml,
@@ -245,13 +245,13 @@ async function settingsUpdatedAt(): Promise<Date | null> {
   return row?.updatedAt ?? null;
 }
 
-router.get("/fom/settings", requireRole("admin", "finance"), async (_req, res): Promise<void> => {
+router.get("/fom/settings", requirePlatformAdmin, async (_req, res): Promise<void> => {
   res.json(settingsView(await settingsUpdatedAt()));
 });
 
 const HOST_PATTERN = /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*$/;
 
-router.put("/fom/settings", requireRole("admin"), async (req, res): Promise<void> => {
+router.put("/fom/settings", requirePlatformAdmin, async (req, res): Promise<void> => {
   const parsed = SaveFomSettingsBody.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -289,7 +289,7 @@ router.put("/fom/settings", requireRole("admin"), async (req, res): Promise<void
 
 router.post(
   "/fom/test",
-  requireRole("admin", "finance"),
+  requirePlatformAdmin,
   async (_req, res): Promise<void> => {
     const result = await testFomConnection();
     const value = JSON.stringify({ ok: result.ok, at: new Date().toISOString() });
@@ -309,7 +309,7 @@ router.post(
 
 router.post(
   "/fom/sync",
-  requireRole("admin", "finance"),
+  requirePlatformAdmin,
   async (req, res): Promise<void> => {
     const parsed = SyncFomBody.safeParse(req.body ?? {});
     if (!parsed.success) {

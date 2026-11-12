@@ -19,6 +19,7 @@ import {
   ListStockDocumentsResponse,
 } from "@workspace/api-zod";
 import { requireRole } from "../middlewares/requireClerkUser";
+import { requireCompanyContext } from "../lib/org";
 import {
   actorOf,
   applyDebtOperation,
@@ -46,8 +47,10 @@ import {
   quantityMilli,
   toNumber,
 } from "./financialUtils";
+import { tenantOrgId } from "./queries";
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 
 const prefixes = {
   transfer: "OTK",
@@ -64,11 +67,13 @@ interface StockFilters {
   dateTo?: Date;
   branchId?: number;
   docType?: string;
+  organizationId?: number;
 }
 
 export async function loadStockDocuments(filters: StockFilters) {
   const toBranch = alias(branchesTable, "to_branch");
   const conditions: Array<SQL | undefined> = [
+    eq(branchesTable.organizationId, filters.organizationId ?? -1),
     filters.ids ? inArray(stockDocumentsTable.id, filters.ids) : undefined,
     filters.purchaseId ? eq(stockDocumentsTable.purchaseId, filters.purchaseId) : undefined,
     dateConditions(stockDocumentsTable.occurredAt, filters.dateFrom, filters.dateTo),
@@ -143,8 +148,8 @@ export async function loadStockDocuments(filters: StockFilters) {
   });
 }
 
-async function loadStockDocumentDetail(documentId: number) {
-  const [document] = await loadStockDocuments({ ids: [documentId] });
+async function loadStockDocumentDetail(documentId: number, organizationId: number) {
+  const [document] = await loadStockDocuments({ ids: [documentId], organizationId });
   if (!document) return null;
   const rows = await db
     .select({ movement: inventoryMovementsTable, product: productsTable })
@@ -182,6 +187,7 @@ router.get("/stock-documents", async (req, res): Promise<void> => {
     dateTo: parsed.data.dateTo,
     branchId: parsed.data.branchId,
     docType: parsed.data.docType,
+    organizationId: tenantOrgId(res),
   });
   res.json(ListStockDocumentsResponse.parse(rows));
 });
@@ -192,7 +198,7 @@ router.get("/stock-document-detail", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const detail = await loadStockDocumentDetail(parsed.data.documentId);
+  const detail = await loadStockDocumentDetail(parsed.data.documentId, tenantOrgId(res));
   if (!detail) {
     res.status(404).json({ error: "Hujjat topilmadi." });
     return;
@@ -211,16 +217,17 @@ router.post(
     }
     const input = parsed.data;
     const actor = actorOf(res.locals);
+    const orgId = tenantOrgId(res);
     const reason = input.reason?.trim() ?? "";
     const productIds = input.items.map((item) => item.productId);
     if (new Set(productIds).size !== productIds.length) {
-      res.status(400).json({ error: "Bir mahsulot hujjatda faqat bir marta bo‘lishi kerak." });
+      res.status(400).json({ error: "Bir mahsulot hujjatda faqat bir marta bo‘lishi mumkin." });
       return;
     }
 
     const documentId = await db.transaction(async (tx) => {
-      const branch = await requireBranch(tx, input.branchId);
-      const products = await loadProductsById(tx, productIds);
+      const branch = await requireBranch(tx, input.branchId, orgId);
+      const products = await loadProductsById(tx, productIds, orgId);
       let counterpartyName = input.counterpartyName?.trim() ?? "";
       let counterpartyId = input.counterpartyId ?? null;
       let toBranchId: number | null = null;
@@ -229,7 +236,7 @@ router.post(
       if (input.docType === "transfer") {
         if (!input.toBranchId) fail("Qabul qiluvchi filial yoki omborni tanlang.", 400);
         if (input.toBranchId === branch.id) fail("Jo‘natuvchi va qabul qiluvchi bir xil bo‘lishi mumkin emas.", 400);
-        toBranchId = (await requireBranch(tx, input.toBranchId)).id;
+        toBranchId = (await requireBranch(tx, input.toBranchId, orgId)).id;
       }
       if (input.docType === "write_off" && !reason) {
         fail("Hisobdan chiqarish sababini kiriting.", 400);
@@ -428,7 +435,7 @@ router.post(
       await audit(tx, actor.id, `stock.${input.docType}`, "stock_document", document.id, `${documentNo}: ${branch.name}`);
       return document.id;
     });
-    res.status(201).json(CreateStockDocumentResponse.parse(await loadStockDocumentDetail(documentId)));
+    res.status(201).json(CreateStockDocumentResponse.parse(await loadStockDocumentDetail(documentId, tenantOrgId(res))));
   },
 );
 

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   db,
@@ -13,9 +13,11 @@ import {
   ListSalesResponse,
 } from "@workspace/api-zod";
 import { getDataMode } from "./financialUtils";
-import { loadInventory, loadSaleLines, loadWarehouseInsights, withTenant } from "./queries";
+import { loadInventory, loadSaleLines, loadWarehouseInsights, tenantOrgId, withTenant } from "./queries";
+import { requireCompanyContext } from "../lib/org";
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 
 router.get("/sales", async (req, res): Promise<void> => {
   const parsed = ListSalesQueryParams.safeParse(req.query);
@@ -112,10 +114,11 @@ router.get("/product-detail", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const orgId = tenantOrgId(res);
   const [product] = await db
     .select()
     .from(productsTable)
-    .where(eq(productsTable.id, parsed.data.productId))
+    .where(and(eq(productsTable.id, parsed.data.productId), eq(productsTable.organizationId, orgId)))
     .limit(1);
   if (!product) {
     res.status(404).json({ error: "Mahsulot topilmadi." });

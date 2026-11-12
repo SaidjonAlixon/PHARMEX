@@ -107,11 +107,14 @@ router.patch(
       )[0];
       if (!target) return null;
       const orgId = res.locals.organizationId as number | null;
-      if (orgId != null && target.organizationId !== orgId) return null;
+      if (orgId == null || target.organizationId !== orgId) return null;
 
       if (target.role === "admin" && body.data.role !== "admin") {
-        const adminConds = [eq(appUsersTable.role, "admin"), ne(appUsersTable.id, target.id)];
-        if (orgId != null) adminConds.push(eq(appUsersTable.organizationId, orgId));
+        const adminConds = [
+          eq(appUsersTable.role, "admin"),
+          ne(appUsersTable.id, target.id),
+          eq(appUsersTable.organizationId, orgId),
+        ];
         const admins = await tx
           .select({ id: appUsersTable.id })
           .from(appUsersTable)

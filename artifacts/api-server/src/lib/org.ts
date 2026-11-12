@@ -137,7 +137,9 @@ export async function countOrgBranches(organizationId: number): Promise<number> 
 export function requireOrgId(res: Response): number | null {
   if (res.locals.userRole === "platform_admin") {
     const act = res.locals.actAsOrgId as number | null | undefined;
-    return typeof act === "number" ? act : null;
+    if (typeof act === "number") return act;
+    const id = res.locals.organizationId as number | null | undefined;
+    return typeof id === "number" ? id : null;
   }
   const id = res.locals.organizationId as number | null | undefined;
   return typeof id === "number" ? id : null;
@@ -146,15 +148,35 @@ export function requireOrgId(res: Response): number | null {
 export function assertCompanyUser(res: Response): number {
   const id = requireOrgId(res);
   if (!id) {
-    const err = new Error("Kompaniya konteksti topilmadi.");
+    const err = new Error(
+      res.locals.userRole === "platform_admin"
+        ? "Avval kompaniya kabinetiga kiring (Owner panel → Kabinetga kirish)."
+        : "Kompaniya konteksti topilmadi.",
+    );
     (err as Error & { status: number }).status = 403;
     throw err;
   }
   return id;
 }
 
+/** Express middleware: company routes require a resolved organization. */
+export function requireCompanyContext(
+  _req: Request,
+  res: Response,
+  next: (err?: unknown) => void,
+): void {
+  try {
+    assertCompanyUser(res);
+    next();
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status ?? 403;
+    res.status(status).json({ error: (error as Error).message, code: "tenant_required" });
+  }
+}
+
 export function branchScopeCondition(organizationId: number | null) {
-  if (organizationId == null) return undefined;
+  // Fail closed: never omit tenant filter
+  if (organizationId == null) return eq(branchesTable.organizationId, -1);
   return eq(branchesTable.organizationId, organizationId);
 }
 

@@ -19,6 +19,7 @@ import {
   ListDebtsResponse,
 } from "@workspace/api-zod";
 import { requireRole } from "../middlewares/requireClerkUser";
+import { requireCompanyContext } from "../lib/org";
 import {
   actorOf,
   applyDebtOperation,
@@ -30,12 +31,17 @@ import {
   requireBranch,
 } from "../lib/ledger";
 import { centsMoney, getDataMode, moneyCents } from "./financialUtils";
-import { loadDebts, withTenant } from "./queries";
+import { loadDebts, tenantOrgId, withTenant } from "./queries";
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 
-export async function loadDebtDetail(debtId: number) {
-  const [debt] = await loadDebts({ mode: await getDataMode(), debtId });
+export async function loadDebtDetail(debtId: number, organizationId?: number) {
+  const [debt] = await loadDebts({
+    mode: await getDataMode(),
+    debtId,
+    organizationId: organizationId ?? -1,
+  });
   if (!debt) return null;
   const operations = await db
     .select({
@@ -115,7 +121,7 @@ router.post(
     }
     const actor = actorOf(res.locals);
     const debtId = await db.transaction(async (tx) => {
-      await requireBranch(tx, input.branchId);
+      await requireBranch(tx, input.branchId, tenantOrgId(res));
       const counterparty = await findOrCreateCounterparty(tx, {
         id: input.counterpartyId,
         name: input.counterparty,
@@ -146,7 +152,7 @@ router.post(
       await audit(tx, actor.id, "debt.created", "debt", debt.id, `${debt.kind === "payable" ? "Kreditorlik" : "Debitorlik"} qarzi: ${debt.counterparty}, ${debt.initialAmount} UZS`);
       return debt.id;
     });
-    const detail = await loadDebtDetail(debtId);
+    const detail = await loadDebtDetail(debtId, tenantOrgId(res));
     res.status(201).json(CreateDebtResponse.parse(detail!.debt));
   },
 );
@@ -157,7 +163,7 @@ router.get("/debt-detail", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const detail = await loadDebtDetail(parsed.data.debtId);
+  const detail = await loadDebtDetail(parsed.data.debtId, tenantOrgId(res));
   if (!detail) {
     res.status(404).json({ error: "Qarz hujjati topilmadi." });
     return;
@@ -191,7 +197,7 @@ router.post(
       });
       await audit(tx, actor.id, `debt.${input.kind}`, "debt", debt.id, `${debt.counterparty}: ${operation.amount} UZS`);
     });
-    const detail = await loadDebtDetail(input.debtId);
+    const detail = await loadDebtDetail(input.debtId, tenantOrgId(res));
     res.status(201).json(CreateDebtOperationResponse.parse(detail));
   },
 );

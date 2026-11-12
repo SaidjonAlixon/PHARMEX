@@ -35,8 +35,10 @@ import {
   loadSaleLines,
   withTenant,
 } from "./queries";
+import { requireCompanyContext } from "../lib/org";
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 const zero = "0.00";
 
 router.get("/dashboard", async (req, res): Promise<void> => {
@@ -114,9 +116,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
         .where(
           and(
             sourceCondition(branchesTable.source, mode),
-            filters.organizationId != null
-              ? eq(branchesTable.organizationId, filters.organizationId)
-              : undefined,
+            eq(branchesTable.organizationId, filters.organizationId ?? -1),
             parsed.data.branchId
               ? eq(branchesTable.id, parsed.data.branchId)
               : undefined,
@@ -441,9 +441,11 @@ router.get("/dashboard", async (req, res): Promise<void> => {
       unitCost: inventoryMovementsTable.unitCost,
     })
     .from(inventoryMovementsTable)
+    .innerJoin(branchesTable, eq(branchesTable.id, inventoryMovementsTable.branchId))
     .where(
       and(
         sourceCondition(inventoryMovementsTable.source, mode),
+        eq(branchesTable.organizationId, filters.organizationId ?? -1),
         parsed.data.branchId
           ? eq(inventoryMovementsTable.branchId, parsed.data.branchId)
           : undefined,

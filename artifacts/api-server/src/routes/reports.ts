@@ -17,8 +17,10 @@ import {
   loadSaleLines,
   withTenant,
 } from "./queries";
+import { requireCompanyContext } from "../lib/org";
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 
 router.get("/reports", async (req, res): Promise<void> => {
   const parsed = GetReportQueryParams.safeParse(req.query);

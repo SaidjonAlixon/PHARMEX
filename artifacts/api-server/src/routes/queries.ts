@@ -46,21 +46,37 @@ export interface QueryFilters {
   organizationId?: number | null;
 }
 
-/** Attach tenant scope from Express locals (platform_admin = unscoped). */
+/**
+ * Attach tenant scope from Express locals.
+ * Never leave company data unscoped: missing org → organizationId -1 (empty result).
+ * Platform admin must be acting as a company (actAs / organizationId set).
+ */
 export function withTenant(
   res: { locals: Record<string, unknown> },
   filters: QueryFilters,
 ): QueryFilters {
-  if (res.locals.userRole === "platform_admin") return filters;
-  const id = res.locals.organizationId;
+  const orgId = res.locals.organizationId;
+  const actAs = res.locals.actAsOrgId;
+  const id =
+    typeof orgId === "number"
+      ? orgId
+      : typeof actAs === "number"
+        ? actAs
+        : null;
   return {
     ...filters,
     organizationId: typeof id === "number" ? id : -1,
   };
 }
 
+/** Required org id for queries; -1 matches nothing. */
+export function tenantOrgId(res: { locals: Record<string, unknown> }): number {
+  return withTenant(res, { mode: "live" }).organizationId ?? -1;
+}
+
 function orgBranchCond(organizationId?: number | null): SQL | undefined {
-  if (organizationId == null) return undefined;
+  // null = legacy unscoped (avoid); always pass a number from withTenant
+  if (organizationId == null) return eq(branchesTable.organizationId, -1);
   return eq(branchesTable.organizationId, organizationId);
 }
 

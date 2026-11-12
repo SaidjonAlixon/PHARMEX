@@ -27,6 +27,7 @@ import {
   ListMoneyTransactionsResponse,
 } from "@workspace/api-zod";
 import { requireRole } from "../middlewares/requireClerkUser";
+import { requireCompanyContext } from "../lib/org";
 import {
   actorOf,
   applyDebtOperation,
@@ -51,14 +52,16 @@ import {
   loadCashAccounts,
   loadExpenses,
   loadMoneyTransactions,
+  tenantOrgId,
   withTenant,
 } from "./queries";
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 const writers = requireRole("admin", "finance");
 
-async function moneyRow(id: number) {
-  const [row] = await loadMoneyTransactions({ mode: "live", ids: [id] });
+async function moneyRow(id: number, organizationId: number) {
+  const [row] = await loadMoneyTransactions({ mode: "live", ids: [id], organizationId });
   return row;
 }
 
@@ -129,7 +132,7 @@ router.post("/expenses", writers, async (req, res): Promise<void> => {
   const actor = actorOf(res.locals);
   const date = dateOnly(parsed.data.date);
   const created = await db.transaction(async (tx) => {
-    const branch = await requireBranch(tx, parsed.data.branchId);
+    const branch = await requireBranch(tx, parsed.data.branchId, tenantOrgId(res));
     const account = parsed.data.accountId
       ? await lockAccount(tx, parsed.data.accountId)
       : await defaultAccount(tx, branch.id, "cash");
@@ -172,16 +175,18 @@ router.post("/cash-accounts", writers, async (req, res): Promise<void> => {
   }
   const actor = actorOf(res.locals);
   const account = await db.transaction(async (tx) => {
-    if (parsed.data.branchId) await requireBranch(tx, parsed.data.branchId);
+    if (parsed.data.branchId) await requireBranch(tx, parsed.data.branchId, tenantOrgId(res));
     if (parsed.data.kind === "cash" && !parsed.data.branchId) {
       fail("Naqd kassa filialga biriktirilishi kerak.", 400);
     }
+    const orgId = tenantOrgId(res);
     const [created] = await tx
       .insert(cashAccountsTable)
       .values({
         name: parsed.data.name.trim(),
         kind: parsed.data.kind,
         branchId: parsed.data.branchId ?? null,
+        organizationId: orgId > 0 ? orgId : null,
         openingBalance: parsed.data.openingBalance,
         source: "manual",
       })
@@ -202,6 +207,7 @@ router.get("/cash-register", async (req, res): Promise<void> => {
     return;
   }
   const mode = await getDataMode();
+  const orgId = tenantOrgId(res);
   const accounts = await db
     .select({
       id: cashAccountsTable.id,
@@ -212,10 +218,11 @@ router.get("/cash-register", async (req, res): Promise<void> => {
       openingBalance: cashAccountsTable.openingBalance,
     })
     .from(cashAccountsTable)
-    .leftJoin(branchesTable, eq(branchesTable.id, cashAccountsTable.branchId))
+    .innerJoin(branchesTable, eq(branchesTable.id, cashAccountsTable.branchId))
     .where(
       and(
         sourceCondition(cashAccountsTable.source, mode),
+        eq(branchesTable.organizationId, orgId),
         parsed.data.branchId
           ? eq(cashAccountsTable.branchId, parsed.data.branchId)
           : undefined,
@@ -293,7 +300,7 @@ router.post("/money-operations", writers, async (req, res): Promise<void> => {
       fail("Bank tushumi faqat bank hisobiga yoziladi.", 400);
     }
     const branchId = input.branchId ?? account.branchId ?? null;
-    if (branchId) await requireBranch(tx, branchId);
+    if (branchId) await requireBranch(tx, branchId, tenantOrgId(res));
 
     if (input.type === "expense") {
       if (!input.category?.trim()) fail("Xarajat turini tanlang.", 400);
@@ -355,7 +362,7 @@ router.post("/money-operations", writers, async (req, res): Promise<void> => {
     await audit(tx, actor.id, "money.operation", "money_transaction", money.id, `${input.type}: ${money.amount} UZS (${account.name})`);
     return money.id;
   });
-  res.status(201).json(CreateMoneyOperationResponse.parse(await moneyRow(moneyId)));
+  res.status(201).json(CreateMoneyOperationResponse.parse(await moneyRow(moneyId, tenantOrgId(res))));
 });
 
 router.post("/money-transfers", writers, async (req, res): Promise<void> => {
@@ -410,8 +417,8 @@ router.post("/money-transfers", writers, async (req, res): Promise<void> => {
   });
   res.status(201).json(
     CreateMoneyTransferResponse.parse({
-      from: await moneyRow(ids[0]),
-      to: await moneyRow(ids[1]),
+      from: await moneyRow(ids[0], tenantOrgId(res)),
+      to: await moneyRow(ids[1], tenantOrgId(res)),
     }),
   );
 });

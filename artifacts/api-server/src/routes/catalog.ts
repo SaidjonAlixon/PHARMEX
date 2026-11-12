@@ -17,17 +17,17 @@ import {
   ListProductsResponse,
 } from "@workspace/api-zod";
 import { requireRole } from "../middlewares/requireClerkUser";
+import { requireCompanyContext } from "../lib/org";
 import { actorOf, audit, dateOnlyString } from "../lib/ledger";
 import { centsMoney, getDataMode, moneyCents, sourceCondition, toNumber } from "./financialUtils";
-import { loadDebts, withTenant } from "./queries";
+import { loadDebts, tenantOrgId, withTenant } from "./queries";
 
-function catalogOrgId(res: { locals: Record<string, unknown> }): number | null | undefined {
-  if (res.locals.userRole === "platform_admin") return undefined;
-  const id = res.locals.organizationId;
-  return typeof id === "number" ? id : -1;
+function catalogOrgId(res: { locals: Record<string, unknown> }): number {
+  return tenantOrgId(res);
 }
 
 const router: IRouter = Router();
+router.use(requireCompanyContext);
 
 function isUniqueViolation(error: unknown) {
   const cause = (error as { cause?: { code?: string } })?.cause;
@@ -58,7 +58,7 @@ async function loadProducts(search?: string, productId?: number, organizationId?
     .where(
       and(
         sourceCondition(productsTable.source, mode === "empty" ? "live" : mode),
-        organizationId != null ? eq(productsTable.organizationId, organizationId) : undefined,
+        eq(productsTable.organizationId, organizationId ?? -1),
         productId ? eq(productsTable.id, productId) : undefined,
         search
           ? or(
@@ -116,7 +116,7 @@ router.post(
             vatRate: String(input.vatRate ?? 0),
             expiryDate: dateOnlyString(input.expiryDate),
             source: "manual",
-            organizationId: typeof orgId === "number" && orgId > 0 ? orgId : null,
+            organizationId: orgId > 0 ? orgId : null,
           })
           .returning();
         await audit(tx, actor.id, "product.created", "product", created.id, `Mahsulot qo‘shildi: ${created.name}`);
@@ -145,9 +145,7 @@ async function loadCounterparties(filters: {
     .from(counterpartiesTable)
     .where(
       and(
-        filters.organizationId != null
-          ? eq(counterpartiesTable.organizationId, filters.organizationId)
-          : undefined,
+        eq(counterpartiesTable.organizationId, filters.organizationId ?? -1),
         filters.kind ? eq(counterpartiesTable.kind, filters.kind) : undefined,
         filters.id ? eq(counterpartiesTable.id, filters.id) : undefined,
         filters.search
@@ -221,7 +219,7 @@ router.post(
         const [row] = await tx
           .insert(counterpartiesTable)
           .values({
-            organizationId: typeof orgId === "number" && orgId > 0 ? orgId : null,
+            organizationId: orgId > 0 ? orgId : null,
             name: input.name.trim(),
             kind: input.kind,
             taxId: input.taxId?.trim() ?? "",
@@ -232,7 +230,7 @@ router.post(
         await audit(tx, actor.id, "counterparty.created", "counterparty", row.id, `${row.kind === "supplier" ? "Yetkazib beruvchi" : "Mijoz"} qo‘shildi: ${row.name}`);
         return row;
       });
-      const [row] = await loadCounterparties({ id: created.id });
+      const [row] = await loadCounterparties({ id: created.id, organizationId: orgId });
       res.status(201).json(CreateCounterpartyResponse.parse(row));
     } catch (error) {
       if (isUniqueViolation(error)) {

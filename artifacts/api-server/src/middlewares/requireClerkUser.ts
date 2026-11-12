@@ -30,6 +30,13 @@ const requireLocalUser: RequestHandler = async (req, res, next) => {
       res.status(401).json({ error: "Kirish talab qilinadi." });
       return;
     }
+    if (appUser.role !== "platform_admin" && appUser.organizationId == null) {
+      res.status(403).json({
+        error: "Kompaniyaga biriktirilmagan akkaunt. Administratorga murojaat qiling.",
+        code: "no_organization",
+      });
+      return;
+    }
     res.locals.userId = appUser.clerkUserId;
     res.locals.appUserId = appUser.id;
     res.locals.userRole = appUser.role;
@@ -83,6 +90,8 @@ const requireClerkSessionUser: RequestHandler = async (req, res, next) => {
           .limit(1);
         if (existing) return existing;
 
+        // Do not auto-activate unknown Clerk users into the live tenant.
+        // First-ever bootstrap remains pending until platform/local admin activates.
         const [anyUser] = await tx
           .select({ id: appUsersTable.id })
           .from(appUsersTable)
@@ -92,6 +101,8 @@ const requireClerkSessionUser: RequestHandler = async (req, res, next) => {
           .values({
             clerkUserId: userId,
             role: anyUser ? "viewer" : "admin",
+            status: "pending",
+            organizationId: null,
           })
           .onConflictDoNothing()
           .returning();
@@ -109,6 +120,20 @@ const requireClerkSessionUser: RequestHandler = async (req, res, next) => {
 
     if (!appUser) {
       res.status(403).json({ error: "Foydalanuvchi ro‘yxatdan o‘tmagan." });
+      return;
+    }
+    if (appUser.status !== "active") {
+      res.status(403).json({
+        error: "Akkauntingiz hali faol emas. Platforma administratori tasdigʻini kuting.",
+        code: appUser.status,
+      });
+      return;
+    }
+    if (appUser.role !== "platform_admin" && appUser.organizationId == null) {
+      res.status(403).json({
+        error: "Kompaniyaga biriktirilmagan akkaunt. Administratorga murojaat qiling.",
+        code: "no_organization",
+      });
       return;
     }
 
