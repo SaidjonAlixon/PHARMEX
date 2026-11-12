@@ -348,7 +348,7 @@ a { color: inherit; text-decoration: none; }
 .plan-branches { margin: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #66756d; }
 .plan-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; align-content: start; }
 .plan-card li { display: flex; gap: 8px; font-size: 13px; color: var(--t2); }
-.plan-card-foot { display: grid; gap: 8px; margin-top: 4px; }
+.plan-card-foot { display: grid; gap: 8px; margin-top: 4px; justify-items: start; }
 .plan-expires {
   display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px;
   border-radius: 10px; background: rgba(16,185,129,.1); border: 1px solid rgba(16,185,129,.22);
@@ -358,8 +358,9 @@ a { color: inherit; text-decoration: none; }
 .plan-current { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .plan-current .eyebrow { display: block; margin-bottom: 4px; }
 .plan-card .plan-buy {
-  width: 100%; min-height: 44px; justify-content: center; gap: 8px;
-  font-size: 12.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  width: auto; max-width: 100%; min-width: 0; min-height: 40px; padding: 0 16px;
+  justify-content: center; gap: 8px;
+  font-size: 12px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
   border-radius: 12px;
 }
 .plan-card .plan-buy:disabled { opacity: .72; cursor: not-allowed; filter: grayscale(.15); }
@@ -1088,7 +1089,7 @@ body { background: var(--wash); }
 .cabinet-marquee::after { right: 0; background: linear-gradient(270deg, #9f1239, transparent); }
 .cabinet-marquee-track {
   display: flex; width: max-content;
-  animation: cabinet-marquee 42s linear infinite;
+  animation: cabinet-marquee 110s linear infinite;
   will-change: transform;
 }
 .cabinet-marquee-group {

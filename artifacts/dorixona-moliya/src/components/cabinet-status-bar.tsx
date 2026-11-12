@@ -4,7 +4,7 @@ import type { OrgBrief } from '@/lib/access';
 
 const TEST_MARQUEE =
   'Bu platforma test holatda ishlamoqda — barcha imkoniyatlar ketma-ketlik bilan qoʻshib borilmoqda…!';
-const MARQUEE_COPIES = 8;
+const MARQUEE_COPIES = 6;
 
 function pad(n: number) {
   return String(Math.max(0, n)).padStart(2, '0');
