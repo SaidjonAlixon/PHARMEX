@@ -57,7 +57,12 @@ async function ownerAdminId(organizationId: number | null): Promise<number | nul
 }
 
 function requireOrg(res: { locals: Record<string, unknown>; status: (n: number) => { json: (b: unknown) => void } }): number | null {
-  if (res.locals.userRole === "platform_admin") return null;
+  if (res.locals.userRole === "platform_admin") {
+    const act = res.locals.actAsOrgId;
+    if (typeof act === "number") return act;
+    res.status(403).json({ error: "Avval kompaniya kabinetiga kiring." });
+    return null;
+  }
   const id = res.locals.organizationId;
   if (typeof id !== "number") {
     res.status(403).json({ error: "Kompaniya konteksti topilmadi." });

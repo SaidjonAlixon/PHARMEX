@@ -159,8 +159,8 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const access = useAccess();
   let items = [...navItems];
   if (localAuth && accounts.isAdmin) items = [...items.slice(0, -1), usersNavItem, items[items.length - 1]!];
-  if (access.isPlatformAdmin) return <Redirect to="/owner" />;
-  // platform admin uses /owner console only
+  // Platforma egasi — faqat /owner; kompaniyaga kirganda kabinet ochiladi
+  if (access.isPlatformAdmin && !access.actingAsCompany) return <Redirect to="/owner" />;
   const period = filters.period ?? DEFAULT_PERIOD;
   // The range bar edits a draft; data follows only after “Tasdiqlash”.
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -185,7 +185,24 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const scopeText = period === 'custom' ? 'Barcha davr' : filters.dateFrom === filters.dateTo ? date(filters.dateFrom) : `${date(filters.dateFrom)} — ${date(filters.dateTo)}`;
   // Pages without dated data do not show the period bar.
   const showPeriod = !['/settings', '/users', '/catalog', '/tariflar', '/platform'].some(path => location === path || location.startsWith(`${path}/`));
+  const exitCompany = async () => {
+    await fetch('/api/platform/exit-company', { method: 'POST', credentials: 'include' });
+    window.location.assign('/owner');
+  };
   return <div className="app-shell">
+    {access.actingAsCompany && access.organization && (
+      <div className="owner-act-banner" data-testid="banner-acting-company">
+        <Building2 size={15} />
+        <span>
+          Platforma egasi · <b>{access.organization.name}</b>
+          {access.organization.planName ? ` · ${access.organization.planName}` : ''}
+          {access.organization.daysLeft != null ? ` · ${access.organization.daysLeft} kun qoldi` : ''}
+        </span>
+        <button type="button" className="button ghost" onClick={() => void exitCompany()}>
+          <ArrowLeft size={14} /> Owner panel
+        </button>
+      </div>
+    )}
     <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`}>
       <Link href="/" className="brand-lockup brand-card" data-testid="link-brand" aria-label="PHARMXS"><BrandLogo /></Link>
       {access.subscriptionBlocked && <div className="sub-banner" data-testid="banner-subscription">Obuna tugagan — <Link href="/tariflar">tarifni yangilang</Link></div>}

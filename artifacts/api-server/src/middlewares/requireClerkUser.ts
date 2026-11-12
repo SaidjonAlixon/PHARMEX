@@ -3,8 +3,10 @@ import { and, eq, sql } from "drizzle-orm";
 import type { RequestHandler } from "express";
 import { appUsersTable, db } from "@workspace/db";
 import {
+  ACT_ORG_COOKIE,
   SESSION_COOKIE,
   localAuthEnabled,
+  readActOrgToken,
   readSessionToken,
 } from "../lib/localAuth";
 import { attachOrgLocals, loadOrganization } from "../lib/org";
@@ -31,8 +33,20 @@ const requireLocalUser: RequestHandler = async (req, res, next) => {
     res.locals.appUserId = appUser.id;
     res.locals.userRole = appUser.role;
     res.locals.userName = appUser.displayName;
-    const org = await loadOrganization(appUser.organizationId);
-    attachOrgLocals(req, res, org, appUser.role);
+    let actAsOrgId: number | null = null;
+    let orgId = appUser.organizationId;
+    if (appUser.role === "platform_admin") {
+      const act = readActOrgToken(req.cookies?.[ACT_ORG_COOKIE]);
+      if (act) {
+        actAsOrgId = act;
+        orgId = act;
+      }
+    }
+    const org = await loadOrganization(orgId);
+    if (appUser.role === "platform_admin" && actAsOrgId != null && !org) {
+      actAsOrgId = null;
+    }
+    attachOrgLocals(req, res, org, appUser.role, actAsOrgId);
     next();
   } catch (error) {
     req.log.error({ err: error }, "Could not resolve signed-in application user");
@@ -136,9 +150,15 @@ export const readOnlyForViewers: RequestHandler = (req, res, next) => {
 };
 
 export function requireRole(...allowedRoles: string[]): RequestHandler {
-  return (req, res, next) => {
+  return (_req, res, next) => {
     const role = String(res.locals.userRole ?? "");
-    if (!allowedRoles.includes(role)) {
+    const acting = Boolean(res.locals.actingAsCompany);
+    const allowed =
+      allowedRoles.includes(role) ||
+      (acting &&
+        role === "platform_admin" &&
+        allowedRoles.some((r) => r === "admin" || r === "finance"));
+    if (!allowed) {
       res.status(403).json({ error: "Bu amal uchun ruxsat yo‘q." });
       return;
     }

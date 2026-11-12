@@ -36,7 +36,7 @@ router.get("/billing/plans", (_req, res): void => {
 });
 
 router.get("/billing/subscription", requireClerkUser, async (_req, res): Promise<void> => {
-  if (res.locals.userRole === "platform_admin") {
+  if (res.locals.userRole === "platform_admin" && !res.locals.actingAsCompany) {
     res.json({ organization: null, plans: planList() });
     return;
   }
@@ -46,14 +46,15 @@ router.get("/billing/subscription", requireClerkUser, async (_req, res): Promise
 
 router.post("/billing/checkout", requireClerkUser, async (req, res): Promise<void> => {
   const role = String(res.locals.userRole ?? "");
-  if (role === "platform_admin") {
+  const acting = Boolean(res.locals.actingAsCompany);
+  if (role === "platform_admin" && !acting) {
     res.status(403).json({
-      error: "Platforma egasi toʻlov qilmaydi. Kompaniya admini login/paroli bilan kabinetga kiring, soʻng Tariflar orqali toʻlang.",
+      error: "Platforma egasi toʻlov qilmaydi. Kompaniya kabinetiga kiring yoki kompaniya admini bilan toʻlang.",
       code: "company_login_required",
     });
     return;
   }
-  if (role !== "admin" && role !== "finance") {
+  if (role !== "admin" && role !== "finance" && !(role === "platform_admin" && acting)) {
     res.status(403).json({
       error: "Obuna toʻlovini faqat kompaniya administratori (yoki moliya) qila oladi. Kuzatuvchiga ruxsat yoʻq.",
       code: "role_forbidden",

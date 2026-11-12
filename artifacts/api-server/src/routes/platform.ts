@@ -1,10 +1,30 @@
 import { randomInt } from "node:crypto";
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
+import type { Response } from "express";
 import { db, organizationsTable, paymentsTable, appUsersTable, auditLogTable } from "@workspace/db";
 import { requirePlatformAdmin } from "../middlewares/requireClerkUser";
 import { PLANS, PLAN_PERIOD_DAYS, isPlanCode, planList } from "../lib/plans";
 import { createOrganizationForOwner, publicOrganization } from "../lib/org";
+import {
+  ACT_ORG_COOKIE,
+  SESSION_TTL_MS,
+  createActOrgToken,
+} from "../lib/localAuth";
+
+function setActOrgCookie(res: Response, orgId: number | null): void {
+  if (orgId == null) {
+    res.clearCookie(ACT_ORG_COOKIE, { path: "/" });
+    return;
+  }
+  res.cookie(ACT_ORG_COOKIE, createActOrgToken(orgId), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: SESSION_TTL_MS,
+  });
+}
 import { hashPassword } from "../lib/localAuth";
 
 const ORG_USER_ROLES = ["admin", "finance", "viewer"] as const;
@@ -530,6 +550,31 @@ router.delete("/platform/users/:id", async (req, res): Promise<void> => {
     summary: `${target.displayName} oʻchirildi`,
   });
   res.json({ ok: true });
+});
+
+/** Platforma egasi kompaniya kabinetiga toʻliq kiradi (vaqtincha kontekst). */
+router.post("/platform/organizations/:id/enter", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "Notoʻgʻri ID." });
+    return;
+  }
+  const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, id)).limit(1);
+  if (!org) {
+    res.status(404).json({ error: "Kompaniya topilmadi." });
+    return;
+  }
+  setActOrgCookie(res, org.id);
+  res.json({
+    ok: true,
+    organization: publicOrganization(org),
+    redirect: "/",
+  });
+});
+
+router.post("/platform/exit-company", async (_req, res): Promise<void> => {
+  setActOrgCookie(res, null);
+  res.json({ ok: true, redirect: "/owner" });
 });
 
 router.get("/platform/directory", async (_req, res): Promise<void> => {

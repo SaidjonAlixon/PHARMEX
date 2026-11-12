@@ -13,7 +13,7 @@ alphabet = string.ascii_letters + string.digits
 # Readable password without ambiguous chars
 pwd_chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
 password = "Pxs" + "".join(secrets.choice(pwd_chars) for _ in range(9)) + str(secrets.randbelow(10))
-username = "platform"
+username = "admin"
 
 
 def run(client, cmd, timeout=120):

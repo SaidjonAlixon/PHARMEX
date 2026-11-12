@@ -249,11 +249,11 @@ function SignInView({ options }: { options: AuthOptions | null }) {
     try {
       const user = await api<{ role?: string }>('/auth/login', { identifier, password });
       if (user?.role === 'platform_admin') {
-        window.location.assign(`${homeUrl.replace(/\/?$/, '/')}owner`);
+        window.location.replace(`${homeUrl.replace(/\/?$/, '/')}owner`);
       } else if (safeNext) {
-        window.location.assign(safeNext);
+        window.location.replace(safeNext);
       } else {
-        window.location.assign(homeUrl);
+        window.location.replace(homeUrl);
       }
       return;
     } catch (err) {

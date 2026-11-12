@@ -2191,9 +2191,36 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 .owner-company-meta { display: grid; gap: 2px; }
 .owner-company-meta b { font-size: 15px; }
 .owner-company-meta span { color: #718078; font-size: 12px; }
-.owner-company-days { font-size: 12px; font-weight: 800; color: #0b6f86; background: rgba(15,179,199,.1); padding: 6px 10px; border-radius: 999px; }
+.owner-company-days { font-size: 12px; font-weight: 800; color: #0b6f86; background: rgba(15,179,199,.1); padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
+.owner-company-days.warn { color: #9a5b00; background: rgba(245,165,36,.16); }
+.owner-company-days.ended { color: #b63d34; background: rgba(182,61,52,.12); }
+.owner-countdown { display: inline-flex; align-items: baseline; gap: 2px; font-variant-numeric: tabular-nums; }
+.owner-countdown b { font-size: 13px; }
+.owner-plan-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; font-size: 12px; color: #718078; }
+.owner-plan-badge {
+  font-style: normal; font-weight: 800; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+  color: #0b6f86; background: rgba(15,179,199,.12); border: 1px solid rgba(15,179,199,.22); padding: 3px 8px; border-radius: 999px;
+}
+.owner-sub-card {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+  padding: 12px; border-radius: 14px; background: #f6faf8; border: 1px solid #e5ece7;
+}
+.owner-sub-card > div { display: grid; gap: 3px; }
+.owner-sub-card span { font-size: 11px; color: #7a8a82; font-weight: 650; }
+.owner-sub-card b { font-size: 13.5px; color: var(--px-navy); }
 .owner-company-body { display: grid; gap: 10px; padding: 0 14px 16px; border-top: 1px solid #eef3f0; }
 .owner-actions-row { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; }
+.owner-act-banner {
+  position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 16px; background: linear-gradient(90deg, #0b1e4a, #0b6f86); color: #fff;
+  box-shadow: 0 8px 24px rgba(11,30,74,.25);
+}
+.owner-act-banner span { flex: 1; font-size: 13px; }
+.owner-act-banner b { font-weight: 800; }
+.owner-act-banner .button.ghost { color: #fff; border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.1); }
+@media (max-width: 900px) {
+  .owner-sub-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .owner-inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .owner-inline-form input, .owner-inline-form select, .owner-company-body select {
   min-height: 38px; border-radius: 10px; border: 1px solid #d7e2db; padding: 0 10px; font: inherit; background: #fff;

@@ -48,12 +48,16 @@ router.get("/me", async (_req, res): Promise<void> => {
     .orderBy(appUsersTable.id)
     .limit(1);
   const parsed = GetCurrentUserResponse.parse(user);
+  const actingAsOrgId = typeof res.locals.actAsOrgId === "number" ? res.locals.actAsOrgId : null;
+  const organization = publicOrganization((res.locals.organization as Organization | null) ?? null);
   res.json({
     ...parsed,
     isOwner: owner?.id === user.id || user.role === "platform_admin",
-    organizationId: user.organizationId,
-    organization: publicOrganization((res.locals.organization as Organization | null) ?? null),
+    organizationId: actingAsOrgId ?? user.organizationId,
+    organization,
     isPlatformAdmin: user.role === "platform_admin",
+    actingAsCompany: user.role === "platform_admin" && actingAsOrgId != null,
+    actingAsOrgId,
   });
 });
 

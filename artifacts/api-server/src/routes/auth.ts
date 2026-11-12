@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { appUsersTable, db } from "@workspace/db";
 import {
+  ACT_ORG_COOKIE,
   SESSION_COOKIE,
   SESSION_TTL_MS,
   createSessionToken,
@@ -85,6 +86,7 @@ function setSessionCookie(res: Response, token: string): void {
 
 async function startSession(res: Response, user: AppUser): Promise<void> {
   setSessionCookie(res, createSessionToken(user.id));
+  res.clearCookie(ACT_ORG_COOKIE, { path: "/" });
   await db.update(appUsersTable).set({ lastLoginAt: new Date() }).where(eq(appUsersTable.id, user.id));
 }
 
@@ -205,6 +207,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
 router.post("/auth/logout", (_req, res): void => {
   res.clearCookie(SESSION_COOKIE, { path: "/" });
+  res.clearCookie(ACT_ORG_COOKIE, { path: "/" });
   res.status(204).end();
 });
 

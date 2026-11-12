@@ -95,6 +95,7 @@ export function publicOrganization(org: Organization | null) {
     subscriptionStatus: status,
     trialEndsAt: org.trialEndsAt,
     planExpiresAt: org.planExpiresAt,
+    endsAt: endsAt ? new Date(endsAt).toISOString() : null,
     daysLeft,
     branchLimit: org.branchLimit,
     telegramEnabled: plan.telegram,
@@ -134,7 +135,10 @@ export async function countOrgBranches(organizationId: number): Promise<number> 
 }
 
 export function requireOrgId(res: Response): number | null {
-  if (res.locals.userRole === "platform_admin") return null;
+  if (res.locals.userRole === "platform_admin") {
+    const act = res.locals.actAsOrgId as number | null | undefined;
+    return typeof act === "number" ? act : null;
+  }
   const id = res.locals.organizationId as number | null | undefined;
   return typeof id === "number" ? id : null;
 }
@@ -163,9 +167,17 @@ export async function ensureBranchInOrg(branchId: number, organizationId: number
   return Boolean(row);
 }
 
-export function attachOrgLocals(req: Request, res: Response, org: Organization | null, role: string) {
+export function attachOrgLocals(
+  req: Request,
+  res: Response,
+  org: Organization | null,
+  role: string,
+  actAsOrgId: number | null = null,
+) {
   res.locals.organizationId = org?.id ?? null;
   res.locals.organization = org;
   res.locals.isPlatformAdmin = role === "platform_admin";
+  res.locals.actAsOrgId = actAsOrgId;
+  res.locals.actingAsCompany = role === "platform_admin" && actAsOrgId != null;
   res.locals.canWrite = orgAllowsWrite(org, role);
 }

@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Ban, Building2, Check, ChevronDown, ChevronRight, ClipboardList, CreditCard, KeyRound, Loader2,
+  Ban, Building2, Check, ChevronDown, ChevronRight, ClipboardList, CreditCard, ExternalLink, KeyRound, Loader2,
   LogOut, Pencil, Plus, Shield, Trash2, UserPlus, Users, Wallet,
 } from 'lucide-react';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, Redirect } from 'wouter';
 import { BrandLogo } from '@/components/brand-logo';
 import { useAccess } from '@/lib/access';
@@ -41,6 +41,7 @@ type Company = {
   subscriptionStatus: string;
   trialEndsAt: string | null;
   planExpiresAt: string | null;
+  endsAt: string | null;
   daysLeft: number | null;
   branchLimit: number | null;
   createdAt: string;
@@ -50,6 +51,37 @@ type Company = {
   userCount: number;
   paidTotal: number;
 };
+
+type Remain = { days: number; hours: number; minutes: number; seconds: number; totalMs: number };
+
+function remainFrom(iso: string | null | undefined): Remain | null {
+  if (!iso) return null;
+  const totalMs = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(totalMs)) return null;
+  const abs = Math.max(0, totalMs);
+  return {
+    totalMs,
+    days: Math.floor(abs / 86400000),
+    hours: Math.floor((abs % 86400000) / 3600000),
+    minutes: Math.floor((abs % 3600000) / 60000),
+    seconds: Math.floor((abs % 60000) / 1000),
+  };
+}
+
+function useNowTick(enabled: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [enabled]);
+  return now;
+}
+
+function formatEnds(iso: string | null | undefined) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('uz-UZ', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 
 type AppRow = {
   id: number;
@@ -102,8 +134,9 @@ export function OwnerLoginPage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
 
-  if (access.loaded && access.isPlatformAdmin) return <Redirect to="/owner" />;
-  if (access.loaded && !access.isPlatformAdmin) return <Redirect to="/" />;
+  if (access.loaded && access.isPlatformAdmin) {
+    return <Redirect to={access.actingAsCompany ? '/' : '/owner'} />;
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -112,15 +145,15 @@ export function OwnerLoginPage() {
     try {
       const user = await api<{ role: string }>('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ identifier: identifier.trim(), password }),
       });
       if (user.role !== 'platform_admin') {
-        setError('Bu sahifa faqat platforma egasi uchun.');
+        setError('Bu sahifa faqat platforma egasi uchun. Kompaniya kabineti: /sign-in');
         await api('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
         setPending(false);
         return;
       }
-      window.location.assign('/owner');
+      window.location.replace('/owner');
     } catch (err) {
       setError((err as Error).message);
       setPending(false);
@@ -132,11 +165,11 @@ export function OwnerLoginPage() {
       <form className="owner-auth-card" onSubmit={submit} data-testid="form-owner-login">
         <BrandLogo />
         <h1>Platforma egasi</h1>
-        <p>Faqat siz uchun — kompaniyalar, toʻlovlar va foydalanuvchilar boshqaruvi.</p>
+        <p>Kompaniyalar, tariflar, muddatlar va foydalanuvchilar — toʻliq boshqaruv.</p>
         {error && <div className="notice error">{error}</div>}
         <label>
           <span>Login</span>
-          <input required autoComplete="username" value={identifier} onChange={(e) => setIdentifier(e.target.value)} data-testid="input-owner-login" />
+          <input required autoComplete="username" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="admin" data-testid="input-owner-login" />
         </label>
         <label>
           <span>Parol</span>
@@ -269,8 +302,26 @@ export function OwnerConsolePage() {
 
   const companies = directory.data?.companies ?? [];
   const allPayments = useMemo(() => companies.flatMap((c) => c.payments.map((p) => ({ ...p, companyName: c.name }))), [companies]);
+  const tick = useNowTick(tab === 'companies' && companies.some((c) => !!c.endsAt));
 
-  if (access.loaded && !access.isPlatformAdmin) return <Redirect to="/owner/kirish" />;
+  const enterCompany = useMutation({
+    mutationFn: (id: number) => api<{ redirect: string }>(`/api/platform/organizations/${id}/enter`, { method: 'POST' }),
+    onSuccess: () => { window.location.assign('/'); },
+    onError: (e: Error) => setMsg(e.message),
+  });
+
+  if (!access.loaded) {
+    return (
+      <div className="owner-auth">
+        <div className="owner-auth-card" style={{ alignItems: 'center' }}>
+          <Loader2 className="spin" size={28} />
+          <p className="muted-line">Owner panel yuklanmoqda…</p>
+        </div>
+      </div>
+    );
+  }
+  if (!access.isPlatformAdmin) return <Redirect to="/owner/kirish" />;
+  if (access.actingAsCompany) return <Redirect to="/" />;
 
   const o = overview.data;
 
@@ -377,20 +428,43 @@ export function OwnerConsolePage() {
             <div className="owner-company-list">
               {companies.map((c) => {
                 const open = openId === c.id;
+                const remain = remainFrom(c.endsAt);
+                const ended = remain != null && remain.totalMs <= 0;
                 return (
-                  <article key={c.id} className={`owner-company ${open ? 'open' : ''} ${c.subscriptionStatus === 'canceled' || c.subscriptionStatus === 'past_due' ? 'muted' : ''}`}>
+                  <article key={c.id} className={`owner-company ${open ? 'open' : ''} ${c.subscriptionStatus === 'canceled' || c.subscriptionStatus === 'past_due' || ended ? 'muted' : ''}`}>
                     <button type="button" className="owner-company-head" onClick={() => setOpenId(open ? null : c.id)}>
                       <span className="owner-chev">{open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</span>
                       <div className="owner-company-meta">
                         <b>{c.name}</b>
-                        <span>#{c.id} · {c.planName} · {statusLabel(c.subscriptionStatus)} · {c.userCount} foydalanuvchi · {money(c.paidTotal)}</span>
+                        <span>#{c.id} · {statusLabel(c.subscriptionStatus)} · {c.userCount} foydalanuvchi · {money(c.paidTotal)}</span>
+                        <div className="owner-plan-row">
+                          <em className="owner-plan-badge">{c.planName}</em>
+                          <span>Tugash: {formatEnds(c.endsAt)}</span>
+                        </div>
                       </div>
-                      <div className="owner-company-days">{c.daysLeft == null ? '—' : c.daysLeft <= 0 ? 'Tugagan' : `${c.daysLeft} kun`}</div>
+                      <div className={`owner-company-days ${ended ? 'ended' : remain && remain.days <= 3 ? 'warn' : ''}`}>
+                        {remain == null ? '—' : ended ? 'Tugagan' : (
+                          <span className="owner-countdown" title="Qolgan muddat" data-tick={tick}>
+                            <b>{remain.days}</b>k <b>{String(remain.hours).padStart(2, '0')}</b>:<b>{String(remain.minutes).padStart(2, '0')}</b>:<b>{String(remain.seconds).padStart(2, '0')}</b>
+                          </span>
+                        )}
+                      </div>
                     </button>
 
                     {open && (
                       <div className="owner-company-body">
+                        <div className="owner-sub-card">
+                          <div><span>Tarif</span><b>{c.planName}</b></div>
+                          <div><span>Holat</span><b>{statusLabel(c.subscriptionStatus)}</b></div>
+                          <div><span>Tugash sanasi</span><b>{formatEnds(c.endsAt)}</b></div>
+                          <div><span>Qolgan</span><b>{remain == null ? '—' : ended ? '0 kun' : `${remain.days} kun ${String(remain.hours).padStart(2, '0')}:${String(remain.minutes).padStart(2, '0')}:${String(remain.seconds).padStart(2, '0')}`}</b></div>
+                          <div><span>Filial limiti</span><b>{c.branchLimit == null ? 'Istalgancha' : `${c.branchLimit} ta`}</b></div>
+                          <div><span>Bosh admin</span><b>{c.owner?.displayName || '—'}{c.owner?.username ? ` · ${c.owner.username}` : ''}</b></div>
+                        </div>
                         <div className="owner-actions-row">
+                          <button type="button" className="button primary" disabled={enterCompany.isPending} onClick={() => enterCompany.mutate(c.id)}>
+                            <ExternalLink size={14} /> Kabinetga kirish
+                          </button>
                           <button type="button" className="button ghost" onClick={() => setRename({ id: c.id, name: c.name })}><Pencil size={14} /> Nom</button>
                           <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ id: c.id, body: { planCode: 'starter', extendDays: 7 } })}>+7 kun</button>
                           <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ id: c.id, body: { planCode: 'business', extendMonths: 1 } })}>Biznes</button>
@@ -399,7 +473,7 @@ export function OwnerConsolePage() {
                           <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ id: c.id, body: { subscriptionStatus: 'active' } })}><Check size={14} /> Faollashtirish</button>
                           <button type="button" className="button ghost" onClick={() => { if (confirm(`${c.name} ni vaqtincha cheklaysizmi?`)) suspendOrg.mutate(c.id); }}><Ban size={14} /> Cheklash</button>
                           <button type="button" className="button ghost" onClick={() => { if (confirm(`${c.name} ni butunlay oʻchirasizmi?`)) deleteOrg.mutate(c.id); }}><Trash2 size={14} /> Oʻchirish</button>
-                          <button type="button" className="button primary" onClick={() => setNewUser({ orgId: c.id, displayName: '', phone: '', role: 'admin' })}><UserPlus size={14} /> Foydalanuvchi</button>
+                          <button type="button" className="button ghost" onClick={() => setNewUser({ orgId: c.id, displayName: '', phone: '', role: 'admin' })}><UserPlus size={14} /> Foydalanuvchi</button>
                         </div>
 
                         {rename?.id === c.id && (

@@ -17,6 +17,8 @@ const scrypt = promisify(scryptCallback) as (
 
 export const localAuthEnabled = process.env.AUTH_MODE === "local";
 export const SESSION_COOKIE = "pharmxs_session";
+/** Platforma egasi vaqtincha kompaniya kabinetiga kirganda */
+export const ACT_ORG_COOKIE = "pharmxs_act_org";
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 function sessionSecret(): string {
@@ -99,6 +101,33 @@ export function readSessionToken(token: unknown): number | null {
       return null;
     }
     return uid;
+  } catch {
+    return null;
+  }
+}
+
+export function createActOrgToken(orgId: number): string {
+  const payload = Buffer.from(
+    JSON.stringify({ org: orgId, exp: Date.now() + SESSION_TTL_MS }),
+  ).toString("base64url");
+  return `${payload}.${sign(`act:${payload}`)}`;
+}
+
+export function readActOrgToken(token: unknown): number | null {
+  if (typeof token !== "string") return null;
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return null;
+  const expected = Buffer.from(sign(`act:${payload}`));
+  const actual = Buffer.from(signature);
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    return null;
+  }
+  try {
+    const { org, exp } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (typeof org !== "number" || typeof exp !== "number" || exp < Date.now()) {
+      return null;
+    }
+    return org;
   } catch {
     return null;
   }
