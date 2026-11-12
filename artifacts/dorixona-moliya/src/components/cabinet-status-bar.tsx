@@ -1,5 +1,5 @@
 import { Building2, Clock3 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import type { OrgBrief } from '@/lib/access';
 
 const TEST_MARQUEE =
@@ -34,58 +34,95 @@ function useCountdown(endsAt: string | null | undefined) {
   return { days, hours, minutes, seconds, ended: diff <= 0 };
 }
 
-export function CabinetStatusBar({ organization }: { organization: OrgBrief | null }) {
+function OrgStrip({
+  organization,
+  pageLabel,
+}: {
+  organization: OrgBrief | null;
+  pageLabel?: string;
+}) {
   const countdown = useCountdown(organization?.endsAt);
   const plan = organization?.planName || organization?.planCode || '—';
   const name = organization?.name || 'Kompaniya';
 
   return (
-    <div className="cabinet-status" data-testid="cabinet-status-bar">
-      <div className="cabinet-status-main">
-        <div className="cabinet-org">
-          <span className="cabinet-org-icon" aria-hidden><Building2 size={15} /></span>
-          <div className="cabinet-org-text">
-            <span className="cabinet-org-label">Kompaniya</span>
-            <b title={name}>{name}</b>
-          </div>
-          <span className="cabinet-plan-chip" title={`Tarif: ${plan}`}>{plan}</span>
+    <div className="cabinet-status-main" data-testid="cabinet-status-bar">
+      <div className="cabinet-org">
+        <span className="cabinet-org-icon" aria-hidden><Building2 size={14} /></span>
+        <div className="cabinet-org-text">
+          <span className="cabinet-org-label">{pageLabel || 'Kompaniya'}</span>
+          <b title={name}>{name}</b>
         </div>
-
-        <div className={`cabinet-countdown ${countdown?.ended ? 'is-ended' : ''}`} aria-live="polite">
-          <Clock3 size={14} />
-          <span className="cabinet-countdown-label">
-            {countdown?.ended ? 'Muddat tugagan' : 'Tugashiga'}
-          </span>
-          {countdown && !countdown.ended ? (
-            <div className="cabinet-ticks">
-              <span><b>{pad(countdown.days)}</b><em>kun</em></span>
-              <i>:</i>
-              <span><b>{pad(countdown.hours)}</b><em>soat</em></span>
-              <i>:</i>
-              <span><b>{pad(countdown.minutes)}</b><em>daq</em></span>
-              <i>:</i>
-              <span><b>{pad(countdown.seconds)}</b><em>sek</em></span>
-            </div>
-          ) : (
-            <strong className="cabinet-ended-note">Tarifni yangilang</strong>
-          )}
-        </div>
+        <span className="cabinet-plan-chip" title={`Tarif: ${plan}`}>{plan}</span>
       </div>
 
-      <div className="cabinet-marquee" role="status" aria-label="Platforma eʼloni">
-        <div className="cabinet-marquee-track">
-          {[0, 1].map((group) => (
-            <div key={group} className="cabinet-marquee-group" aria-hidden={group === 1 || undefined}>
-              {Array.from({ length: MARQUEE_COPIES }, (_, i) => (
-                <span key={i} className="cabinet-marquee-item">
-                  <em aria-hidden>●</em>
-                  {TEST_MARQUEE}
-                </span>
-              ))}
-            </div>
-          ))}
-        </div>
+      <div className={`cabinet-countdown ${countdown?.ended ? 'is-ended' : ''}`} aria-live="polite">
+        <Clock3 size={13} />
+        <span className="cabinet-countdown-label">
+          {countdown?.ended ? 'Tugagan' : 'Tugashiga'}
+        </span>
+        {countdown && !countdown.ended ? (
+          <div className="cabinet-ticks">
+            <span><b>{pad(countdown.days)}</b><em>kun</em></span>
+            <i>:</i>
+            <span><b>{pad(countdown.hours)}</b><em>soat</em></span>
+            <i>:</i>
+            <span><b>{pad(countdown.minutes)}</b><em>daq</em></span>
+            <i>:</i>
+            <span><b>{pad(countdown.seconds)}</b><em>sek</em></span>
+          </div>
+        ) : (
+          <strong className="cabinet-ended-note">Tarifni yangilang</strong>
+        )}
       </div>
     </div>
   );
+}
+
+function Marquee() {
+  return (
+    <div className="cabinet-marquee" role="status" aria-label="Platforma eʼloni">
+      <div className="cabinet-marquee-track">
+        {[0, 1].map((group) => (
+          <div key={group} className="cabinet-marquee-group" aria-hidden={group === 1 || undefined}>
+            {Array.from({ length: MARQUEE_COPIES }, (_, i) => (
+              <span key={i} className="cabinet-marquee-item">
+                <em aria-hidden>●</em>
+                {TEST_MARQUEE}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Sticky head: top row (menu + org strip + actions) and red marquee below. */
+export function CabinetHead({
+  organization,
+  pageLabel,
+  menu,
+  actions,
+}: {
+  organization: OrgBrief | null;
+  pageLabel?: string;
+  menu: ReactNode;
+  actions: ReactNode;
+}) {
+  return (
+    <header className="cabinet-head">
+      <div className="cabinet-head-row">
+        {menu}
+        <OrgStrip organization={organization} pageLabel={pageLabel} />
+        {actions}
+      </div>
+      <Marquee />
+    </header>
+  );
+}
+
+/** @deprecated use CabinetHead */
+export function CabinetStatusBar(props: { organization: OrgBrief | null; pageLabel?: string }) {
+  return <OrgStrip {...props} />;
 }
