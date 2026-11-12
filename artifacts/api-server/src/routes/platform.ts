@@ -138,6 +138,19 @@ router.patch("/platform/organizations/:id", async (req, res): Promise<void> => {
       patch.subscriptionStatus = "active";
     }
   }
+  if (typeof req.body?.planExpiresAt === "string" && req.body.planExpiresAt.trim()) {
+    const ends = new Date(req.body.planExpiresAt);
+    if (!Number.isNaN(ends.getTime())) {
+      patch.planExpiresAt = ends;
+      if (ends.getTime() > Date.now()) patch.subscriptionStatus = "active";
+    }
+  }
+  if (typeof req.body?.branchLimit === "number" && Number.isFinite(req.body.branchLimit)) {
+    patch.branchLimit = Math.max(0, Math.floor(req.body.branchLimit));
+  }
+  if (req.body?.branchLimit === null) {
+    patch.branchLimit = null;
+  }
   if (Object.keys(patch).length === 0) {
     res.status(400).json({ error: "Oʻzgarish yoʻq." });
     return;

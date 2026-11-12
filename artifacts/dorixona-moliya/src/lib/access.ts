@@ -57,6 +57,7 @@ export function useAccess() {
     organization,
     actingAsCompany,
     subscriptionStatus: sub,
-    subscriptionBlocked: sub === 'past_due' || sub === 'canceled',
+    // Platforma egasi kompaniyaga kirganda cheklov yoʻq — boshqaruv uchun.
+    subscriptionBlocked: (sub === 'past_due' || sub === 'canceled') && !actingAsCompany,
   };
 }

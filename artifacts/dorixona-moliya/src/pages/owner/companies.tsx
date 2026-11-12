@@ -1,5 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, ExternalLink, Search } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Ban, Building2, Check, ChevronLeft, ChevronRight, Clock3, ExternalLink, Search, Shield, Users,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useSearch } from 'wouter';
 import { OwnerShell } from './shell';
@@ -28,8 +30,10 @@ function useQueryMap() {
 
 export function OwnerCompaniesPage() {
   const [, setLoc] = useLocation();
+  const qc = useQueryClient();
   const params = useQueryMap();
   const [q, setQ] = useState(params.get('q') || '');
+  const [msg, setMsg] = useState('');
   const status = params.get('status') || '';
   const planCode = params.get('planCode') || '';
   const endingSoon = params.get('endingSoon') === '1';
@@ -57,21 +61,50 @@ export function OwnerCompaniesPage() {
     },
   });
 
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['owner-crm-companies'] });
+    void qc.invalidateQueries({ queryKey: ['owner-crm-dashboard'] });
+  };
+
+  const patchOrg = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
+      ownerApi(`/api/platform/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => { setMsg('Yangilandi'); refresh(); },
+    onError: (e: Error) => setMsg(e.message),
+  });
+  const suspend = useMutation({
+    mutationFn: (id: number) => ownerApi(`/api/platform/organizations/${id}`, { method: 'DELETE' }),
+    onSuccess: () => { setMsg('Kompaniya cheklandi'); refresh(); },
+    onError: (e: Error) => setMsg(e.message),
+  });
+  const enter = useMutation({
+    mutationFn: (id: number) => ownerApi(`/api/platform/organizations/${id}/enter`, { method: 'POST' }),
+    onSuccess: () => window.location.assign('/'),
+    onError: (e: Error) => setMsg(e.message),
+  });
+
   const stats = list.data?.stats;
   const totalPages = Math.max(1, Math.ceil((list.data?.total || 0) / 20));
+  const items = list.data?.items ?? [];
 
   return (
     <OwnerShell>
-      <PageHeader title="Kompaniyalar" text="Har bir mijoz kompaniyasi, tarif, muddat, filial va foydalanuvchilar — alohida CRM." />
+      <PageHeader
+        title="Kompaniyalar"
+        text="Har bir mijoz alohida tenant. Tarif, muddat, foydalanuvchi va kabinet — shu yerdan toʻliq boshqariladi."
+      />
+
       <div className="ocrm-kpi-grid compact">
         <KpiCard label="Jami" value={stats?.total ?? '—'} active={!status && !endingSoon} onClick={() => setFilter({ status: null, endingSoon: null })} />
         <KpiCard label="Faol" value={stats?.active ?? '—'} active={status === 'active'} onClick={() => setFilter({ status: 'active', endingSoon: null })} />
         <KpiCard label="Sinov" value={stats?.trialing ?? '—'} active={status === 'trialing'} onClick={() => setFilter({ status: 'trialing', endingSoon: null })} />
         <KpiCard label="Toʻlov kutilmoqda" value={stats?.withPendingPay ?? '—'} />
         <KpiCard label="7 kun ichida" value={stats?.endingSoon ?? '—'} active={endingSoon} onClick={() => setFilter({ endingSoon: '1', status: null })} />
-        <KpiCard label="Tugagan" value={stats?.pastDue ?? '—'} active={status === 'past_due'} onClick={() => setFilter({ status: 'past_due', endingSoon: null })} />
+        <KpiCard label="Muddati tugagan" value={stats?.pastDue ?? '—'} active={status === 'past_due'} onClick={() => setFilter({ status: 'past_due', endingSoon: null })} />
         <KpiCard label="Bloklangan" value={stats?.canceled ?? '—'} active={status === 'canceled'} onClick={() => setFilter({ status: 'canceled', endingSoon: null })} />
       </div>
+
+      {msg && <div className="notice">{msg}</div>}
 
       <section className="ocrm-card">
         <div className="ocrm-toolbar">
@@ -95,53 +128,69 @@ export function OwnerCompaniesPage() {
           <button type="button" className="button ghost" onClick={() => { setQ(''); setLoc('/owner/companies'); }}>Tozalash</button>
         </div>
 
-        <div className="owner-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th><th>Kompaniya</th><th>Masʼul</th><th>Tarif</th><th>Holat</th>
-                <th>Filial</th><th>Foyd.</th><th>Tugash</th><th>Qolgan</th><th>Toʻlangan</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(list.data?.items ?? []).map((c) => (
-                <tr key={c.id}>
-                  <td>#{c.id}</td>
-                  <td>
+        <div className="ocrm-company-grid">
+          {items.map((c) => {
+            const ended = c.daysLeft != null && c.daysLeft <= 0;
+            const warn = c.daysLeft != null && c.daysLeft > 0 && c.daysLeft <= 7;
+            return (
+              <article key={c.id} className={`ocrm-co ${c.subscriptionStatus === 'canceled' || ended ? 'is-muted' : ''}`}>
+                <header className="ocrm-co-head">
+                  <div className="ocrm-co-title">
+                    <span className="ocrm-co-id">#{c.id}</span>
                     <Link href={`/owner/companies/${c.id}`}><b>{c.name}</b></Link>
-                    <div className="muted-line">{formatDate(c.createdAt)}</div>
-                  </td>
-                  <td>
-                    {c.owner?.displayName || '—'}
-                    <div className="muted-line">{c.owner?.phone || c.owner?.email || '—'}</div>
-                  </td>
-                  <td>{c.planName}</td>
-                  <td><StatusBadge tone={subTone(c.subscriptionStatus)}>{subStatusLabel(c.subscriptionStatus)}</StatusBadge></td>
-                  <td>{c.branchCount}{c.branchLimit != null ? ` / ${c.branchLimit}` : ''}</td>
-                  <td>{c.userCount}</td>
-                  <td>{formatDate(c.endsAt)}</td>
-                  <td>{remainLabel(c.endsAt, c.daysLeft)}</td>
-                  <td>{money(c.paidTotal)}</td>
-                  <td className="row-actions">
-                    <Link className="button ghost" href={`/owner/companies/${c.id}`}>Batafsil</Link>
-                    <button
-                      type="button"
-                      className="button primary"
-                      onClick={async () => {
-                        await ownerApi(`/api/platform/organizations/${c.id}/enter`, { method: 'POST' });
-                        window.location.assign('/');
-                      }}
-                    >
-                      <ExternalLink size={13} /> Kirish
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!list.isLoading && !(list.data?.items?.length) && (
-                <tr><td colSpan={11}><EmptyState text="Kompaniya topilmadi." /></td></tr>
-              )}
-            </tbody>
-          </table>
+                    <StatusBadge tone={subTone(c.subscriptionStatus)}>{subStatusLabel(c.subscriptionStatus)}</StatusBadge>
+                  </div>
+                  <div className={`ocrm-co-remain ${ended ? 'ended' : warn ? 'warn' : ''}`}>
+                    <Clock3 size={14} />
+                    {remainLabel(c.endsAt, c.daysLeft)}
+                  </div>
+                </header>
+
+                <div className="ocrm-co-grid">
+                  <div><span>Tarif</span><b>{c.planName}</b></div>
+                  <div><span>Tugash</span><b>{formatDate(c.endsAt)}</b></div>
+                  <div><span>Masʼul</span><b>{c.owner?.displayName || '—'}</b></div>
+                  <div><span>Aloqa</span><b>{c.owner?.phone || c.owner?.email || '—'}</b></div>
+                  <div><span>Filial</span><b>{c.branchCount}{c.branchLimit != null ? ` / ${c.branchLimit}` : ''}</b></div>
+                  <div><span>Foydalanuvchi</span><b>{c.userCount}</b></div>
+                  <div><span>Toʻlangan</span><b>{money(c.paidTotal)}</b></div>
+                  <div><span>Kutilayotgan</span><b>{money(c.pendingTotal)}</b></div>
+                </div>
+
+                <div className="ocrm-co-actions">
+                  <Link className="button ghost" href={`/owner/companies/${c.id}`}>
+                    <Building2 size={14} /> Batafsil boshqaruv
+                  </Link>
+                  <button type="button" className="button primary" disabled={enter.isPending} onClick={() => enter.mutate(c.id)}>
+                    <ExternalLink size={14} /> Kabinetga kirish
+                  </button>
+                  <button type="button" className="button ghost" disabled={patchOrg.isPending} onClick={() => patchOrg.mutate({ id: c.id, body: { planCode: c.planCode, extendDays: 7 } })}>
+                    +7 kun
+                  </button>
+                  <button type="button" className="button ghost" disabled={patchOrg.isPending} onClick={() => patchOrg.mutate({ id: c.id, body: { planCode: c.planCode, extendMonths: 1 } })}>
+                    +30 kun
+                  </button>
+                  <button type="button" className="button ghost" disabled={patchOrg.isPending} onClick={() => patchOrg.mutate({ id: c.id, body: { subscriptionStatus: 'active' } })}>
+                    <Check size={14} /> Faollashtirish
+                  </button>
+                  <button
+                    type="button"
+                    className="button ghost"
+                    disabled={suspend.isPending}
+                    onClick={() => { if (confirm(`${c.name} ni cheklaysizmi? Kabinet yopiladi.`)) suspend.mutate(c.id); }}
+                  >
+                    <Ban size={14} /> Cheklash
+                  </button>
+                </div>
+
+                <footer className="ocrm-co-foot">
+                  <span><Users size={13} /> {c.owner?.username ? `login: ${c.owner.username}` : 'login yoʻq'}</span>
+                  <span><Shield size={13} /> Roʻyxat: {formatDate(c.createdAt)}</span>
+                </footer>
+              </article>
+            );
+          })}
+          {!list.isLoading && !items.length && <EmptyState text="Kompaniya topilmadi. Filtrni oʻzgartiring yoki arizani tasdiqlang." />}
         </div>
 
         <div className="ocrm-pager">

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Ban, Check, ExternalLink, KeyRound, Pencil, Plus, Trash2, UserPlus,
+  Ban, CalendarClock, Check, ExternalLink, KeyRound, Pencil, Plus, Trash2, UserPlus,
 } from 'lucide-react';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Link, Redirect } from 'wouter';
 import { OwnerShell } from './shell';
 import {
@@ -32,12 +32,23 @@ type Detail = {
   totals: { paidTotal: number; pendingTotal: number; userCount: number; branchCount: number; activeBranches: number };
 };
 
+function toDateInput(iso: string | null | undefined) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
 export function OwnerCompanyDetailPage({ id }: { id: number }) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<'overview' | 'plan' | 'payments' | 'branches' | 'users' | 'audit'>('overview');
   const [msg, setMsg] = useState('');
   const [creds, setCreds] = useState<Creds>(null);
   const [rename, setRename] = useState('');
+  const [planCode, setPlanCode] = useState('starter');
+  const [customDays, setCustomDays] = useState('30');
+  const [endsDate, setEndsDate] = useState('');
+  const [branchLimit, setBranchLimit] = useState('');
   const [newUser, setNewUser] = useState<{ displayName: string; phone: string; role: string } | null>(null);
 
   const detail = useQuery({
@@ -45,6 +56,15 @@ export function OwnerCompanyDetailPage({ id }: { id: number }) {
     queryFn: () => ownerApi<Detail>(`/api/platform/crm/companies/${id}`),
     enabled: Number.isFinite(id),
   });
+
+  useEffect(() => {
+    const o = detail.data?.organization;
+    if (!o) return;
+    setPlanCode(o.planCode || 'starter');
+    setEndsDate(toDateInput(o.endsAt || o.planExpiresAt));
+    setBranchLimit(o.branchLimit == null ? '' : String(o.branchLimit));
+    if (!rename) setRename(o.name);
+  }, [detail.data?.organization?.id, detail.data?.organization?.updatedAt]);
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['owner-crm-company', id] });
@@ -55,12 +75,12 @@ export function OwnerCompanyDetailPage({ id }: { id: number }) {
   const patchOrg = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       ownerApi(`/api/platform/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-    onSuccess: () => { setMsg('Saqlandi'); setRename(''); refresh(); },
+    onSuccess: () => { setMsg('Saqlandi'); refresh(); },
     onError: (e: Error) => setMsg(e.message),
   });
   const suspend = useMutation({
     mutationFn: () => ownerApi(`/api/platform/organizations/${id}`, { method: 'DELETE' }),
-    onSuccess: () => { setMsg('Kompaniya cheklandi'); refresh(); },
+    onSuccess: () => { setMsg('Kompaniya cheklandi — kabinet yopildi'); refresh(); },
     onError: (e: Error) => setMsg(e.message),
   });
   const hardDelete = useMutation({
@@ -107,6 +127,26 @@ export function OwnerCompanyDetailPage({ id }: { id: number }) {
 
   const o = detail.data?.organization;
   const totals = detail.data?.totals;
+  const busy = patchOrg.isPending || suspend.isPending || hardDelete.isPending || enter.isPending;
+
+  const savePlan = (e: FormEvent) => {
+    e.preventDefault();
+    const body: Record<string, unknown> = { planCode };
+    const days = Number(customDays);
+    if (Number.isFinite(days) && days > 0) body.extendDays = days;
+    if (branchLimit.trim() === '') body.branchLimit = null;
+    else {
+      const lim = Number(branchLimit);
+      if (Number.isFinite(lim)) body.branchLimit = lim;
+    }
+    patchOrg.mutate(body);
+  };
+
+  const saveEnds = (e: FormEvent) => {
+    e.preventDefault();
+    if (!endsDate) return;
+    patchOrg.mutate({ planCode, planExpiresAt: `${endsDate}T23:59:59.000Z` });
+  };
 
   return (
     <OwnerShell>
@@ -123,13 +163,14 @@ export function OwnerCompanyDetailPage({ id }: { id: number }) {
         text={o ? `#${o.id} · ${o.planName} · ${remainLabel(o.endsAt, o.daysLeft)}` : 'Yuklanmoqda…'}
         actions={
           <>
-            <button type="button" className="button primary" disabled={enter.isPending} onClick={() => enter.mutate()}>
+            <button type="button" className="button primary" disabled={busy} onClick={() => enter.mutate()}>
               <ExternalLink size={14} /> Kabinetga kirish
             </button>
-            <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ planCode: 'starter', extendDays: 7 })}>+7 kun</button>
-            <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ subscriptionStatus: 'active' })}><Check size={14} /> Faollashtirish</button>
-            <button type="button" className="button ghost" onClick={() => { if (confirm('Kompaniyani cheklaysizmi?')) suspend.mutate(); }}><Ban size={14} /> Cheklash</button>
-            <button type="button" className="button ghost" onClick={() => { if (confirm('Butunlay oʻchirish?')) hardDelete.mutate(); }}><Trash2 size={14} /> Oʻchirish</button>
+            <button type="button" className="button ghost" disabled={busy} onClick={() => patchOrg.mutate({ planCode: o?.planCode || 'starter', extendDays: 7 })}>+7 kun</button>
+            <button type="button" className="button ghost" disabled={busy} onClick={() => patchOrg.mutate({ planCode: o?.planCode || 'starter', extendMonths: 1 })}>+30 kun</button>
+            <button type="button" className="button ghost" disabled={busy} onClick={() => patchOrg.mutate({ subscriptionStatus: 'active' })}><Check size={14} /> Faollashtirish</button>
+            <button type="button" className="button ghost" disabled={busy} onClick={() => { if (confirm('Kompaniyani cheklaysizmi? Kabinet yopiladi.')) suspend.mutate(); }}><Ban size={14} /> Cheklash</button>
+            <button type="button" className="button ghost" disabled={busy} onClick={() => { if (confirm('Kompaniyani butunlay oʻchirish? Bu qaytarilmaydi.')) hardDelete.mutate(); }}><Trash2 size={14} /> Oʻchirish</button>
           </>
         }
       />
@@ -160,7 +201,7 @@ export function OwnerCompanyDetailPage({ id }: { id: number }) {
       <div className="owner-tabs">
         {([
           ['overview', 'Umumiy'],
-          ['plan', 'Tarif'],
+          ['plan', 'Tarif va muddat'],
           ['payments', 'Toʻlovlar'],
           ['branches', 'Filiallar'],
           ['users', 'Foydalanuvchilar'],
@@ -189,7 +230,7 @@ export function OwnerCompanyDetailPage({ id }: { id: number }) {
           >
             <Pencil size={14} />
             <input placeholder="Yangi nom" value={rename || o?.name || ''} onChange={(e) => setRename(e.target.value)} />
-            <button type="submit" className="button primary">Nomni saqlash</button>
+            <button type="submit" className="button primary" disabled={busy}>Nomni saqlash</button>
           </form>
         </section>
       )}
@@ -204,12 +245,46 @@ export function OwnerCompanyDetailPage({ id }: { id: number }) {
             <div><span>Filial limiti</span><b>{o?.branchLimit == null ? 'Istalgancha' : o.branchLimit}</b></div>
             <div><span>Qolgan</span><b>{remainLabel(o?.endsAt, o?.daysLeft)}</b></div>
           </div>
-          <div className="owner-actions-row">
-            <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ planCode: 'business', extendMonths: 1 })}>Biznes +30 kun</button>
-            <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ planCode: 'enterprise', extendMonths: 1 })}>Korxona +30 kun</button>
-            <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ planCode: 'custom', extendMonths: 1 })}>Maxsus +30 kun</button>
-            <button type="button" className="button ghost" onClick={() => patchOrg.mutate({ planCode: 'starter', extendDays: 7 })}>Boshlangʻich +7 kun</button>
-          </div>
+
+          <form className="ocrm-plan-form" onSubmit={savePlan}>
+            <h3>Tarifni yangilash</h3>
+            <div className="ocrm-plan-grid">
+              <label>
+                Tarif
+                <select value={planCode} onChange={(e) => setPlanCode(e.target.value)}>
+                  <option value="starter">Boshlangʻich</option>
+                  <option value="business">Biznes</option>
+                  <option value="enterprise">Korxona</option>
+                  <option value="custom">Maxsus</option>
+                </select>
+              </label>
+              <label>
+                Qoʻshimcha kun
+                <input type="number" min={1} max={3650} value={customDays} onChange={(e) => setCustomDays(e.target.value)} />
+              </label>
+              <label>
+                Filial limiti (boʻsh = cheksiz)
+                <input type="number" min={0} max={999} value={branchLimit} onChange={(e) => setBranchLimit(e.target.value)} placeholder="Cheksiz" />
+              </label>
+            </div>
+            <div className="owner-actions-row">
+              <button type="submit" className="button primary" disabled={busy}>Saqlash va muddat berish</button>
+              <button type="button" className="button ghost" disabled={busy} onClick={() => patchOrg.mutate({ planCode: 'business', extendMonths: 1 })}>Biznes +30</button>
+              <button type="button" className="button ghost" disabled={busy} onClick={() => patchOrg.mutate({ planCode: 'enterprise', extendMonths: 1 })}>Korxona +30</button>
+              <button type="button" className="button ghost" disabled={busy} onClick={() => patchOrg.mutate({ planCode: 'starter', extendDays: 7 })}>Sinov +7</button>
+            </div>
+          </form>
+
+          <form className="ocrm-plan-form" onSubmit={saveEnds}>
+            <h3><CalendarClock size={16} /> Aniq tugash sanasi</h3>
+            <div className="ocrm-plan-grid">
+              <label>
+                Tugash kuni
+                <input type="date" required value={endsDate} onChange={(e) => setEndsDate(e.target.value)} />
+              </label>
+            </div>
+            <button type="submit" className="button primary" disabled={busy || !endsDate}>Sanani belgilash</button>
+          </form>
         </section>
       )}
 

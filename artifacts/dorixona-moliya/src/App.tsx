@@ -54,6 +54,7 @@ import {
 } from '@/pages/owner';
 import { roleLabel, useAccess } from '@/lib/access';
 import { isOwnerSurface, OWNER_PUBLIC_URL } from '@/lib/surface';
+import { SubscriptionGate } from '@/components/subscription-gate';
 import { Route, Switch, useLocation, Router as WouterRouter, Redirect, Link } from 'wouter';
 
 const queryClient = new QueryClient({
@@ -175,6 +176,14 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
     }
     return <Redirect to="/owner" />;
   }
+  const onPlans = location === '/tariflar' || location.startsWith('/tariflar/');
+  const paywalled = access.subscriptionBlocked && !onPlans;
+  if (access.subscriptionBlocked) {
+    items = items.filter((item) => item.href === '/tariflar');
+    if (!items.some((item) => item.href === '/tariflar')) {
+      items = [{ href: '/tariflar', label: 'Tariflar', icon: BadgePercent }];
+    }
+  }
   const period = filters.period ?? DEFAULT_PERIOD;
   // The range bar edits a draft; data follows only after “Tasdiqlash”.
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -198,12 +207,12 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
   const filtered = period !== DEFAULT_PERIOD || !!filters.branchId;
   const scopeText = period === 'custom' ? 'Barcha davr' : filters.dateFrom === filters.dateTo ? date(filters.dateFrom) : `${date(filters.dateFrom)} — ${date(filters.dateTo)}`;
   // Pages without dated data do not show the period bar.
-  const showPeriod = !['/settings', '/users', '/catalog', '/tariflar', '/platform'].some(path => location === path || location.startsWith(`${path}/`));
+  const showPeriod = !paywalled && !['/settings', '/users', '/catalog', '/tariflar', '/platform'].some(path => location === path || location.startsWith(`${path}/`));
   const exitCompany = async () => {
     await fetch('/api/platform/exit-company', { method: 'POST', credentials: 'include' });
     window.location.assign('/owner');
   };
-  return <div className="app-shell">
+  return <div className={`app-shell ${paywalled ? 'is-paywalled' : ''}`}>
     {access.actingAsCompany && access.organization && (
       <div className="owner-act-banner" data-testid="banner-acting-company">
         <Building2 size={15} />
@@ -218,9 +227,13 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
       </div>
     )}
     <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`}>
-      <Link href="/" className="brand-lockup brand-card" data-testid="link-brand" aria-label="PHARMXS"><BrandLogo /></Link>
-      {access.subscriptionBlocked && <div className="sub-banner" data-testid="banner-subscription">Obuna tugagan — <Link href="/tariflar">tarifni yangilang</Link></div>}
-      <div className="workspace-label">BOʻLIMLAR</div>
+      <Link href={paywalled ? '/tariflar' : '/'} className="brand-lockup brand-card" data-testid="link-brand" aria-label="PHARMXS"><BrandLogo /></Link>
+      {access.subscriptionBlocked && (
+        <div className="sub-banner" data-testid="banner-subscription">
+          Kabinet cheklangan — <Link href="/tariflar">toʻlov va tariflar</Link>
+        </div>
+      )}
+      <div className="workspace-label">{access.subscriptionBlocked ? 'FAQAT TOʻLOV' : 'BOʻLIMLAR'}</div>
       <nav className="primary-nav" aria-label="Asosiy navigatsiya">{items.map(item => {
         const active = item.href === '/' ? location === '/' : location === item.href || location.startsWith(`${item.href}/`);
         const Icon = item.icon;
@@ -263,24 +276,33 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
     </aside>
     {menuOpen && <button className="mobile-shade" onClick={() => setMenuOpen(false)} aria-label="Menyuni yopish" />}
     <main className="main-area">
-      <header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(!menuOpen)} data-testid="button-menu"><Menu size={20} /></button><div className="crumb"><span>Hisob markazi</span><ArrowRight size={13} /><strong>{items.find(n => n.href === location || (n.href !== '/' && location.startsWith(n.href)))?.label || 'Filial maʼlumoti'}</strong></div><div className="top-actions"><ThemeToggle /><FomLive /><SelectMenu caption="FILIAL" ariaLabel="Filial" className="branch-menu" value={filters.branchId} onChange={branchId => setFilters({ ...filters, branchId })} options={branchOptions} align="right" testId="select-global-branch" /><span className="header-avatar">{(user?.firstName || 'M').slice(0, 1).toUpperCase()}</span></div></header>
+      <header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(!menuOpen)} data-testid="button-menu"><Menu size={20} /></button><div className="crumb"><span>Hisob markazi</span><ArrowRight size={13} /><strong>{paywalled ? 'Obuna' : (items.find(n => n.href === location || (n.href !== '/' && location.startsWith(n.href)))?.label || 'Filial maʼlumoti')}</strong></div><div className="top-actions"><ThemeToggle />{!paywalled && <><FomLive /><SelectMenu caption="FILIAL" ariaLabel="Filial" className="branch-menu" value={filters.branchId} onChange={branchId => setFilters({ ...filters, branchId })} options={branchOptions} align="right" testId="select-global-branch" /></>}<span className="header-avatar">{(user?.firstName || 'M').slice(0, 1).toUpperCase()}</span></div></header>
       <div className="content-area">
-      {showPeriod && <section className="period-bar" aria-label="Davr filtri" data-testid="bar-period">
-        <div className="period-head"><CalendarDays size={15} /><b>Davr</b><span className="period-scope">{scopeText}{selectedLabel && <> · {selectedLabel}</>}</span>
-          {filtered && <button type="button" className="period-clear" onClick={clearFilters} data-testid="button-clear-filters"><X size={13} /> Tozalash</button>}
-        </div>
-        <div className="period-chips" role="group">{periodOptions.map(option => {
-          const Icon = option.icon;
-          const active = rangeOpen ? option.value === 'range' : option.value === period;
-          return <button key={option.value} type="button" className={active ? 'selected' : ''} onClick={() => choosePeriod(option.value)} title={option.hint} data-testid={`period-${option.value}`}>{Icon && <Icon size={14} />}{option.label}</button>;
-        })}</div>
-        {rangeOpen && <form className="period-range" onSubmit={applyRange} data-testid="bar-date-range">
-          <label>Sanadan<input type="date" required value={draft.from} max={draft.to || undefined} onChange={e => setDraft({ ...draft, from: e.target.value })} data-testid="input-global-from" /></label>
-          <label>sanagacha<input type="date" required value={draft.to} min={draft.from || undefined} max={todayDay()} onChange={e => setDraft({ ...draft, to: e.target.value })} data-testid="input-global-to" /></label>
-          <button type="submit" className="button primary small" disabled={!draft.from || !draft.to || draft.from > draft.to} data-testid="button-apply-range"><Check size={13} /> Tasdiqlash</button>
-          <button type="button" className="button secondary small" onClick={() => setRangeOpen(false)} data-testid="button-cancel-range">Bekor qilish</button>
-        </form>}
-      </section>}{branches.some(b => b.source === 'demo') && location !== '/' && location !== '/profit' && location !== '/reports' && (!location.startsWith('/branches/') || location === '/branches') && <DataMode mode="demo" />}{children}</div>
+      {paywalled ? (
+        <SubscriptionGate organization={access.organization} status={access.subscriptionStatus} />
+      ) : (
+        <>
+          {showPeriod && <section className="period-bar" aria-label="Davr filtri" data-testid="bar-period">
+            <div className="period-head"><CalendarDays size={15} /><b>Davr</b><span className="period-scope">{scopeText}{selectedLabel && <> · {selectedLabel}</>}</span>
+              {filtered && <button type="button" className="period-clear" onClick={clearFilters} data-testid="button-clear-filters"><X size={13} /> Tozalash</button>}
+            </div>
+            <div className="period-chips" role="group">{periodOptions.map(option => {
+              const Icon = option.icon;
+              const active = rangeOpen ? option.value === 'range' : option.value === period;
+              return <button key={option.value} type="button" className={active ? 'selected' : ''} onClick={() => choosePeriod(option.value)} title={option.hint} data-testid={`period-${option.value}`}>{Icon && <Icon size={14} />}{option.label}</button>;
+            })}</div>
+            {rangeOpen && <form className="period-range" onSubmit={applyRange} data-testid="bar-date-range">
+              <label>Sanadan<input type="date" required value={draft.from} max={draft.to || undefined} onChange={e => setDraft({ ...draft, from: e.target.value })} data-testid="input-global-from" /></label>
+              <label>sanagacha<input type="date" required value={draft.to} min={draft.from || undefined} max={todayDay()} onChange={e => setDraft({ ...draft, to: e.target.value })} data-testid="input-global-to" /></label>
+              <button type="submit" className="button primary small" disabled={!draft.from || !draft.to || draft.from > draft.to} data-testid="button-apply-range"><Check size={13} /> Tasdiqlash</button>
+              <button type="button" className="button secondary small" onClick={() => setRangeOpen(false)} data-testid="button-cancel-range">Bekor qilish</button>
+            </form>}
+          </section>}
+          {branches.some(b => b.source === 'demo') && location !== '/' && location !== '/profit' && location !== '/reports' && (!location.startsWith('/branches/') || location === '/branches') && <DataMode mode="demo" />}
+          {children}
+        </>
+      )}
+      </div>
       <footer className="app-footer"><span>PHARMXS <span className="footer-dot">/</span> Moliyaviy boshqaruv</span><span>Maʼlumotlar manbasi va yangilanish vaqti har bir boʻlimda koʻrsatiladi</span></footer>
     </main>
   </div>;
