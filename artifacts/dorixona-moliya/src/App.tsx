@@ -61,6 +61,7 @@ import {
 import { roleLabel, useAccess } from '@/lib/access';
 import { isOwnerSurface, OWNER_PUBLIC_URL } from '@/lib/surface';
 import { SubscriptionGate } from '@/components/subscription-gate';
+import { CabinetStatusBar } from '@/components/cabinet-status-bar';
 import { Route, Switch, useLocation, Router as WouterRouter, Redirect, Link } from 'wouter';
 
 const queryClient = new QueryClient({
@@ -282,7 +283,25 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
     </aside>
     {menuOpen && <button className="mobile-shade" onClick={() => setMenuOpen(false)} aria-label="Menyuni yopish" />}
     <main className="main-area">
-      <header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(!menuOpen)} data-testid="button-menu"><Menu size={20} /></button><div className="crumb"><span>Hisob markazi</span><ArrowRight size={13} /><strong>{paywalled ? 'Obuna' : (items.find(n => n.href === location || (n.href !== '/' && location.startsWith(n.href)))?.label || 'Filial maʼlumoti')}</strong></div><div className="top-actions"><ThemeToggle />{!paywalled && <><FomLive /><SelectMenu caption="FILIAL" ariaLabel="Filial" className="branch-menu" value={filters.branchId} onChange={branchId => setFilters({ ...filters, branchId })} options={branchOptions} align="right" testId="select-global-branch" /></>}<span className="header-avatar">{(user?.firstName || 'M').slice(0, 1).toUpperCase()}</span></div></header>
+      <header className="cabinet-head">
+        <div className="topbar">
+          <button className="mobile-menu icon-button" onClick={() => setMenuOpen(!menuOpen)} data-testid="button-menu"><Menu size={20} /></button>
+          <div className="topbar-page">
+            <strong>{paywalled ? 'Obuna' : (items.find(n => n.href === location || (n.href !== '/' && location.startsWith(n.href)))?.label || 'Kabinet')}</strong>
+          </div>
+          <div className="top-actions">
+            <ThemeToggle />
+            {!paywalled && (
+              <>
+                <FomLive />
+                <SelectMenu caption="FILIAL" ariaLabel="Filial" className="branch-menu" value={filters.branchId} onChange={branchId => setFilters({ ...filters, branchId })} options={branchOptions} align="right" testId="select-global-branch" />
+              </>
+            )}
+            <span className="header-avatar">{(user?.firstName || 'M').slice(0, 1).toUpperCase()}</span>
+          </div>
+        </div>
+        <CabinetStatusBar organization={access.organization} />
+      </header>
       <div className="content-area">
       {paywalled ? (
         <SubscriptionGate organization={access.organization} status={access.subscriptionStatus} />

@@ -1,0 +1,82 @@
+import { Building2, Clock3 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import type { OrgBrief } from '@/lib/access';
+
+const TEST_MARQUEE =
+  'Bu platforma test holatda ishlamoqda — barcha imkoniyatlar ketma-ketlik bilan qoʻshib borilmoqda…!';
+
+function pad(n: number) {
+  return String(Math.max(0, n)).padStart(2, '0');
+}
+
+function useCountdown(endsAt: string | null | undefined) {
+  const target = useMemo(() => {
+    if (!endsAt) return null;
+    const t = new Date(endsAt).getTime();
+    return Number.isNaN(t) ? null : t;
+  }, [endsAt]);
+
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!target) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [target]);
+
+  if (!target) return null;
+  const diff = Math.max(0, target - now);
+  const totalSec = Math.floor(diff / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  return { days, hours, minutes, seconds, ended: diff <= 0 };
+}
+
+export function CabinetStatusBar({ organization }: { organization: OrgBrief | null }) {
+  const countdown = useCountdown(organization?.endsAt);
+  const plan = organization?.planName || organization?.planCode || '—';
+  const name = organization?.name || 'Kompaniya';
+
+  return (
+    <div className="cabinet-status" data-testid="cabinet-status-bar">
+      <div className="cabinet-status-main">
+        <div className="cabinet-org">
+          <span className="cabinet-org-icon" aria-hidden><Building2 size={15} /></span>
+          <div className="cabinet-org-text">
+            <span className="cabinet-org-label">Kompaniya</span>
+            <b title={name}>{name}</b>
+          </div>
+          <span className="cabinet-plan-chip" title={`Tarif: ${plan}`}>{plan}</span>
+        </div>
+
+        <div className={`cabinet-countdown ${countdown?.ended ? 'is-ended' : ''}`} aria-live="polite">
+          <Clock3 size={14} />
+          <span className="cabinet-countdown-label">
+            {countdown?.ended ? 'Muddat tugagan' : 'Tugashiga'}
+          </span>
+          {countdown && !countdown.ended ? (
+            <div className="cabinet-ticks">
+              <span><b>{pad(countdown.days)}</b><em>kun</em></span>
+              <i>:</i>
+              <span><b>{pad(countdown.hours)}</b><em>soat</em></span>
+              <i>:</i>
+              <span><b>{pad(countdown.minutes)}</b><em>daq</em></span>
+              <i>:</i>
+              <span><b>{pad(countdown.seconds)}</b><em>sek</em></span>
+            </div>
+          ) : (
+            <strong className="cabinet-ended-note">Tarifni yangilang</strong>
+          )}
+        </div>
+      </div>
+
+      <div className="cabinet-marquee" role="status" aria-label="Platforma eʼloni">
+        <div className="cabinet-marquee-track">
+          <span>{TEST_MARQUEE}</span>
+          <span aria-hidden>{TEST_MARQUEE}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
