@@ -44,7 +44,14 @@ import { FaqPage, FeaturesPage, HowPage, IntegrationPage, PricingPage, SecurityP
 import { AuthPage } from '@/site/auth';
 import { UsersPage, usePendingAccounts } from '@/pages/users';
 import { PlansPage } from '@/pages/plans';
-import { OwnerConsolePage, OwnerLoginPage } from '@/pages/owner';
+import {
+  OwnerLoginPage,
+  OwnerDashboardPage,
+  OwnerCompaniesPage,
+  OwnerCompanyDetailPage,
+  OwnerPaymentsPage,
+  OwnerRequestsPage,
+} from '@/pages/owner';
 import { roleLabel, useAccess } from '@/lib/access';
 import { isOwnerSurface, OWNER_PUBLIC_URL } from '@/lib/surface';
 import { Route, Switch, useLocation, Router as WouterRouter, Redirect, Link } from 'wouter';
@@ -360,7 +367,16 @@ function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: 
     <Route path="/imkoniyatlar"><PublicOnly><SiteLayout><FeaturesPage /></SiteLayout></PublicOnly></Route>
     <Route path="/tariflar"><Show when="signed-in"><Shell filters={filters} setFilters={setFilters}><PlansPage /></Shell></Show><Show when="signed-out"><PublicOnly><SiteLayout><PricingPage /></SiteLayout></PublicOnly></Show></Route>
     <Route path="/owner/kirish"><OwnerOnly><OwnerLoginPage /></OwnerOnly></Route>
-    <Route path="/owner"><OwnerOnly><Show when="signed-in"><OwnerConsolePage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner/companies/:id">{(params) => (
+      <OwnerOnly>
+        <Show when="signed-in"><OwnerCompanyDetailPage id={Number(params.id)} /></Show>
+        <Show when="signed-out"><Redirect to="/owner/kirish" /></Show>
+      </OwnerOnly>
+    )}</Route>
+    <Route path="/owner/companies"><OwnerOnly><Show when="signed-in"><OwnerCompaniesPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner/payments"><OwnerOnly><Show when="signed-in"><OwnerPaymentsPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner/requests"><OwnerOnly><Show when="signed-in"><OwnerRequestsPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner"><OwnerOnly><Show when="signed-in"><OwnerDashboardPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
     <Route path="/platform"><NotFound /></Route>
     <Route path="/admin"><NotFound /></Route>
     <Route path="/yechimlar"><SiteLayout><SolutionsPage /></SiteLayout></Route>

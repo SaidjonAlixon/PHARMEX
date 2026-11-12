@@ -16,6 +16,7 @@ import authRouter from "./auth";
 import accountsRouter from "./accounts";
 import billingRouter from "./billing";
 import platformRouter from "./platform";
+import platformCrmRouter from "./platformCrm";
 import { readOnlyForViewers, requireClerkUser } from "../middlewares/requireClerkUser";
 import { localAuthEnabled } from "../lib/localAuth";
 
@@ -31,6 +32,7 @@ router.use(readOnlyForViewers);
 router.use(identityRouter);
 if (localAuthEnabled) router.use(accountsRouter);
 router.use(platformRouter);
+router.use(platformCrmRouter);
 router.use(branchesRouter);
 router.use(dashboardRouter);
 router.use(tradeRouter);

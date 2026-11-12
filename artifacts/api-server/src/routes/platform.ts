@@ -151,6 +151,13 @@ router.patch("/platform/organizations/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Kompaniya topilmadi." });
     return;
   }
+  await db.insert(auditLogTable).values({
+    actorId: String(res.locals.userId),
+    action: "organization.updated",
+    entityType: "organization",
+    entityId: String(id),
+    summary: `${updated.name}: ${Object.keys(patch).join(", ")} yangilandi`,
+  });
   res.json(publicOrganization(updated));
 });
 
