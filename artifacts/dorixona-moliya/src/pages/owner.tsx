@@ -9,6 +9,12 @@ export { OwnerCompaniesPage } from './owner/companies';
 export { OwnerCompanyDetailPage } from './owner/company-detail';
 export { OwnerPaymentsPage } from './owner/payments';
 export { OwnerRequestsPage } from './owner/requests';
+export { OwnerPlansPage } from './owner/plans';
+export { OwnerUsersPage } from './owner/users';
+export { OwnerReportsPage } from './owner/reports';
+export { OwnerAlertsPage } from './owner/alerts';
+export { OwnerAuditPage } from './owner/audit';
+export { OwnerSettingsPage } from './owner/settings';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {

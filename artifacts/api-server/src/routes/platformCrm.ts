@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, ilike, lte, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   appUsersTable,
@@ -123,6 +123,67 @@ router.get("/platform/crm/dashboard", async (_req, res): Promise<void> => {
     last30.push({ date: d, amount: revenueByDay.get(d) || 0 });
   }
 
+  const recentOrgs = [...orgs]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 6);
+  const recentCompanyItems = [];
+  for (const o of recentOrgs) {
+    const pub = publicOrganization(o)!;
+    const [owner] = o.ownerUserId
+      ? await db
+          .select({
+            id: appUsersTable.id,
+            displayName: appUsersTable.displayName,
+          })
+          .from(appUsersTable)
+          .where(eq(appUsersTable.id, o.ownerUserId))
+          .limit(1)
+      : [null];
+    const [uc] = await db
+      .select({ n: count() })
+      .from(appUsersTable)
+      .where(eq(appUsersTable.organizationId, o.id));
+    const [bc] = await db
+      .select({ n: count() })
+      .from(branchesTable)
+      .where(eq(branchesTable.organizationId, o.id));
+    const payRows = await db
+      .select({ status: paymentsTable.status, amount: paymentsTable.amount })
+      .from(paymentsTable)
+      .where(eq(paymentsTable.organizationId, o.id));
+    const pendingPay = payRows
+      .filter((p) => p.status === "pending" || p.status === "prepared")
+      .reduce((s, p) => s + p.amount, 0);
+    recentCompanyItems.push({
+      id: o.id,
+      name: o.name,
+      planCode: pub.planCode,
+      planName: pub.planName,
+      subscriptionStatus: pub.subscriptionStatus,
+      endsAt: pub.endsAt,
+      daysLeft: pub.daysLeft,
+      ownerName: owner?.displayName || null,
+      userCount: Number(uc?.n || 0),
+      branchCount: Number(bc?.n || 0),
+      pendingAmount: pendingPay,
+      createdAt: o.createdAt,
+    });
+  }
+
+  const recentApps = await db
+    .select({
+      id: appUsersTable.id,
+      displayName: appUsersTable.displayName,
+      companyName: appUsersTable.companyName,
+      status: appUsersTable.status,
+      phone: appUsersTable.phone,
+      createdAt: appUsersTable.createdAt,
+    })
+    .from(appUsersTable)
+    .where(and(ne(appUsersTable.role, "platform_admin"), eq(appUsersTable.status, "pending")))
+    .orderBy(desc(appUsersTable.createdAt))
+    .limit(6);
+
   res.json({
     kpis: {
       companies: orgs.length,
@@ -152,6 +213,12 @@ router.get("/platform/crm/dashboard", async (_req, res): Promise<void> => {
       })),
       paymentStatuses: [...byStatus.entries()].map(([status, value]) => ({ status, value })),
     },
+    recentCompanies: recentCompanyItems,
+    recentApplications: recentApps.map((a) => ({
+      ...a,
+      typeLabel: "Yangi kompaniya arizasi",
+      ref: `ARZ-${String(a.id).padStart(3, "0")}`,
+    })),
     plans: planList(),
   });
 });
@@ -508,6 +575,7 @@ router.get("/platform/crm/applications", async (req, res): Promise<void> => {
       type: "new_company",
       typeLabel: "Yangi kompaniya arizasi",
       priority: r.status === "pending" ? "high" : "normal",
+      ref: `ARZ-${String(r.id).padStart(3, "0")}`,
     })),
     total: Number(totalRow?.n || 0),
     page,
@@ -517,6 +585,285 @@ router.get("/platform/crm/applications", async (req, res): Promise<void> => {
       total: Number(totalRow?.n || 0),
     },
   });
+});
+
+router.get("/platform/crm/users", async (req, res): Promise<void> => {
+  const { page, pageSize, offset } = pageParams(req.query as Record<string, unknown>);
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const role = typeof req.query.role === "string" ? req.query.role : "";
+  const status = typeof req.query.status === "string" ? req.query.status : "";
+  const organizationId = Number(req.query.organizationId);
+
+  const conds: SQL[] = [ne(appUsersTable.role, "platform_admin")];
+  if (role) conds.push(eq(appUsersTable.role, role));
+  if (status) conds.push(eq(appUsersTable.status, status));
+  if (Number.isFinite(organizationId) && organizationId > 0) {
+    conds.push(eq(appUsersTable.organizationId, organizationId));
+  }
+  if (q) {
+    const like = `%${q}%`;
+    conds.push(
+      or(
+        ilike(appUsersTable.displayName, like),
+        ilike(appUsersTable.email, like),
+        ilike(appUsersTable.phone, like),
+        ilike(appUsersTable.username, like),
+        ilike(appUsersTable.companyName, like),
+      )!,
+    );
+  }
+  const where = and(...conds);
+  const [totalRow] = await db.select({ n: count() }).from(appUsersTable).where(where);
+  const rows = await db
+    .select({
+      ...userPublicCols,
+      companyName: appUsersTable.companyName,
+      orgName: organizationsTable.name,
+    })
+    .from(appUsersTable)
+    .leftJoin(organizationsTable, eq(organizationsTable.id, appUsersTable.organizationId))
+    .where(where)
+    .orderBy(desc(appUsersTable.createdAt))
+    .limit(pageSize)
+    .offset(offset);
+
+  const [activeN] = await db
+    .select({ n: count() })
+    .from(appUsersTable)
+    .where(and(ne(appUsersTable.role, "platform_admin"), eq(appUsersTable.status, "active")));
+  const [pendingN] = await db
+    .select({ n: count() })
+    .from(appUsersTable)
+    .where(and(ne(appUsersTable.role, "platform_admin"), eq(appUsersTable.status, "pending")));
+  const [disabledN] = await db
+    .select({ n: count() })
+    .from(appUsersTable)
+    .where(and(ne(appUsersTable.role, "platform_admin"), eq(appUsersTable.status, "disabled")));
+
+  res.json({
+    items: rows,
+    total: Number(totalRow?.n || 0),
+    page,
+    pageSize,
+    stats: {
+      total: Number(totalRow?.n || 0),
+      active: Number(activeN?.n || 0),
+      pending: Number(pendingN?.n || 0),
+      disabled: Number(disabledN?.n || 0),
+    },
+  });
+});
+
+router.get("/platform/crm/audit", async (req, res): Promise<void> => {
+  const { page, pageSize, offset } = pageParams(req.query as Record<string, unknown>);
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const action = typeof req.query.action === "string" ? req.query.action.trim() : "";
+  const entityType = typeof req.query.entityType === "string" ? req.query.entityType.trim() : "";
+
+  const conds: SQL[] = [];
+  if (action) conds.push(ilike(auditLogTable.action, `%${action}%`));
+  if (entityType) conds.push(eq(auditLogTable.entityType, entityType));
+  if (q) {
+    const like = `%${q}%`;
+    conds.push(
+      or(
+        ilike(auditLogTable.summary, like),
+        ilike(auditLogTable.action, like),
+        ilike(auditLogTable.actorId, like),
+        ilike(auditLogTable.entityId, like),
+      )!,
+    );
+  }
+  const where = conds.length ? and(...conds) : undefined;
+  const [totalRow] = await db.select({ n: count() }).from(auditLogTable).where(where);
+  const items = await db
+    .select()
+    .from(auditLogTable)
+    .where(where)
+    .orderBy(desc(auditLogTable.createdAt))
+    .limit(pageSize)
+    .offset(offset);
+
+  res.json({
+    items,
+    total: Number(totalRow?.n || 0),
+    page,
+    pageSize,
+  });
+});
+
+router.get("/platform/crm/alerts", async (_req, res): Promise<void> => {
+  const items: Array<{
+    id: string;
+    kind: string;
+    tone: "info" | "warn" | "danger" | "ok";
+    title: string;
+    text: string;
+    href: string;
+    createdAt: string;
+  }> = [];
+
+  const pendingApps = await db
+    .select({
+      id: appUsersTable.id,
+      displayName: appUsersTable.displayName,
+      companyName: appUsersTable.companyName,
+      createdAt: appUsersTable.createdAt,
+    })
+    .from(appUsersTable)
+    .where(and(eq(appUsersTable.status, "pending"), ne(appUsersTable.role, "platform_admin")))
+    .orderBy(desc(appUsersTable.createdAt))
+    .limit(20);
+  for (const a of pendingApps) {
+    items.push({
+      id: `app-${a.id}`,
+      kind: "application",
+      tone: "warn",
+      title: "Yangi ariza",
+      text: `${a.companyName || a.displayName} — tasdiq kutmoqda`,
+      href: "/owner/requests?status=pending",
+      createdAt: new Date(a.createdAt).toISOString(),
+    });
+  }
+
+  const orgs = await db.select().from(organizationsTable);
+  for (const o of orgs) {
+    const pub = publicOrganization(o)!;
+    if (pub.daysLeft != null && pub.daysLeft > 0 && pub.daysLeft <= 7) {
+      items.push({
+        id: `end-${o.id}`,
+        kind: "subscription",
+        tone: "warn",
+        title: "Obuna tugash arafasida",
+        text: `${o.name} — ${pub.daysLeft} kun qoldi`,
+        href: `/owner/companies/${o.id}`,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    if (pub.subscriptionStatus === "past_due") {
+      items.push({
+        id: `due-${o.id}`,
+        kind: "subscription",
+        tone: "danger",
+        title: "Muddati tugagan",
+        text: `${o.name} — toʻlov talab qilinadi`,
+        href: `/owner/companies/${o.id}`,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    if (pub.subscriptionStatus === "canceled") {
+      items.push({
+        id: `block-${o.id}`,
+        kind: "subscription",
+        tone: "danger",
+        title: "Bloklangan kompaniya",
+        text: `${o.name} cheklangan`,
+        href: `/owner/companies/${o.id}`,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  const failed = await db
+    .select({
+      id: paymentsTable.id,
+      amount: paymentsTable.amount,
+      organizationId: paymentsTable.organizationId,
+      createdAt: paymentsTable.createdAt,
+      orgName: organizationsTable.name,
+    })
+    .from(paymentsTable)
+    .leftJoin(organizationsTable, eq(organizationsTable.id, paymentsTable.organizationId))
+    .where(eq(paymentsTable.status, "failed"))
+    .orderBy(desc(paymentsTable.createdAt))
+    .limit(15);
+  for (const p of failed) {
+    items.push({
+      id: `pay-${p.id}`,
+      kind: "payment",
+      tone: "danger",
+      title: "Muvaffaqiyatsiz toʻlov",
+      text: `${p.orgName || "Kompaniya"} — ${Math.round(p.amount).toLocaleString("uz-UZ")} soʻm`,
+      href: `/owner/payments?q=${p.id}`,
+      createdAt: new Date(p.createdAt).toISOString(),
+    });
+  }
+
+  items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({
+    items: items.slice(0, 50),
+    unread: items.length,
+  });
+});
+
+router.get("/platform/crm/plans", async (_req, res): Promise<void> => {
+  const orgs = await db.select({ planCode: organizationsTable.planCode }).from(organizationsTable);
+  const byPlan = new Map<string, number>();
+  for (const o of orgs) byPlan.set(o.planCode, (byPlan.get(o.planCode) || 0) + 1);
+  const plans = planList().map((p) => ({
+    ...p,
+    companies: byPlan.get(p.code) || 0,
+  }));
+  res.json({ items: plans, totalCompanies: orgs.length });
+});
+
+router.get("/platform/crm/reports", async (_req, res): Promise<void> => {
+  const dashRes = await (async () => {
+    // Reuse core aggregates without HTTP round-trip
+    const orgs = await db.select().from(organizationsTable);
+    const payments = await db.select().from(paymentsTable);
+    const now = Date.now();
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    let paidMonth = 0;
+    let paidAll = 0;
+    let pending = 0;
+    let failed = 0;
+    const byPlanRevenue = new Map<string, number>();
+    for (const p of payments) {
+      if (p.status === "paid") {
+        paidAll += p.amount;
+        const when = p.paidAt ? new Date(p.paidAt) : new Date(p.createdAt);
+        if (when >= monthStart) paidMonth += p.amount;
+        byPlanRevenue.set(p.planCode, (byPlanRevenue.get(p.planCode) || 0) + p.amount);
+      } else if (p.status === "pending" || p.status === "prepared") pending += p.amount;
+      else if (p.status === "failed") failed += 1;
+    }
+    let active = 0;
+    let pastDue = 0;
+    for (const o of orgs) {
+      const pub = publicOrganization(o)!;
+      if (pub.subscriptionStatus === "active") active += 1;
+      if (pub.subscriptionStatus === "past_due") pastDue += 1;
+    }
+    const [users] = await db
+      .select({ n: count() })
+      .from(appUsersTable)
+      .where(ne(appUsersTable.role, "platform_admin"));
+    const [branches] = await db.select({ n: count() }).from(branchesTable);
+    return {
+      summary: {
+        companies: orgs.length,
+        active,
+        pastDue,
+        users: Number(users?.n || 0),
+        branches: Number(branches?.n || 0),
+        revenueAll: paidAll,
+        revenueMonth: paidMonth,
+        pendingAmount: pending,
+        failedPayments: failed,
+        debtCompanies: pastDue,
+        generatedAt: new Date(now).toISOString(),
+      },
+      revenueByPlan: [...byPlanRevenue.entries()].map(([code, amount]) => ({
+        code,
+        name: isPlanCode(code) ? PLANS[code].name : code,
+        amount,
+      })),
+    };
+  })();
+  res.json(dashRes);
 });
 
 export default router;

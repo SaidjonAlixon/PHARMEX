@@ -51,6 +51,12 @@ import {
   OwnerCompanyDetailPage,
   OwnerPaymentsPage,
   OwnerRequestsPage,
+  OwnerPlansPage,
+  OwnerUsersPage,
+  OwnerReportsPage,
+  OwnerAlertsPage,
+  OwnerAuditPage,
+  OwnerSettingsPage,
 } from '@/pages/owner';
 import { roleLabel, useAccess } from '@/lib/access';
 import { isOwnerSurface, OWNER_PUBLIC_URL } from '@/lib/surface';
@@ -398,6 +404,12 @@ function AppRoutes({ filters, setFilters }: { filters: Filters; setFilters: (v: 
     <Route path="/owner/companies"><OwnerOnly><Show when="signed-in"><OwnerCompaniesPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
     <Route path="/owner/payments"><OwnerOnly><Show when="signed-in"><OwnerPaymentsPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
     <Route path="/owner/requests"><OwnerOnly><Show when="signed-in"><OwnerRequestsPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner/plans"><OwnerOnly><Show when="signed-in"><OwnerPlansPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner/users"><OwnerOnly><Show when="signed-in"><OwnerUsersPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner/reports"><OwnerOnly><Show when="signed-in"><OwnerReportsPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner/alerts"><OwnerOnly><Show when="signed-in"><OwnerAlertsPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner/audit"><OwnerOnly><Show when="signed-in"><OwnerAuditPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
+    <Route path="/owner/settings"><OwnerOnly><Show when="signed-in"><OwnerSettingsPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
     <Route path="/owner"><OwnerOnly><Show when="signed-in"><OwnerDashboardPage /></Show><Show when="signed-out"><Redirect to="/owner/kirish" /></Show></OwnerOnly></Route>
     <Route path="/platform"><NotFound /></Route>
     <Route path="/admin"><NotFound /></Route>

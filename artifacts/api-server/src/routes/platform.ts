@@ -102,6 +102,67 @@ router.get("/platform/organizations", async (_req, res): Promise<void> => {
   );
 });
 
+/** Owner CRM: yangi kompaniya + admin foydalanuvchi yaratish */
+router.post("/platform/organizations", async (req, res): Promise<void> => {
+  const companyName = String(req.body?.name || "").trim().slice(0, 120);
+  const displayName = String(req.body?.displayName || "").trim().slice(0, 80) || "Kompaniya admini";
+  const phone = String(req.body?.phone || "").trim().slice(0, 32);
+  const email = String(req.body?.email || "").trim().toLowerCase().slice(0, 120);
+  const planCode = isPlanCode(req.body?.planCode) ? req.body.planCode : "starter";
+  if (companyName.length < 2) {
+    res.status(400).json({ error: "Kompaniya nomi kamida 2 belgidan iborat boʻlsin." });
+    return;
+  }
+  const seed =
+    displayName
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "")
+      .slice(0, 10) || "admin";
+  const username = await uniqueUsername(seed + phone.replace(/\D/g, "").slice(-4));
+  const password = generatePassword();
+  const clerkUserId = `local_${username}_${Date.now().toString(36)}`;
+  const [user] = await db
+    .insert(appUsersTable)
+    .values({
+      clerkUserId,
+      displayName,
+      email,
+      phone,
+      username,
+      passwordHash: await hashPassword(password),
+      role: "admin",
+      status: "active",
+      signupMethod: "admin",
+      companyName,
+      emailVerifiedAt: new Date(),
+    })
+    .returning();
+  const org = await createOrganizationForOwner({
+    name: companyName,
+    ownerUserId: user.id,
+    planCode,
+  });
+  await db.insert(auditLogTable).values({
+    actorId: String(res.locals.userId),
+    action: "organization.created",
+    entityType: "organization",
+    entityId: String(org.id),
+    summary: `${companyName} yaratildi · login ${username}`,
+  });
+  res.status(201).json({
+    organization: publicOrganization(org),
+    user: {
+      id: user.id,
+      displayName: user.displayName,
+      username,
+      organizationId: org.id,
+    },
+    credentials: { username, password },
+  });
+});
+
 router.patch("/platform/organizations/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {

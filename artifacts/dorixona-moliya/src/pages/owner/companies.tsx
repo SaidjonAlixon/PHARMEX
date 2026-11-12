@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Ban, Building2, Check, ChevronLeft, ChevronRight, Clock3, ExternalLink, Search, Shield, Users,
+  Ban, Building2, Check, ChevronLeft, ChevronRight, Clock3, ExternalLink, Plus, Search, Shield, Users,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useSearch } from 'wouter';
 import { OwnerShell } from './shell';
 import {
-  EmptyState, KpiCard, PageHeader, StatusBadge, formatDate, money, ownerApi,
+  Creds, EmptyState, KpiCard, PageHeader, StatusBadge, formatDate, money, ownerApi,
   remainLabel, subStatusLabel, subTone,
 } from './shared';
 
@@ -34,10 +34,17 @@ export function OwnerCompaniesPage() {
   const params = useQueryMap();
   const [q, setQ] = useState(params.get('q') || '');
   const [msg, setMsg] = useState('');
+  const [creds, setCreds] = useState<Creds>(null);
+  const [createOpen, setCreateOpen] = useState(params.get('create') === '1');
+  const [form, setForm] = useState({ name: '', displayName: '', phone: '', email: '', planCode: 'starter' });
   const status = params.get('status') || '';
   const planCode = params.get('planCode') || '';
   const endingSoon = params.get('endingSoon') === '1';
   const page = Math.max(1, Number(params.get('page') || 1));
+
+  useEffect(() => {
+    setCreateOpen(params.get('create') === '1');
+  }, [params]);
 
   const setFilter = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
@@ -82,6 +89,27 @@ export function OwnerCompaniesPage() {
     onSuccess: () => window.location.assign('/'),
     onError: (e: Error) => setMsg(e.message),
   });
+  const createOrg = useMutation({
+    mutationFn: () =>
+      ownerApi<{
+        organization: { id: number };
+        credentials: { username: string; password: string };
+      }>('/api/platform/organizations', { method: 'POST', body: JSON.stringify(form) }),
+    onSuccess: (r) => {
+      setCreds({ ...r.credentials, title: 'Yangi kompaniya login' });
+      setCreateOpen(false);
+      setForm({ name: '', displayName: '', phone: '', email: '', planCode: 'starter' });
+      setFilter({ create: null });
+      refresh();
+      setMsg('Kompaniya yaratildi');
+    },
+    onError: (e: Error) => setMsg(e.message),
+  });
+
+  const onCreate = (e: FormEvent) => {
+    e.preventDefault();
+    createOrg.mutate();
+  };
 
   const stats = list.data?.stats;
   const totalPages = Math.max(1, Math.ceil((list.data?.total || 0) / 20));
@@ -92,7 +120,26 @@ export function OwnerCompaniesPage() {
       <PageHeader
         title="Kompaniyalar"
         text="Har bir mijoz alohida tenant. Tarif, muddat, foydalanuvchi va kabinet — shu yerdan toʻliq boshqariladi."
+        actions={
+          <button type="button" className="button primary" onClick={() => { setCreateOpen(true); setFilter({ create: '1' }); }}>
+            <Plus size={14} /> Yangi kompaniya
+          </button>
+        }
       />
+
+      {msg && <div className="notice">{msg}</div>}
+      {creds && (
+        <div className="owner-creds">
+          <div>
+            <span className="eyebrow">{creds.title}</span>
+            <div className="plan-current">
+              <div><span className="eyebrow">Login</span><b>{creds.username}</b></div>
+              <div><span className="eyebrow">Parol</span><b>{creds.password}</b></div>
+            </div>
+          </div>
+          <button type="button" className="button ghost" onClick={() => setCreds(null)}>Yopish</button>
+        </div>
+      )}
 
       <div className="ocrm-kpi-grid compact">
         <KpiCard label="Jami" value={stats?.total ?? '—'} active={!status && !endingSoon} onClick={() => setFilter({ status: null, endingSoon: null })} />
@@ -103,8 +150,6 @@ export function OwnerCompaniesPage() {
         <KpiCard label="Muddati tugagan" value={stats?.pastDue ?? '—'} active={status === 'past_due'} onClick={() => setFilter({ status: 'past_due', endingSoon: null })} />
         <KpiCard label="Bloklangan" value={stats?.canceled ?? '—'} active={status === 'canceled'} onClick={() => setFilter({ status: 'canceled', endingSoon: null })} />
       </div>
-
-      {msg && <div className="notice">{msg}</div>}
 
       <section className="ocrm-card">
         <div className="ocrm-toolbar">
@@ -203,6 +248,43 @@ export function OwnerCompaniesPage() {
           </button>
         </div>
       </section>
+
+      {createOpen && (
+        <div className="ocrm-modal-backdrop" onClick={() => { setCreateOpen(false); setFilter({ create: null }); }}>
+          <form className="ocrm-modal" onClick={(e) => e.stopPropagation()} onSubmit={onCreate}>
+            <h2>Yangi kompaniya</h2>
+            <label>
+              Kompaniya nomi
+              <input required minLength={2} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </label>
+            <label>
+              Masʼul ismi
+              <input required value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
+            </label>
+            <label>
+              Telefon
+              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </label>
+            <label>
+              Email
+              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </label>
+            <label>
+              Boshlangʻich tarif
+              <select value={form.planCode} onChange={(e) => setForm({ ...form, planCode: e.target.value })}>
+                <option value="starter">Boshlangʻich (sinov)</option>
+                <option value="business">Biznes</option>
+                <option value="enterprise">Korxona</option>
+                <option value="custom">Maxsus</option>
+              </select>
+            </label>
+            <div className="ocrm-modal-actions">
+              <button type="button" className="button ghost" onClick={() => { setCreateOpen(false); setFilter({ create: null }); }}>Bekor</button>
+              <button type="submit" className="button primary" disabled={createOrg.isPending}>Yaratish</button>
+            </div>
+          </form>
+        </div>
+      )}
     </OwnerShell>
   );
 }
