@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  BadgePercent, Building2, Check, Clock3, CreditCard, Loader2, QrCode, Send, Sparkles, Wallet, X,
+  Building2, Check, Clock3, CreditCard, Loader2, QrCode, Send, Sparkles, Wallet, X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
@@ -137,6 +137,13 @@ function pad2(n: number) {
   return String(n).padStart(2, '0');
 }
 
+function formatEnds(iso: string | null | undefined) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('uz-UZ', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 function useCountdown(target: Date | null): Remain | null {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -190,6 +197,7 @@ export function PlansPage() {
   const remain = useCountdown(expiry?.at ?? null);
   const st = org ? statusView(org.subscriptionStatus) : null;
   const ended = remain != null && remain.totalMs <= 0;
+  const endsLabel = formatEnds(org?.planExpiresAt || org?.trialEndsAt);
 
   const openPay = (p: PlanRow) => {
     setMsg('');
@@ -226,7 +234,7 @@ export function PlansPage() {
 
   return (
     <div className="page-stack plans-page">
-      <PageHeading title="Tariflar" subtitle="Joriy obuna, muddat va Click orqali yangilash" icon={BadgePercent} />
+      <PageHeading title="Tariflar" subtitle="Joriy obuna, muddat va Click orqali yangilash" />
       {msg && <div className="notice error" data-testid="notice-checkout-error">{msg}</div>}
       {payHint && (
         <div className="notice warn" data-testid="notice-checkout-hint">
@@ -240,16 +248,35 @@ export function PlansPage() {
         <section className={`sub-hero ${ended ? 'ended' : st.tone === 'good' ? 'ok' : ''}`} data-testid="panel-subscription-hero">
           <div className="sub-hero-top">
             <div className="sub-hero-brand">
-              <span className="sub-hero-icon"><Sparkles size={18} /></span>
+              <span className="sub-hero-icon"><Sparkles size={16} /></span>
               <div>
                 <span className="eyebrow">JORIY OBUNA</span>
                 <h2>{org.planName}</h2>
                 <p>{org.name}</p>
               </div>
             </div>
-            <StatusBadge tone={ended ? 'bad' : st.tone}>
-              {ended ? 'Muddati tugagan' : st.label}
-            </StatusBadge>
+            <div className="sub-hero-side">
+              <StatusBadge tone={ended ? 'bad' : st.tone}>
+                {ended ? 'Muddati tugagan' : st.label}
+              </StatusBadge>
+              {expiry && remain && (
+                <div className={`sub-countdown-inline ${ended ? 'ended' : ''}`} data-testid="countdown-subscription">
+                  <Clock3 size={13} />
+                  <span>{ended ? 'Tugagan' : expiry.label}</span>
+                  {!ended && (
+                    <div className="sub-countdown-pills" aria-live="polite">
+                      <b>{remain.days}<em>k</em></b>
+                      <i>:</i>
+                      <b>{pad2(remain.hours)}<em>s</em></b>
+                      <i>:</i>
+                      <b>{pad2(remain.minutes)}<em>d</em></b>
+                      <i>:</i>
+                      <b>{pad2(remain.seconds)}<em>s</em></b>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="sub-hero-meta">
@@ -263,28 +290,9 @@ export function PlansPage() {
             <div><span>Filial limiti</span><b>{org.branchLimit == null ? 'Cheksiz' : `${org.branchLimit} ta`}</b></div>
             <div>
               <span>{org.subscriptionStatus === 'trialing' ? 'Sinov tugashi' : 'Amal qiladi'}</span>
-              <b>
-                {new Date(org.planExpiresAt || org.trialEndsAt || Date.now()).toLocaleString('uz-UZ', {
-                  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                })}
-              </b>
+              <b>{endsLabel}</b>
             </div>
           </div>
-
-          {expiry && remain && (
-            <div className="sub-countdown" data-testid="countdown-subscription">
-              <div className="sub-countdown-head">
-                <Clock3 size={16} />
-                <span>{ended ? 'Muddat tugagan' : expiry.label}</span>
-              </div>
-              <div className="sub-countdown-grid" aria-live="polite">
-                <div className="sub-tick"><b>{remain.days}</b><small>kun</small></div>
-                <div className="sub-tick"><b>{pad2(remain.hours)}</b><small>soat</small></div>
-                <div className="sub-tick"><b>{pad2(remain.minutes)}</b><small>minut</small></div>
-                <div className="sub-tick"><b>{pad2(remain.seconds)}</b><small>soniya</small></div>
-              </div>
-            </div>
-          )}
         </section>
       )}
 
@@ -297,37 +305,54 @@ export function PlansPage() {
           const price = planPriceLabel(p);
           return (
             <article key={p.code} className={`plan-card ${p.highlight ? 'featured' : ''} ${isCurrent ? 'current' : ''} ${applyOnly ? 'custom' : ''}`}>
-              {p.highlight && <span className="plan-badge">Tavsiya</span>}
-              {applyOnly && !isCurrent && <span className="plan-badge">Moslashuvchan</span>}
-              {isCurrent && <span className="plan-badge current-badge">Joriy</span>}
-              <h3>{p.name}</h3>
+              <div className="plan-card-head">
+                <h3>{p.name}</h3>
+                <div className="plan-badges">
+                  {p.highlight && <span className="plan-badge">Tavsiya</span>}
+                  {applyOnly && !isCurrent && <span className="plan-badge">Moslashuvchan</span>}
+                  {isCurrent && <span className="plan-badge current-badge">Joriy</span>}
+                </div>
+              </div>
               <div className="plan-price">
                 <b>{price}</b>
                 {!applyOnly && price !== 'Kelishiladi' && <small>/ oy</small>}
               </div>
-              <p><Building2 size={14} /> {p.branchLimit == null ? 'Istalgancha filial' : p.branchLimit >= 50 ? `${p.branchLimit} tagacha filial` : `${p.branchLimit} ta filial`}</p>
+              <p className="plan-branches"><Building2 size={14} /> {p.branchLimit == null ? 'Istalgancha filial' : p.branchLimit >= 50 ? `${p.branchLimit} tagacha filial` : `${p.branchLimit} ta filial`}</p>
               <ul>{p.features.map((f) => <li key={f}><Check size={14} />{f}</li>)}</ul>
-              {applyOnly ? (
-                <a
-                  className="button ghost plan-buy"
-                  href="mailto:support@pharmxs.uz?subject=Maxsus%20tarif%20arizasi"
-                  data-testid={`button-apply-${p.code}`}
-                >
-                  <Sparkles size={16} />
-                  {isCurrent ? 'Joriy Maxsus tarif' : 'Ariza qoldirish'}
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  className="button primary plan-buy"
-                  disabled={disabled}
-                  onClick={() => openPay(p)}
-                  data-testid={`button-checkout-${p.code}`}
-                >
-                  <Wallet size={16} />
-                  {trialLocked ? 'Hozir bepul sinovdasiz' : isCurrent ? 'Obunani uzaytirish' : 'Obuna olish'}
-                </button>
-              )}
+              <div className="plan-card-foot">
+                {isCurrent && (
+                  <div className="plan-expires">
+                    <Clock3 size={12} />
+                    <span>{ended ? 'Muddat tugagan' : `Tugash: ${endsLabel}`}</span>
+                  </div>
+                )}
+                {!isCurrent && !applyOnly && org && (
+                  <div className="plan-expires muted">
+                    <span>30 kunlik obuna · Click orqali</span>
+                  </div>
+                )}
+                {applyOnly ? (
+                  <a
+                    className="button ghost plan-buy"
+                    href="mailto:support@pharmxs.uz?subject=Maxsus%20tarif%20arizasi"
+                    data-testid={`button-apply-${p.code}`}
+                  >
+                    <Sparkles size={16} />
+                    {isCurrent ? 'Joriy Maxsus tarif' : 'Ariza qoldirish'}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="button primary plan-buy"
+                    disabled={disabled}
+                    onClick={() => openPay(p)}
+                    data-testid={`button-checkout-${p.code}`}
+                  >
+                    <Wallet size={16} />
+                    {trialLocked ? 'Hozir bepul sinovdasiz' : isCurrent ? 'Obunani uzaytirish' : 'Obuna olish'}
+                  </button>
+                )}
+              </div>
             </article>
           );
         })}
