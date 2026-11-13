@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import {
   Activity, AlertCircle, Boxes, Building2, Check, FileText, PackageSearch, Receipt, RefreshCw, Truck, Users,
@@ -19,6 +19,33 @@ const syncStatusText: Record<string, { label: string; tone: 'good' | 'warn' | 'b
   waiting: { label: 'Kutilmoqda', tone: 'warn' },
   not_started: { label: 'Boshlanmagan', tone: 'neutral' },
 };
+
+type CompanyFomSettings = {
+  source: string;
+  protocol: 'http' | 'https';
+  host: string;
+  port: number | null;
+  reportUrl: string | null;
+  filialIds: string[];
+  intervalMinutes: number;
+  initialDays: number;
+  timeoutSeconds: number;
+  apiTokenSet: boolean;
+  apiTokenHint: string | null;
+  updatedAt: string | null;
+  startDate?: string;
+};
+
+async function companyFomApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    ...init,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText || 'Xatolik');
+  return data as T;
+}
 
 function isoDay(offsetDays = 0) {
   return addDaysTo(todayDay(), offsetDays);
@@ -123,6 +150,60 @@ export function SettingsPage() {
   const status = q.data;
   const pull = status?.reportAvailable !== false;
 
+  const [protocol, setProtocol] = useState<'http' | 'https'>('http');
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('');
+  const [filialIds, setFilialIds] = useState('');
+  const [intervalMinutes, setIntervalMinutes] = useState('15');
+  const [initialDays, setInitialDays] = useState('365');
+  const [timeoutSeconds, setTimeoutSeconds] = useState('120');
+  const [startDate, setStartDate] = useState('2025-01-01');
+  const [apiToken, setApiToken] = useState('');
+
+  const settingsQ = useQuery({
+    queryKey: ['company-fom-settings'],
+    queryFn: () => companyFomApi<CompanyFomSettings>('/api/fom/settings'),
+    enabled: canEdit,
+  });
+
+  useEffect(() => {
+    const s = settingsQ.data;
+    if (!s) return;
+    setProtocol(s.protocol || 'http');
+    setHost(s.host || '');
+    setPort(s.port != null ? String(s.port) : '');
+    setFilialIds((s.filialIds || []).join(', '));
+    setIntervalMinutes(String(s.intervalMinutes ?? 15));
+    setInitialDays(String(s.initialDays || 365));
+    setTimeoutSeconds(String(s.timeoutSeconds || 120));
+    setStartDate(s.startDate || '2025-01-01');
+  }, [settingsQ.data]);
+
+  const saveSettings = useMutation({
+    mutationFn: () =>
+      companyFomApi<CompanyFomSettings>('/api/fom/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          protocol,
+          host: host.trim(),
+          port: port.trim() ? Number(port) : null,
+          filialIds: filialIds.trim(),
+          intervalMinutes: Number(intervalMinutes) || 0,
+          initialDays: Number(initialDays) || 365,
+          timeoutSeconds: Number(timeoutSeconds) || 120,
+          startDate: startDate || '2025-01-01',
+          apiToken: apiToken.trim() || undefined,
+        }),
+      }),
+    onSuccess: () => {
+      setApiToken('');
+      setMessage({ tone: 'success', text: 'FOM ulanish sozlamalari saqlandi. Endi «Ulanishni sinash» ni bosing.' });
+      void qc.invalidateQueries({ queryKey: ['company-fom-settings'] });
+      void qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() });
+    },
+    onError: (error: Error) => setMessage({ tone: 'error', text: error.message }),
+  });
+
   useEffect(() => {
     if (!status) return;
     if (wasRunning.current && !status.running) qc.invalidateQueries();
@@ -136,10 +217,14 @@ export function SettingsPage() {
       onError: error => setMessage({ tone: 'error', text: apiErrorMessage(error, 'Ulanishni tekshirib boʻlmadi.') }),
     });
   };
-  const runSync = (e?: FormEvent, full = false) => {
+  const runSync = (e?: FormEvent, mode: 'incremental' | 'full' | 'range' = 'range') => {
     e?.preventDefault();
     setMessage(null);
-    sync.mutate({ data: full ? {} : { dateFrom: range.from, dateTo: range.to } }, {
+    const data =
+      mode === 'incremental' ? {} :
+      mode === 'full' ? { dateFrom: startDate || '2025-01-01', dateTo: isoDay() } :
+      { dateFrom: range.from, dateTo: range.to };
+    sync.mutate({ data }, {
       onSuccess: result => { setMessage({ tone: result.status === 'error' ? 'error' : 'success', text: result.message }); qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() }); },
       onError: error => setMessage({ tone: 'error', text: apiErrorMessage(error, 'Sinxronlash boshlanmadi.') }),
     });
@@ -147,11 +232,71 @@ export function SettingsPage() {
   const syncState = status ? syncStatusText[status.running ? 'running' : status.lastSyncStatus] ?? syncStatusText.not_started : null;
 
   return <>
-    <PageHeading eyebrow="INTEGRATSIYA" title="FOM (F-APTEKA) maʼlumotlari" subtitle="Apteka kompyuteridagi F-APTEKA bazasidan maʼlumot olish va import holati" actions={canEdit && status && pull && <div className="heading-button-group">
+    <PageHeading eyebrow="INTEGRATSIYA" title="FOM (F-APTEKA) maʼlumotlari" subtitle="Kompaniyangiz F-APTEKA serveriga ulaning — maʼlumotlar faqat sizning kabinetingizda saqlanadi" actions={canEdit && status && pull && <div className="heading-button-group">
       <button className="button secondary" onClick={runTest} disabled={!status.configured || test.isPending} data-testid="button-test-fom"><Activity size={15} />{test.isPending ? 'Tekshirilmoqda…' : 'Ulanishni sinash'}</button>
-      <button className="button primary" onClick={() => runSync(undefined, true)} disabled={!status.configured || status.running || sync.isPending} data-testid="button-sync-fom"><RefreshCw size={15} className={status.running ? 'spin' : ''} />{status.running ? 'Sinxronlanmoqda…' : 'Yangilash'}</button>
+      <button className="button primary" onClick={() => runSync(undefined, 'incremental')} disabled={!status.configured || status.running || sync.isPending} data-testid="button-sync-fom"><RefreshCw size={15} className={status.running ? 'spin' : ''} />{status.running ? 'Sinxronlanmoqda…' : 'Yangilash'}</button>
     </div>} />
     <DataState loading={q.isLoading} error={q.isError} empty={false} retry={() => q.refetch()} />
+    {message && <div className={`notice ${message.tone}`} data-testid="status-fom-message">{message.text}</div>}
+
+    {canEdit && <Panel title="FOM ulanishi" subtitle="Har bir kompaniya o‘z F-APTEKA (REPORT.exe / SQL) serveriga alohida ulanadi" className="fom-connect">
+      <ol className="fom-setup-guide" data-testid="fom-setup-guide">
+        <li>Apteka kompyuterida <b>Radmin VPN</b>, ochiq IP yoki boshqa tarmoq yoʻlini oching — PHARMXS serveri FOM ga yetishi kerak.</li>
+        <li>F-APTEKA da <b>REPORT.exe</b> (yoki SQL) ishlayotganini tekshiring; host/IP va portni yozib oling.</li>
+        <li>FOM dagi <b>filial ID</b> larini kiriting (vergul bilan: 1, 2). Boʻsh qoldirsangiz, tizim avtomatik aniqlashga urinib koʻradi.</li>
+        <li>«Saqlash» → «Ulanishni sinash» → muvaffaqiyatli boʻlsa «Birinchi toʻliq tortish (01.01.2025 dan)» ni bosing.</li>
+        <li>Keyingi yangilanishlar <b>incremental</b>: faqat yangi va oʻzgargan hujjatlar tortiladi (avto-interval boʻyicha ham).</li>
+      </ol>
+      <form className="form-grid" onSubmit={e => { e.preventDefault(); saveSettings.mutate(); }} data-testid="form-fom-settings">
+        <label>Protokol
+          <select value={protocol} onChange={e => setProtocol(e.target.value as 'http' | 'https')} data-testid="input-fom-protocol">
+            <option value="http">http</option>
+            <option value="https">https</option>
+          </select>
+        </label>
+        <label>Host / IP
+          <input required value={host} onChange={e => setHost(e.target.value)} placeholder="84.54.70.12" data-testid="input-fom-host" />
+        </label>
+        <label>Port
+          <input value={port} onChange={e => setPort(e.target.value)} placeholder="8080" data-testid="input-fom-port" />
+        </label>
+        <label>Filial ID lari
+          <input value={filialIds} onChange={e => setFilialIds(e.target.value)} placeholder="1, 2, 3" data-testid="input-fom-filials" />
+        </label>
+        <label>Birinchi tortish sanasi
+          <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} data-testid="input-fom-start-date" />
+        </label>
+        <label>Avto-interval (daqiqa)
+          <input type="number" min={0} max={1440} value={intervalMinutes} onChange={e => setIntervalMinutes(e.target.value)} data-testid="input-fom-interval" />
+        </label>
+        <label>Timeout (soniya)
+          <input type="number" min={5} max={600} value={timeoutSeconds} onChange={e => setTimeoutSeconds(e.target.value)} data-testid="input-fom-timeout" />
+        </label>
+        <label>Dastlabki kunlar (zaxira)
+          <input type="number" min={1} max={3650} value={initialDays} onChange={e => setInitialDays(e.target.value)} data-testid="input-fom-initial-days" />
+        </label>
+        <label className="span-2">API token (ixtiyoriy)
+          <input type="password" value={apiToken} onChange={e => setApiToken(e.target.value)} placeholder={settingsQ.data?.apiTokenSet ? (settingsQ.data.apiTokenHint ?? '••••') : 'Agar FOM talab qilsa'} data-testid="input-fom-token" autoComplete="off" />
+        </label>
+        <div className="heading-button-group span-2">
+          <button type="submit" className="button primary" disabled={saveSettings.isPending} data-testid="button-save-fom-settings">
+            {saveSettings.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
+          </button>
+          <button type="button" className="button secondary" onClick={runTest} disabled={test.isPending || (!host.trim() && !status?.configured)} data-testid="button-test-fom-settings">
+            <Activity size={15} />{test.isPending ? 'Tekshirilmoqda…' : 'Ulanishni sinash'}
+          </button>
+          <button type="button" className="button primary" onClick={() => runSync(undefined, 'full')} disabled={!status?.configured || status?.running || sync.isPending} data-testid="button-fom-full-sync">
+            <RefreshCw size={15} />Birinchi toʻliq tortish ({(startDate || '2025-01-01').split('-').reverse().join('.') } dan)
+          </button>
+        </div>
+      </form>
+      <p className="field-hint">
+        Manba: {settingsQ.data?.source ?? '—'}
+        {settingsQ.data?.updatedAt ? ` · yangilangan: ${dateTime(settingsQ.data.updatedAt)}` : ''}
+        {settingsQ.isError ? ' · sozlamalarni yuklab boʻlmadi (admin/moliya huquqi kerak)' : ''}
+      </p>
+    </Panel>}
+
     {status && <>
       {pull ? <div className={`integration-banner ${status.connected ? 'connected' : 'disconnected'}`} data-testid="status-fom-connection">
         <div className="integration-icon">{status.connected ? <Check size={20} /> : <AlertCircle size={20} />}</div>
@@ -168,7 +313,6 @@ export function SettingsPage() {
             : 'FOM_SITE_TOKEN sozlanmagan: server .env fayliga qoʻshing va API ni qayta ishga tushiring.'}</span></div>
         <StatusBadge tone={status.connected ? 'good' : status.site.configured ? 'warn' : 'bad'}>{status.connected ? 'Maʼlumot kelyapti' : status.site.configured ? 'Kutilmoqda' : 'Token yoʻq'}</StatusBadge>
       </div>}
-      {message && <div className={`notice ${message.tone}`} data-testid="status-fom-message">{message.text}</div>}
 
       <KpiStrip items={[
         { label: 'Filiallar', value: status.totals.branches, count: true, icon: Building2 },
@@ -194,21 +338,21 @@ export function SettingsPage() {
           {pull && <Panel title="Sinxronlash" subtitle="Yangi va oʻzgargan hujjatlar avtomatik qoʻshiladi; davr boʻyicha tortish faqat zarur boʻlsa">
             <div className="data-range" data-testid="fom-data-range">
               <span className="eyebrow">PHARMXS BAZASIDA</span>
-              {status.dataRanges.map(range => <div className="data-range-row" key={range.key}>
-                <span>{range.label}</span>
-                <b>{range.from ? `${dateTime(range.from)} — ${dateTime(range.to)}` : 'hali yoʻq'}</b>
-                <small>{range.count.toLocaleString('ru-RU').replace(/\u00a0/g, ' ')} ta</small>
+              {status.dataRanges.map(rangeRow => <div className="data-range-row" key={rangeRow.key}>
+                <span>{rangeRow.label}</span>
+                <b>{rangeRow.from ? `${dateTime(rangeRow.from)} — ${dateTime(rangeRow.to)}` : 'hali yoʻq'}</b>
+                <small>{rangeRow.count.toLocaleString('ru-RU').replace(/\u00a0/g, ' ')} ta</small>
               </div>)}
             </div>
             <div className="sync-status"><div className={`sync-orb ${status.running ? 'running' : status.lastSyncStatus}`}><RefreshCw size={19} className={status.running ? 'spin' : ''} /></div>
               <div className="sync-text"><span>Oxirgi sinxronlash</span><b>{status.lastSyncAt ? dateTime(status.lastSyncAt) : 'Hali bajarilmagan'}</b><small>{status.lastMessage ?? '—'}</small></div>
               {syncState && <StatusBadge tone={syncState.tone}>{syncState.label}</StatusBadge>}</div>
-            {canEdit && <form className="form-grid" onSubmit={runSync}>
+            {canEdit && <form className="form-grid" onSubmit={e => runSync(e, 'range')}>
               <label>Boshlanish<input type="date" required value={range.from} max={range.to} onChange={e => setRange({ ...range, from: e.target.value })} data-testid="input-fom-from" /></label>
               <label>Tugash<input type="date" required value={range.to} min={range.from} onChange={e => setRange({ ...range, to: e.target.value })} data-testid="input-fom-to" /></label>
               <button className="button primary span-2" disabled={!status.configured || status.running || sync.isPending} data-testid="button-sync-range"><RefreshCw size={15} />Davr boʻyicha tortish</button>
             </form>}
-            <p className="field-hint">Takroriy tortish dublikat yaratmaydi: hujjatlar FOM ID boʻyicha yangilanadi.</p>
+            <p className="field-hint">Takroriy tortish dublikat yaratmaydi: hujjatlar FOM ID boʻyicha yangilanadi. Maʼlumotlar faqat shu kompaniya uchun saqlanadi.</p>
           </Panel>}
         </div>
       </div>

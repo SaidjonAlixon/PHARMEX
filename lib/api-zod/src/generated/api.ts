@@ -2018,7 +2018,8 @@ export const GetFomSettingsResponse = zod.object({
   "timeoutSeconds": zod.number().int(),
   "apiTokenSet": zod.boolean(),
   "apiTokenHint": zod.string().nullable(),
-  "updatedAt": zod.coerce.date().nullable()
+  "updatedAt": zod.coerce.date().nullable(),
+  "startDate": zod.string().optional()
 })
 
 
@@ -2052,7 +2053,8 @@ export const SaveFomSettingsBody = zod.object({
   "initialDays": zod.number().int().min(1).max(saveFomSettingsBodyInitialDaysMax),
   "timeoutSeconds": zod.number().int().min(saveFomSettingsBodyTimeoutSecondsMin).max(saveFomSettingsBodyTimeoutSecondsMax),
   "apiToken": zod.string().max(saveFomSettingsBodyApiTokenMax).optional(),
-  "clearApiToken": zod.boolean().optional()
+  "clearApiToken": zod.boolean().optional(),
+  "startDate": zod.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
 })
 
 export const SaveFomSettingsResponse = zod.object({
@@ -2067,7 +2069,8 @@ export const SaveFomSettingsResponse = zod.object({
   "timeoutSeconds": zod.number().int(),
   "apiTokenSet": zod.boolean(),
   "apiTokenHint": zod.string().nullable(),
-  "updatedAt": zod.coerce.date().nullable()
+  "updatedAt": zod.coerce.date().nullable(),
+  "startDate": zod.string().optional()
 })
 
 

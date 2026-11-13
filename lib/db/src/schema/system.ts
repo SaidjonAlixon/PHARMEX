@@ -89,18 +89,23 @@ export const integrationSettingsTable = pgTable(
   (table) => [uniqueIndex("pharmacy_integration_settings_key_idx").on(table.key)],
 );
 
-export const integrationImportsTable = pgTable("pharmacy_integration_imports", {
-  id: serial("id").primaryKey(),
-  integration: text("integration").notNull().default("fom"),
-  status: text("status").notNull(),
-  startedAt: timestamp("started_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  importedRecords: integer("imported_records").notNull().default(0),
-  message: text("message").notNull().default(""),
-  details: text("details").notNull().default(""),
-});
+export const integrationImportsTable = pgTable(
+  "pharmacy_integration_imports",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: integer("organization_id"),
+    integration: text("integration").notNull().default("fom"),
+    status: text("status").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    importedRecords: integer("imported_records").notNull().default(0),
+    message: text("message").notNull().default(""),
+    details: text("details").notNull().default(""),
+  },
+  (table) => [index("pharmacy_integration_imports_org_idx").on(table.organizationId)],
+);
 
 export const auditLogTable = pgTable("pharmacy_audit_log", {
   id: serial("id").primaryKey(),

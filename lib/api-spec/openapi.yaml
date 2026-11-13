@@ -1921,6 +1921,7 @@ components:
         apiTokenSet: { type: boolean }
         apiTokenHint: { type: ["string", "null"] }
         updatedAt: { type: ["string", "null"], format: date-time }
+        startDate: { type: string, format: date, description: First full-sync floor (default 2025-01-01) }
       required: [source, protocol, host, port, reportUrl, filialIds, intervalMinutes, initialDays, timeoutSeconds, apiTokenSet, apiTokenHint, updatedAt]
     FomSettingsInput:
       type: object
@@ -1934,6 +1935,7 @@ components:
         timeoutSeconds: { type: integer, minimum: 5, maximum: 600 }
         apiToken: { type: string, maxLength: 500 }
         clearApiToken: { type: boolean }
+        startDate: { type: string, format: date }
       required: [protocol, host, port, filialIds, intervalMinutes, initialDays, timeoutSeconds]
     FomSyncInput:
       type: object

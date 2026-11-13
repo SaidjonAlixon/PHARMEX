@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   branchesTable,
   cashAccountsTable,
@@ -112,6 +113,7 @@ const flag = (value: string | undefined) => value?.trim() === "1" || value?.trim
 // ---------------------------------------------------------------- lookups
 
 interface Lookups {
+  organizationId: number | null;
   branches: Map<string, number>;
   products: Map<string, { id: number; cost: string | null }>;
   suppliers: Map<string, { id: number; name: string }>;
@@ -120,16 +122,18 @@ interface Lookups {
   orgNames: Map<string, string>;
 }
 
-async function loadLookups(): Promise<Lookups> {
+async function loadLookups(organizationId: number | null = null): Promise<Lookups> {
+  const orgEq = (col: AnyPgColumn) =>
+    organizationId == null ? undefined : eq(col, organizationId);
   const [branches, products, counterparties] = await Promise.all([
     db
       .select({ id: branchesTable.id, fomId: branchesTable.fomId })
       .from(branchesTable)
-      .where(and(eq(branchesTable.source, SOURCE), isNotNull(branchesTable.fomId))),
+      .where(and(eq(branchesTable.source, SOURCE), isNotNull(branchesTable.fomId), orgEq(branchesTable.organizationId))),
     db
       .select({ id: productsTable.id, fomId: productsTable.fomId, cost: productsTable.costPrice })
       .from(productsTable)
-      .where(and(eq(productsTable.source, SOURCE), isNotNull(productsTable.fomId))),
+      .where(and(eq(productsTable.source, SOURCE), isNotNull(productsTable.fomId), orgEq(productsTable.organizationId))),
     db
       .select({
         id: counterpartiesTable.id,
@@ -139,9 +143,10 @@ async function loadLookups(): Promise<Lookups> {
         taxId: counterpartiesTable.taxId,
       })
       .from(counterpartiesTable)
-      .where(isNotNull(counterpartiesTable.fomId)),
+      .where(and(isNotNull(counterpartiesTable.fomId), orgEq(counterpartiesTable.organizationId))),
   ]);
   const lookups: Lookups = {
+    organizationId,
     branches: new Map(branches.map((row) => [row.fomId!, row.id])),
     products: new Map(products.map((row) => [row.fomId!, { id: row.id, cost: row.cost }])),
     suppliers: new Map(),
@@ -166,9 +171,9 @@ async function ensureBranches(lookups: Lookups, fomIds: Iterable<string>) {
   if (missing.length === 0) return;
   const rows = await db
     .insert(branchesTable)
-    .values(missing.map((id) => ({ name: `Filial ${id}`, fomId: id, source: SOURCE })))
+    .values(missing.map((id) => ({ name: `Filial ${id}`, fomId: id, source: SOURCE, organizationId: lookups.organizationId })))
     .onConflictDoUpdate({
-      target: [branchesTable.source, branchesTable.fomId],
+      target: [branchesTable.organizationId, branchesTable.source, branchesTable.fomId],
       set: { fomId: sql`excluded.fom_id` },
     })
     .returning({ id: branchesTable.id, fomId: branchesTable.fomId });
@@ -180,9 +185,9 @@ async function ensureProducts(lookups: Lookups, fomIds: Iterable<string>) {
   for (const part of chunks(missing)) {
     const rows = await db
       .insert(productsTable)
-      .values(part.map((id) => ({ name: `FOM tovar #${id}`, fomId: id, source: SOURCE })))
+      .values(part.map((id) => ({ name: `FOM tovar #${id}`, fomId: id, source: SOURCE, organizationId: lookups.organizationId })))
       .onConflictDoUpdate({
-        target: [productsTable.source, productsTable.fomId],
+        target: [productsTable.organizationId, productsTable.source, productsTable.fomId],
         set: { fomId: sql`excluded.fom_id` },
       })
       .returning({ id: productsTable.id, fomId: productsTable.fomId, cost: productsTable.costPrice });
@@ -200,11 +205,11 @@ export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Pro
       .values(
         branchRows.map((row) => {
           const name = row.N?.trim() || `Filial ${row.I}`;
-          return { name, fomId: row.I, kind: /склад|sklad|ombor/i.test(name) ? "warehouse" : "pharmacy", source: SOURCE };
+          return { name, fomId: row.I, kind: /склад|sklad|ombor/i.test(name) ? "warehouse" : "pharmacy", source: SOURCE, organizationId: lookups.organizationId };
         }),
       )
       .onConflictDoUpdate({
-        target: [branchesTable.source, branchesTable.fomId],
+        target: [branchesTable.organizationId, branchesTable.source, branchesTable.fomId],
         set: { name: sql`excluded.name`, kind: sql`excluded.kind` },
       })
       .returning({ id: branchesTable.id, fomId: branchesTable.fomId });
@@ -220,7 +225,10 @@ export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Pro
     const existing = await db
       .select({ id: counterpartiesTable.id, name: counterpartiesTable.name, fomId: counterpartiesTable.fomId })
       .from(counterpartiesTable)
-      .where(eq(counterpartiesTable.kind, kind));
+      .where(and(
+        eq(counterpartiesTable.kind, kind),
+        lookups.organizationId == null ? undefined : eq(counterpartiesTable.organizationId, lookups.organizationId),
+      ));
     const byFom = new Map(existing.filter((row) => row.fomId).map((row) => [row.fomId!, row]));
     const byName = new Map(existing.map((row) => [row.name.toLowerCase(), row]));
 
@@ -253,6 +261,7 @@ export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Pro
         fomId: row.I,
         taxId: row.INN?.trim() ?? "",
         note: roles.length ? `FOM: ${roles.join(", ")}` : "FOM",
+        organizationId: lookups.organizationId,
       };
     });
     for (const part of chunks(values)) {
@@ -260,7 +269,7 @@ export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Pro
         .insert(counterpartiesTable)
         .values(part)
         .onConflictDoUpdate({
-          target: [counterpartiesTable.kind, counterpartiesTable.fomId],
+          target: [counterpartiesTable.organizationId, counterpartiesTable.kind, counterpartiesTable.fomId],
           set: { name: sql`excluded.name`, taxId: sql`excluded.tax_id`, note: sql`excluded.note` },
         })
         .returning({
@@ -303,6 +312,7 @@ export async function importCatalog(lookups: Lookups, items: CatalogItem[]): Pro
           name: item.name.trim(),
           fomId: item.fomId,
           source: SOURCE,
+          organizationId: lookups.organizationId,
           manufacturer: item.manufacturer?.trim() ?? "",
           ikpu: item.ikpu?.trim() ?? "",
           packageCode: item.packageCode?.trim() ?? "",
@@ -310,7 +320,7 @@ export async function importCatalog(lookups: Lookups, items: CatalogItem[]): Pro
         })),
       )
       .onConflictDoUpdate({
-        target: [productsTable.source, productsTable.fomId],
+        target: [productsTable.organizationId, productsTable.source, productsTable.fomId],
         set: {
           name: sql`excluded.name`,
           manufacturer: sql`coalesce(nullif(excluded.manufacturer, ''), ${productsTable.manufacturer})`,
@@ -966,10 +976,16 @@ async function fomAccount(lookups: Lookups, branchFomId: string, channel: Channe
   if (id == null) {
     const [row] = await db
       .insert(cashAccountsTable)
-      .values({ name: channel.account, kind: channel.kind, branchId, source: SOURCE })
+      .values({
+        name: channel.account,
+        kind: channel.kind,
+        branchId,
+        source: SOURCE,
+        organizationId: lookups.organizationId,
+      })
       .onConflictDoUpdate({
         target: [cashAccountsTable.source, cashAccountsTable.branchId, cashAccountsTable.name],
-        set: { kind: sql`excluded.kind` },
+        set: { kind: sql`excluded.kind`, organizationId: sql`excluded.organization_id` },
       })
       .returning({ id: cashAccountsTable.id });
     id = row.id;
@@ -1456,22 +1472,42 @@ export async function importPayments(lookups: Lookups, rows: FomRow[]): Promise<
  */
 export const SQL_REPLACED_REPORTS = new Set<FomReportKey>(["purchases", "supplierReturns", "writeOffs", "retailSales", "insuranceSales"]);
 
-let running: Promise<SyncDetails> | null = null;
-/** Set while the import row is being created, so two ticks cannot both pass the `running` check. */
-let starting = false;
-/** A manual refresh asked for while another run was in progress. */
-let queued: SyncOptions | null = null;
+type SyncLock = {
+  running: Promise<SyncDetails> | null;
+  starting: boolean;
+  queued: SyncOptions | null;
+};
+
+const syncLocks = new Map<string, SyncLock>();
+
+function lockKey(organizationId: number | null | undefined): string {
+  return organizationId == null ? "global" : `org:${organizationId}`;
+}
+
+function getLock(organizationId: number | null | undefined): SyncLock {
+  const key = lockKey(organizationId);
+  let lock = syncLocks.get(key);
+  if (!lock) {
+    lock = { running: null, starting: false, queued: null };
+    syncLocks.set(key, lock);
+  }
+  return lock;
+}
 
 const TZ_OFFSET_MS = (Number(process.env.APP_TZ_OFFSET_MIN ?? 300) || 0) * 60_000;
 
 /** “ДАРХОН ФИЛИАЛ 20:19, …”: each branch's latest imported receipt today (Tashkent time). */
-async function latestReceipts(): Promise<string> {
+async function latestReceipts(organizationId: number | null = null): Promise<string> {
   const startOfDay = new Date(new Date(dateOnly(new Date())).getTime() - TZ_OFFSET_MS);
   const rows = await db
     .select({ name: branchesTable.name, last: sql<Date>`max(${salesTable.soldAt})` })
     .from(salesTable)
     .innerJoin(branchesTable, eq(branchesTable.id, salesTable.branchId))
-    .where(and(eq(salesTable.source, SOURCE), sql`${salesTable.soldAt} >= ${startOfDay}`))
+    .where(and(
+      eq(salesTable.source, SOURCE),
+      sql`${salesTable.soldAt} >= ${startOfDay}`,
+      organizationId == null ? undefined : eq(branchesTable.organizationId, organizationId),
+    ))
     .groupBy(branchesTable.name)
     .orderBy(branchesTable.name);
   return rows
@@ -1479,9 +1515,16 @@ async function latestReceipts(): Promise<string> {
     .join(", ");
 }
 
-/** True from the moment a run is requested until it (and any queued manual run) has finished. */
-export function fomSyncRunning() {
-  return running != null || starting || queued != null;
+/** True while a run is requested for this org (or any org when organizationId omitted). */
+export function fomSyncRunning(organizationId?: number | null) {
+  if (organizationId !== undefined) {
+    const lock = getLock(organizationId);
+    return lock.running != null || lock.starting || lock.queued != null;
+  }
+  for (const lock of syncLocks.values()) {
+    if (lock.running != null || lock.starting || lock.queued != null) return true;
+  }
+  return false;
 }
 
 function windows(from: Date, to: Date): Array<[Date, Date]> {
@@ -1499,11 +1542,17 @@ function utcDay(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
-async function previousSuccess(): Promise<SyncDetails | null> {
+async function previousSuccess(organizationId: number | null = null): Promise<SyncDetails | null> {
   const [last] = await db
     .select({ details: integrationImportsTable.details })
     .from(integrationImportsTable)
-    .where(and(eq(integrationImportsTable.integration, "fom"), eq(integrationImportsTable.status, "success")))
+    .where(and(
+      eq(integrationImportsTable.integration, "fom"),
+      eq(integrationImportsTable.status, "success"),
+      organizationId == null
+        ? sql`${integrationImportsTable.organizationId} is null`
+        : eq(integrationImportsTable.organizationId, organizationId),
+    ))
     .orderBy(desc(integrationImportsTable.startedAt))
     .limit(1);
   try {
@@ -1539,41 +1588,60 @@ export interface SyncOptions {
   from?: Date;
   to?: Date;
   trigger: string;
+  organizationId?: number | null;
+  config?: FomConfig;
+  /** First full-pull floor (YYYY-MM-DD); defaults to FOM_START_DATE / 2025-01-01. */
+  startDate?: string;
 }
 
 /** Starts a sync in the background; resolves once the import row exists. */
 export async function startFomSync(options: SyncOptions): Promise<{ started: boolean; message: string }> {
-  const config = fomConfig();
+  const organizationId = options.organizationId ?? null;
+  const config = options.config ?? fomConfig();
+  const lock = getLock(organizationId);
   if (!config.reportUrl) return { started: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
-  if (running || starting) {
-    // A manual refresh must read up to the moment it was asked for: run once more right after.
+  if (lock.running || lock.starting) {
     if (options.trigger === "manual") {
-      queued = options;
+      lock.queued = options;
       return { started: true, message: "Joriy yangilanish tugashi bilan apteka bazasi yana oʻqiladi." };
     }
     return { started: false, message: "Sinxronlash allaqachon bajarilmoqda." };
   }
-  starting = true;
+  lock.starting = true;
   try {
     const [row] = await db
       .insert(integrationImportsTable)
-      .values({ integration: "fom", status: "running", message: "Sinxronlash boshlandi…" })
+      .values({
+        integration: "fom",
+        status: "running",
+        message: "Sinxronlash boshlandi…",
+        organizationId,
+      })
       .returning({ id: integrationImportsTable.id });
-    // Auto sync runs every few seconds; keep one day of history plus the last success.
     await db.execute(sql`
       delete from ${integrationImportsTable}
-      where integration = 'fom' and started_at < now() - interval '1 day'
-        and id <> coalesce((select max(id) from ${integrationImportsTable} where integration = 'fom' and status = 'success'), 0)`);
-    running = runFomSync(config, options, row.id).finally(() => {
-      running = null;
-      const next = queued;
-      queued = null;
+      where integration = 'fom'
+        and ${organizationId == null
+          ? sql`organization_id is null`
+          : sql`organization_id = ${organizationId}`}
+        and started_at < now() - interval '1 day'
+        and id <> coalesce((
+          select max(id) from ${integrationImportsTable}
+          where integration = 'fom' and status = 'success'
+            and ${organizationId == null
+              ? sql`organization_id is null`
+              : sql`organization_id = ${organizationId}`}
+        ), 0)`);
+    lock.running = runFomSync(config, { ...options, organizationId }, row.id).finally(() => {
+      lock.running = null;
+      const next = lock.queued;
+      lock.queued = null;
       if (next) void startFomSync(next).catch((error) => logger.error({ err: error }, "Queued FOM sync failed to start"));
     });
   } finally {
-    starting = false;
+    lock.starting = false;
   }
-  running.catch((error) => logger.error({ err: error }, "FOM sync failed"));
+  lock.running.catch((error) => logger.error({ err: error }, "FOM sync failed"));
   return { started: true, message: "Sinxronlash boshlandi. Holat shu sahifada yangilanadi." };
 }
 
@@ -1588,15 +1656,29 @@ const MISSING_BATCH = 1500;
  * F-APTEKA document ids (from fomSqlRecentDocIds) that PHARMXS does not hold yet. Receipts are
  * `chk:ID`, transfers `tr:ID`, other stock documents `doc:inv:ID` / `doc:inc:ID`, purchases `inc:ID`.
  */
-async function missingDocuments(rows: FomRow[], from: Date): Promise<{ inv: string[]; inc: string[] }> {
+async function missingDocuments(
+  rows: FomRow[],
+  from: Date,
+  organizationId: number | null = null,
+): Promise<{ inv: string[]; inc: string[] }> {
   const since = new Date(from.getTime() - DAY_MS);
+  const orgBranchIds = organizationId == null
+    ? null
+    : (
+        await db
+          .select({ id: branchesTable.id })
+          .from(branchesTable)
+          .where(eq(branchesTable.organizationId, organizationId))
+      ).map((r) => r.id);
+  const branchFilter = (col: AnyPgColumn) =>
+    orgBranchIds == null ? undefined : inArray(col, orgBranchIds.length ? orgBranchIds : [-1]);
   const [sales, docs, purchases] = await Promise.all([
     db.select({ id: salesTable.sourceId }).from(salesTable)
-      .where(and(eq(salesTable.source, SOURCE), sql`${salesTable.soldAt} >= ${since}`)),
+      .where(and(eq(salesTable.source, SOURCE), sql`${salesTable.soldAt} >= ${since}`, branchFilter(salesTable.branchId))),
     db.select({ id: stockDocumentsTable.sourceId }).from(stockDocumentsTable)
-      .where(and(eq(stockDocumentsTable.source, SOURCE), sql`${stockDocumentsTable.occurredAt} >= ${since}`)),
+      .where(and(eq(stockDocumentsTable.source, SOURCE), sql`${stockDocumentsTable.occurredAt} >= ${since}`, branchFilter(stockDocumentsTable.branchId))),
     db.select({ id: purchasesTable.sourceId }).from(purchasesTable)
-      .where(and(eq(purchasesTable.source, SOURCE), sql`${purchasesTable.receivedAt} >= ${since}`)),
+      .where(and(eq(purchasesTable.source, SOURCE), sql`${purchasesTable.receivedAt} >= ${since}`, branchFilter(purchasesTable.branchId))),
   ]);
   const have = { inv: new Set<string>(), inc: new Set<string>() };
   for (const { id } of [...sales, ...docs, ...purchases]) {
@@ -1620,20 +1702,21 @@ function changesSince(previous: SyncDetails): Date | null {
   return previous.to ? new Date(new Date(previous.to).getTime() - 2 * DAY_MS) : null;
 }
 
-/** First document day ever imported: FOM_START_DATE, else FOM_INITIAL_DAYS before today. */
-function startDay(config: FomConfig, today: Date): Date {
-  const start = process.env.FOM_START_DATE?.trim();
+/** First document day ever imported: org startDate / FOM_START_DATE / 2025-01-01. */
+function startDay(_config: FomConfig, _today: Date, startDate?: string): Date {
+  const start = (startDate ?? process.env.FOM_START_DATE)?.trim();
   if (start && /^\d{4}-\d{2}-\d{2}$/.test(start)) return new Date(start);
-  return new Date(today.getTime() - config.initialDays * DAY_MS);
+  return new Date("2025-01-01");
 }
 
 async function runFomSync(config: FomConfig, options: SyncOptions, importId: number): Promise<SyncDetails> {
-  const previous = await previousSuccess();
+  const organizationId = options.organizationId ?? null;
+  const previous = await previousSuccess(organizationId);
   const sqlMode = fomSqlMode(config);
   // Calendar days are the pharmacies' local (Tashkent) days.
   const today = new Date(dateOnly(new Date()));
   const to = utcDay(options.to ?? today);
-  const floor = startDay(config, today);
+  const floor = startDay(config, today, options.startDate);
   // SQL mode reads only what was entered or edited since the previous run; a full range read is
   // the first run, or a range the user asked for explicitly.
   const since = sqlMode && !options.from && !options.to && previous ? changesSince(previous) : null;
@@ -1651,7 +1734,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     refsAt: null,
     reports: {},
   };
-  const lookups = await loadLookups();
+  const lookups = await loadLookups(organizationId);
   let fatal: string | null = null;
   // Reference books change rarely: only a range sync (or the hourly refresh) re-reads them.
   const skipRefs = !options.from && !options.to && refsAreFresh(config, previous);
@@ -1879,7 +1962,11 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   if (since && !fatal) {
     try {
       const reconcileFrom = new Date(Math.max(floor.getTime(), today.getTime() - RECONCILE_DAYS * DAY_MS));
-      missing = await missingDocuments(await fetchFomRecentDocIds(config, reconcileFrom), reconcileFrom);
+      missing = await missingDocuments(
+        await fetchFomRecentDocIds(config, reconcileFrom),
+        reconcileFrom,
+        organizationId,
+      );
       details.late = missing.inv.length + missing.inc.length;
     } catch (error) {
       logger.warn({ err: error }, "FOM late-document check failed");
@@ -1940,7 +2027,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   const scope = since
     ? `F-APTEKA ${(sourceNow ?? "").slice(11, 19) || since.toISOString().slice(11, 19)} gacha`
     : `${details.filials.length} filial, ${details.from} — ${details.to}`;
-  const last = await latestReceipts().catch(() => "");
+  const last = await latestReceipts(organizationId).catch(() => "");
   const lastText = last ? ` Bugungi oxirgi cheklar: ${last}.` : "";
   const message = fatal
     ? fatal
@@ -1959,8 +2046,8 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
 }
 
 /** Test call: reads the organisations reference (small, undated). */
-export async function testFomConnection(): Promise<{ ok: boolean; message: string }> {
-  const config = fomConfig();
+export async function testFomConnection(configOverride?: FomConfig | null): Promise<{ ok: boolean; message: string }> {
+  const config = configOverride ?? fomConfig();
   if (!config.reportUrl) return { ok: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
   try {
     const today = new Date();
@@ -1981,8 +2068,11 @@ export async function testFomConnection(): Promise<{ ok: boolean; message: strin
 
 // ---------------------------------------------------------------- SITE.exe push
 
-export async function importSitePush(rows: FomRow[]): Promise<{ products: number; batches: number }> {
-  const lookups = await loadLookups();
+export async function importSitePush(
+  rows: FomRow[],
+  organizationId: number | null = null,
+): Promise<{ products: number; batches: number }> {
+  const lookups = await loadLookups(organizationId);
   const valid = rows.filter((row) => row.I);
   const products = await importCatalog(
     lookups,

@@ -2267,6 +2267,20 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 .dark select option, .dark select optgroup { background: #0e1a34; color: #e3eaf8; }
 
 /* FOM connection form */
+.fom-setup-guide {
+  margin: 0 0 16px;
+  padding: 12px 14px 12px 28px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  display: grid;
+  gap: 8px;
+  color: var(--t2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.fom-setup-guide li::marker { font-weight: 700; color: var(--px-teal-dark); }
+.dark .fom-setup-guide li::marker { color: #5fd8e6; }
 .fom-connect { margin-bottom: 18px; }
 .fom-connect .form-grid { gap: 14px 16px; align-items: start; }
 .secret-input { position: relative; display: flex; align-items: center; }
