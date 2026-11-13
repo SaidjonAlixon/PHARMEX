@@ -756,17 +756,9 @@ fomSiteRouter.post("/fom/agent/hello", express.json({ limit: "64kb" }), async (r
       .values({ key, value })
       .onConflictDoUpdate({ target: integrationSettingsTable.key, set: { value, updatedAt: new Date() } });
 
-    let syncStarted = false;
-    const canSync = (cfg.agentRelay || cfg.reportUrl) && (saved.intervalMinutes ?? 0) > 0 && testOk;
-    if (canSync) {
-      const sync = await startFomSync({
-        trigger: "auto",
-        organizationId,
-        config: cfg,
-        startDate: orgStartDate(saved),
-      });
-      syncStarted = sync.started;
-    }
+    // Do not auto-start sync on hello — worker must be polling first.
+    // User clicks «Birinchi toʻliq tortish» or scheduler picks up after agent is online.
+    const syncStarted = false;
 
     res.json({
       ok: true,
@@ -841,7 +833,16 @@ fomSiteRouter.post(
         res.json({ ok: true });
         return;
       }
-      const xml = typeof body.xml === "string" ? body.xml : "";
+      let xml = typeof body.xml === "string" ? body.xml : "";
+      if (!xml.trim() && typeof body.xmlBase64 === "string" && body.xmlBase64.trim()) {
+        try {
+          xml = Buffer.from(body.xmlBase64.trim(), "base64").toString("utf8");
+        } catch {
+          failAgentJob(jobId, "xmlBase64 yaroqsiz");
+          res.status(400).json({ ok: false, message: "xmlBase64 yaroqsiz." });
+          return;
+        }
+      }
       if (!xml.trim()) {
         failAgentJob(jobId, "Boʻsh XML");
         res.status(400).json({ ok: false, message: "xml boʻsh." });
