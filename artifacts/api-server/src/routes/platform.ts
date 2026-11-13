@@ -45,7 +45,14 @@ const userPublicCols = {
 
 const router: IRouter = Router();
 
-router.use(requirePlatformAdmin);
+/** Only gate /platform/* — do not block later company routers (branches, fom, …). */
+router.use((req, res, next) => {
+  if (!req.path.startsWith("/platform")) {
+    next("router");
+    return;
+  }
+  requirePlatformAdmin(req, res, next);
+});
 
 function generatePassword(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";

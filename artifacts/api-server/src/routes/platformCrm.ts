@@ -13,7 +13,14 @@ import { publicOrganization } from "../lib/org";
 import { PLANS, isPlanCode, planList } from "../lib/plans";
 
 const router: IRouter = Router();
-router.use(requirePlatformAdmin);
+/** Only gate /platform/crm/* — do not block later company routers (branches, fom, …). */
+router.use((req, res, next) => {
+  if (!req.path.startsWith("/platform")) {
+    next("router");
+    return;
+  }
+  requirePlatformAdmin(req, res, next);
+});
 
 const userPublicCols = {
   id: appUsersTable.id,
