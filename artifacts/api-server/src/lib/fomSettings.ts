@@ -81,10 +81,18 @@ export async function orgFomConfigUpdatedAt(organizationId: number): Promise<Dat
   return row?.updatedAt ?? null;
 }
 
-/** Merge env defaults with org-saved settings into a runtime FomConfig. */
+/** Merge timeouts/defaults with org-saved settings. Unconfigured orgs stay blank (no global env host leak). */
 export function resolveOrgFomConfig(saved: OrgFomSavedConfig | null): FomConfig {
   const env = fomEnvConfig();
-  if (!saved) return env;
+  if (!saved) {
+    return {
+      ...env,
+      reportUrl: null,
+      filialIds: [],
+      intervalMinutes: 0,
+      apiToken: null,
+    };
+  }
   const merged = { ...env };
   for (const [key, value] of Object.entries(saved) as Array<[keyof OrgFomSavedConfig, unknown]>) {
     if (key === "startDate") continue;
