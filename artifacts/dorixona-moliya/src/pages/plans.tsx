@@ -347,25 +347,6 @@ export function PlansPage() {
               <p className="plan-branches"><Building2 size={14} /> {p.branchLimit == null ? 'Istalgancha filial' : p.branchLimit >= 50 ? `${p.branchLimit} tagacha filial` : `${p.branchLimit} ta filial`}</p>
               <ul>{p.features.map((f) => <li key={f}><Check size={14} />{f}</li>)}</ul>
               <div className="plan-card-foot">
-                {isCurrent && remain && (
-                  <div className={`plan-expires-card ${ended ? 'ended' : ''}`} aria-live="polite">
-                    <div className="plan-expires-head">
-                      <Clock3 size={13} />
-                      <span>{ended ? 'Muddat tugagan' : 'Tugashiga'}</span>
-                    </div>
-                    {!ended && (
-                      <div className="plan-expires-ticks">
-                        <span><b>{remain.days}</b><em>kun</em></span>
-                        <i>:</i>
-                        <span><b>{pad2(remain.hours)}</b><em>soat</em></span>
-                        <i>:</i>
-                        <span><b>{pad2(remain.minutes)}</b><em>daq</em></span>
-                        <i>:</i>
-                        <span><b>{pad2(remain.seconds)}</b><em>sek</em></span>
-                      </div>
-                    )}
-                  </div>
-                )}
                 {applyOnly ? (
                   <a
                     className="button ghost plan-buy"
@@ -386,6 +367,9 @@ export function PlansPage() {
                     <Wallet size={16} />
                     {trialLocked ? 'Hozir bepul sinovdasiz' : isCurrent ? 'Obunani uzaytirish' : "Obuna bo'lish"}
                   </button>
+                )}
+                {isCurrent && (
+                  <p className="plan-current-note">Sizning joriy tarifingiz</p>
                 )}
               </div>
             </article>
