@@ -91,7 +91,7 @@ function Marquee() {
           <div key={group} className="cabinet-marquee-group" aria-hidden={group === 1 || undefined}>
             {Array.from({ length: MARQUEE_COPIES }, (_, i) => (
               <span key={i} className="cabinet-marquee-item">
-                <Info className="cabinet-marquee-info" size={14} strokeWidth={2.4} aria-hidden />
+                <Info className="cabinet-marquee-info" size={16} strokeWidth={2.35} aria-hidden />
                 <span className="cabinet-marquee-text">{TEST_MARQUEE}</span>
               </span>
             ))}
