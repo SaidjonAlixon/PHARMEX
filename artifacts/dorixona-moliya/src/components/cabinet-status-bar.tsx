@@ -92,7 +92,7 @@ function Marquee() {
             {Array.from({ length: MARQUEE_COPIES }, (_, i) => (
               <span key={i} className="cabinet-marquee-item">
                 <Info className="cabinet-marquee-info" size={14} strokeWidth={2.4} aria-hidden />
-                {TEST_MARQUEE}
+                <span className="cabinet-marquee-text">{TEST_MARQUEE}</span>
               </span>
             ))}
           </div>
