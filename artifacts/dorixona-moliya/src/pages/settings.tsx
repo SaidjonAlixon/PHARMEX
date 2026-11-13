@@ -49,6 +49,7 @@ type FomAgentPayload = {
   };
   preferredPort: number;
   script: string;
+  oneLiner?: string;
 };
 
 async function companyFomApi<T>(path: string, init?: RequestInit): Promise<T> {
@@ -310,8 +311,9 @@ export function SettingsPage() {
           )}
         </div>
         <p className="fom-agent-lead">
-          REPORT.exe ishlayotgan dorixona kompyuterida <b>Admin PowerShell</b> oching → skriptni nusxa → Ctrl+V → Enter.
-          Agent lokal REPORT dan o‘qiydi (router/NAT ochiq bo‘lishi shart emas), Windows yoqilganda oʻzi ishlayveradi.
+          1) REPORT.exe ishlasin. 2) <b>Admin PowerShell</b> oching.
+          3) Pastdagi <b>bir qatorni</b> «Nusxa» → Ctrl+V → Enter.
+          Agar <code>&gt;&gt;</code> chiqsa — avval <b>Ctrl+C</b>, keyin qayta paste qiling (ko‘p qatorli skript emas).
         </p>
         {agentQ.data?.agent?.online && (
           <div className="fom-agent-meta" data-testid="fom-agent-online">
@@ -329,12 +331,37 @@ export function SettingsPage() {
         )}
         <div className="fom-script-box">
           <div className="fom-script-toolbar">
-            <span>Admin PowerShell skripti (shu kompaniya)</span>
+            <span>Bir qatorli buyruq (Admin PowerShell)</span>
             <div className="heading-button-group">
               <button type="button" className="button secondary" disabled={!agentQ.data?.script || rotateAgent.isPending} onClick={() => rotateAgent.mutate()} data-testid="button-rotate-fom-agent">
                 Tokenni yangilash
               </button>
-              <button type="button" className="button primary" disabled={!agentQ.data?.script} onClick={() => void copyText('script', agentQ.data?.script ?? '')} data-testid="button-copy-fom-agent-script">
+              <button
+                type="button"
+                className="button secondary"
+                disabled={!agentQ.data?.script}
+                onClick={() => {
+                  const text = agentQ.data?.script ?? '';
+                  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'pharmxs-fom-agent.ps1';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast({ title: 'pharmxs-fom-agent.ps1 yuklandi — Admin PowerShell: .\\pharmxs-fom-agent.ps1' });
+                }}
+                data-testid="button-download-fom-agent-script"
+              >
+                .ps1 yuklash
+              </button>
+              <button
+                type="button"
+                className="button primary"
+                disabled={!agentQ.data?.oneLiner && !agentQ.data?.script}
+                onClick={() => void copyText('script', agentQ.data?.oneLiner || agentQ.data?.script || '')}
+                data-testid="button-copy-fom-agent-script"
+              >
                 {copied === 'script' ? <CheckCheck size={15} /> : <Copy size={15} />}
                 {copied === 'script' ? 'Nusxa olindi' : 'Nusxa olish'}
               </button>
@@ -343,8 +370,8 @@ export function SettingsPage() {
           <textarea
             className="fom-script-ta"
             readOnly
-            rows={8}
-            value={agentQ.isLoading ? 'Yuklanmoqda…' : (agentQ.data?.script ?? agentQ.error?.message ?? 'Skript yuklanmadi')}
+            rows={4}
+            value={agentQ.isLoading ? 'Yuklanmoqda…' : (agentQ.data?.oneLiner ?? agentQ.data?.script ?? agentQ.error?.message ?? 'Skript yuklanmadi')}
             spellCheck={false}
             data-testid="textarea-fom-agent-script"
           />

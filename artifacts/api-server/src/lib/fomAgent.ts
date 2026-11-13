@@ -184,3 +184,19 @@ export function buildFomAgentInstallScript(opts: {
     .replaceAll("__PORT__", String(port));
 }
 
+/**
+ * Single-line paste for Admin PowerShell (avoids `>>` multi-line trap).
+ * Downloads the full script by agent token, then runs it.
+ */
+export function buildFomAgentOneLiner(opts: { platformUrl: string; token: string }): string {
+  const platform = opts.platformUrl.replace(/\/+$/, "");
+  const token = opts.token.replace(/'/g, "''");
+  return [
+    "$ErrorActionPreference='Stop';",
+    `$u='${platform}/api/fom/agent/install.ps1?token=${token}';`,
+    "$p=Join-Path $env:TEMP 'pharmxs-fom-agent.ps1';",
+    "(Invoke-WebRequest -Uri $u -UseBasicParsing).Content | Set-Content -Path $p -Encoding UTF8;",
+    "& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p",
+  ].join(" ");
+}
+

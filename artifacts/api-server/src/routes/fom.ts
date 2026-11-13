@@ -40,6 +40,7 @@ import {
   agentInfoFromSaved,
   applyAgentHello,
   buildFomAgentInstallScript,
+  buildFomAgentOneLiner,
   ensureOrgAgentToken,
   rotateOrgAgentToken,
 } from "../lib/fomAgent";
@@ -574,8 +575,9 @@ router.get("/fom/agent", fomEditors, async (req, res): Promise<void> => {
       preferredPort = null;
     }
   }
+  const platformUrl = platformPublicUrl(req);
   const script = buildFomAgentInstallScript({
-    platformUrl: platformPublicUrl(req),
+    platformUrl,
     token,
     preferredPort,
   });
@@ -583,6 +585,7 @@ router.get("/fom/agent", fomEditors, async (req, res): Promise<void> => {
     agent,
     preferredPort: preferredPort ?? 8084,
     script,
+    oneLiner: buildFomAgentOneLiner({ platformUrl, token }),
   });
 });
 
@@ -594,8 +597,9 @@ router.post("/fom/agent/rotate", fomEditors, async (req, res): Promise<void> => 
   }
   const token = await rotateOrgAgentToken(organizationId);
   const saved = await loadOrgFomConfig(organizationId);
+  const platformUrl = platformPublicUrl(req);
   const script = buildFomAgentInstallScript({
-    platformUrl: platformPublicUrl(req),
+    platformUrl,
     token,
     preferredPort: saved?.agentPort ?? 8084,
   });
@@ -606,7 +610,11 @@ router.post("/fom/agent/rotate", fomEditors, async (req, res): Promise<void> => 
     entityId: String(organizationId),
     summary: "FOM agent token yangilandi",
   });
-  res.json({ agent: agentInfoFromSaved(saved), script });
+  res.json({
+    agent: agentInfoFromSaved(saved),
+    script,
+    oneLiner: buildFomAgentOneLiner({ platformUrl, token }),
+  });
 });
 
 router.post("/fom/sync", fomEditors, async (req, res): Promise<void> => {
@@ -656,6 +664,46 @@ export default router;
 // ---------------------------------------------------------------- SITE.exe (public, token protected)
 
 export const fomSiteRouter: IRouter = Router();
+
+/** Public: download install script by agent token (for one-liner paste). */
+fomSiteRouter.get("/fom/agent/install.ps1", async (req, res): Promise<void> => {
+  try {
+    const token = typeof req.query.token === "string" ? req.query.token.trim() : "";
+    if (!token) {
+      res.status(401).type("text/plain").send("# Token yoq");
+      return;
+    }
+    const { resolveOrgByAgentToken } = await import("../lib/fomAgent");
+    const organizationId = await resolveOrgByAgentToken(token);
+    if (organizationId == null) {
+      res.status(401).type("text/plain").send("# Token notogri");
+      return;
+    }
+    const saved = await loadOrgFomConfig(organizationId);
+    if (!saved?.agentToken || saved.agentToken !== token) {
+      res.status(401).type("text/plain").send("# Token notogri");
+      return;
+    }
+    let preferredPort = saved.agentPort ?? null;
+    if (preferredPort == null && saved.reportUrl) {
+      try {
+        preferredPort = Number(new URL(saved.reportUrl).port) || null;
+      } catch {
+        preferredPort = null;
+      }
+    }
+    const script = buildFomAgentInstallScript({
+      platformUrl: platformPublicUrl(req),
+      token,
+      preferredPort,
+    });
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="pharmxs-fom-agent.ps1"');
+    res.send(script);
+  } catch (error) {
+    res.status(500).type("text/plain").send(`# Xato: ${error instanceof Error ? error.message : String(error)}`);
+  }
+});
 
 /** Public: pharmacy PC PowerShell agent hello / heartbeat (token in body). */
 fomSiteRouter.post("/fom/agent/hello", express.json({ limit: "64kb" }), async (req, res): Promise<void> => {
