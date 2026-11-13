@@ -37,15 +37,24 @@ import {
   type FomSavedConfig,
 } from "../lib/fomClient";
 import {
+  agentInfoFromSaved,
+  applyAgentHello,
+  buildFomAgentInstallScript,
+  ensureOrgAgentToken,
+  rotateOrgAgentToken,
+} from "../lib/fomAgent";
+import {
   DEFAULT_FOM_START_DATE,
   loadOrgFomConfig,
   orgFomConfigUpdatedAt,
   orgStartDate,
   resolveOrgFomConfig,
+  resolveOrgFomConfigForSync,
   saveFomSettings,
   saveOrgFomConfig,
   type OrgFomSavedConfig,
 } from "../lib/fomSettings";
+import { completeAgentJob, failAgentJob, takeAgentJobs } from "../lib/fomAgentRelay";
 import {
   SQL_REPLACED_REPORTS,
   fomSyncRunning,
@@ -54,7 +63,7 @@ import {
   testFomConnection,
   type SyncDetails,
 } from "../lib/fomSync";
-import { isOwnerSurface } from "../lib/ownerHost";
+import { isOwnerSurface, PUBLIC_APP_URL } from "../lib/ownerHost";
 
 const router: IRouter = Router();
 
@@ -148,7 +157,7 @@ async function resolveRuntimeConfig(res: Response): Promise<{
   const saved = await loadOrgFomConfig(organizationId);
   return {
     organizationId,
-    config: resolveOrgFomConfig(saved),
+    config: resolveOrgFomConfigForSync(organizationId, saved),
     saved,
     startDate: orgStartDate(saved),
   };
@@ -188,7 +197,10 @@ async function readStatus(res: Response) {
   const sitePushing =
     siteImport?.status === "success" && !!siteAt && Date.now() - siteAt.getTime() < 30 * 60_000;
   const pulling = lastTest && (!syncAt || new Date(lastTest.at) > syncAt) ? lastTest.ok : Boolean(syncOk);
-  const connected = pulling || sitePushing;
+  const orgSaved =
+    organizationId == null ? null : await loadOrgFomConfig(organizationId);
+  const agent = agentInfoFromSaved(orgSaved);
+  const connected = pulling || sitePushing || agent.online;
 
   const branchIds = organizationId == null ? null : await orgBranchIds(organizationId);
   const branchScope = (col: AnyPgColumn) =>
@@ -251,14 +263,18 @@ async function readStatus(res: Response) {
   const token = config.siteToken;
   return GetFomStatusResponse.parse({
     connected,
-    configured: Boolean(config.reportUrl),
+    configured: Boolean(config.reportUrl || config.agentRelay),
     baseUrl: config.reportUrl,
     keyConfigured: Boolean(token),
     lastSyncAt: syncAt,
     lastSyncStatus: lastImport?.status ?? "not_started",
     lastMessage:
       lastImport?.message ||
-      (config.reportUrl ? null : "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)."),
+      (config.reportUrl || config.agentRelay
+        ? config.agentRelay
+          ? "Agent relay: maʼlumot dorixona kompyuteri orqali olinadi."
+          : null
+        : "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)."),
     importedRecords: lastImport?.importedRecords ?? 0,
     running: fomSyncRunning(organizationId),
     reportAvailable: true,
@@ -296,9 +312,15 @@ async function readStatus(res: Response) {
     },
     totals: { branches, products, counterparties, stockLines, purchases, sales, stockDocuments },
     dataRanges: await dataRanges(organizationId, branchIds),
-    // Extra field ignored by strict clients if schema lacks it; Zod object strips unknown by default —
-    // keep startDate only in settings response.
   });
+}
+
+function platformPublicUrl(req: Request): string {
+  const env = PUBLIC_APP_URL();
+  if (env && !/localhost|127\.0\.0\.1/i.test(env)) return env.replace(/\/+$/, "");
+  const proto = (req.get("x-forwarded-proto") || req.protocol || "https").split(",")[0]?.trim() || "https";
+  const host = (req.get("x-forwarded-host") || req.get("host") || "pharmxs.uz").split(",")[0]?.trim();
+  return `${proto}://${host}`.replace(/\/+$/, "");
 }
 
 /** First / last FOM record per section in the PHARMXS database (cached briefly; polled often). */
@@ -494,7 +516,10 @@ router.put("/fom/settings", fomEditors, async (req, res): Promise<void> => {
   const prev = resolveOrgFomConfig(existing);
   const apiToken = input.clearApiToken ? null : input.apiToken?.trim() || prev.apiToken;
   const saved: OrgFomSavedConfig = {
-    reportUrl: `${input.protocol}://${host}${input.port ? `:${input.port}` : ""}`,
+    ...existing,
+    reportUrl: host
+      ? `${input.protocol}://${host}${input.port ? `:${input.port}` : ""}`
+      : existing?.reportUrl,
     filialIds,
     intervalMinutes: input.intervalMinutes,
     initialDays: input.initialDays,
@@ -530,6 +555,58 @@ router.post("/fom/test", fomEditors, async (_req, res): Promise<void> => {
       checkedAt: new Date(),
     }),
   );
+});
+
+router.get("/fom/agent", fomEditors, async (req, res): Promise<void> => {
+  const organizationId = orgIdOf(res);
+  if (organizationId == null) {
+    res.status(400).json({ error: "Kompaniya tanlanmagan. Agent faqat kompaniya kabinetida." });
+    return;
+  }
+  const token = await ensureOrgAgentToken(organizationId);
+  const saved = await loadOrgFomConfig(organizationId);
+  const agent = agentInfoFromSaved(saved);
+  let preferredPort = saved?.agentPort ?? null;
+  if (preferredPort == null && saved?.reportUrl) {
+    try {
+      preferredPort = Number(new URL(saved.reportUrl).port) || null;
+    } catch {
+      preferredPort = null;
+    }
+  }
+  const script = buildFomAgentInstallScript({
+    platformUrl: platformPublicUrl(req),
+    token,
+    preferredPort,
+  });
+  res.json({
+    agent,
+    preferredPort: preferredPort ?? 8084,
+    script,
+  });
+});
+
+router.post("/fom/agent/rotate", fomEditors, async (req, res): Promise<void> => {
+  const organizationId = orgIdOf(res);
+  if (organizationId == null) {
+    res.status(400).json({ error: "Kompaniya tanlanmagan." });
+    return;
+  }
+  const token = await rotateOrgAgentToken(organizationId);
+  const saved = await loadOrgFomConfig(organizationId);
+  const script = buildFomAgentInstallScript({
+    platformUrl: platformPublicUrl(req),
+    token,
+    preferredPort: saved?.agentPort ?? 8084,
+  });
+  await db.insert(auditLogTable).values({
+    actorId: String(res.locals.userId),
+    action: "fom.agent.rotated",
+    entityType: "organization",
+    entityId: String(organizationId),
+    summary: "FOM agent token yangilandi",
+  });
+  res.json({ agent: agentInfoFromSaved(saved), script });
 });
 
 router.post("/fom/sync", fomEditors, async (req, res): Promise<void> => {
@@ -579,6 +656,156 @@ export default router;
 // ---------------------------------------------------------------- SITE.exe (public, token protected)
 
 export const fomSiteRouter: IRouter = Router();
+
+/** Public: pharmacy PC PowerShell agent hello / heartbeat (token in body). */
+fomSiteRouter.post("/fom/agent/hello", express.json({ limit: "64kb" }), async (req, res): Promise<void> => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    if (!token) {
+      res.status(401).json({ ok: false, message: "Token yoʻq." });
+      return;
+    }
+    const portRaw = Number(body.port);
+    const { organizationId, saved, configUrl } = await applyAgentHello({
+      token,
+      host: typeof body.host === "string" ? body.host : undefined,
+      port: Number.isFinite(portRaw) ? portRaw : undefined,
+      machine: typeof body.machine === "string" ? body.machine : undefined,
+      localIps: Array.isArray(body.localIps)
+        ? body.localIps.filter((x): x is string => typeof x === "string").slice(0, 12)
+        : undefined,
+      reportListening: typeof body.reportListening === "boolean" ? body.reportListening : undefined,
+      protocol: body.protocol === "https" ? "https" : "http",
+    });
+
+    // Prefer agent relay: pharmacy PC reads REPORT locally (works behind NAT).
+    if (saved.agentRelay !== false) {
+      saved.agentRelay = true;
+      await saveOrgFomConfig(organizationId, saved);
+    }
+    const cfg = resolveOrgFomConfigForSync(organizationId, saved);
+
+    let testOk = false;
+    let testMessage = "FOM manzili hali tayyor emas.";
+    let mode: "direct" | "relay" = "relay";
+    if (cfg.agentRelay) {
+      testOk = saved.agentReportListening !== false;
+      testMessage = saved.agentReportListening === false
+        ? "Agent relay yoqilgan, lekin REPORT.exe tinglanmayapti — FOM ni ishga tushiring."
+        : "Agent relay: REPORT lokal tinglanmoqda — maʼlumot dorixona kompyuteri orqali olinadi.";
+      mode = "relay";
+    } else if (cfg.reportUrl) {
+      const test = await testFomConnection(cfg);
+      testOk = test.ok;
+      testMessage = test.message;
+      mode = "direct";
+    }
+    const key = `fom_last_test:org:${organizationId}`;
+    const value = JSON.stringify({ ok: testOk, at: new Date().toISOString(), via: mode });
+    await db
+      .insert(integrationSettingsTable)
+      .values({ key, value })
+      .onConflictDoUpdate({ target: integrationSettingsTable.key, set: { value, updatedAt: new Date() } });
+
+    let syncStarted = false;
+    const canSync = (cfg.agentRelay || cfg.reportUrl) && (saved.intervalMinutes ?? 0) > 0 && testOk;
+    if (canSync) {
+      const sync = await startFomSync({
+        trigger: "auto",
+        organizationId,
+        config: cfg,
+        startDate: orgStartDate(saved),
+      });
+      syncStarted = sync.started;
+    }
+
+    res.json({
+      ok: true,
+      message: testOk
+        ? mode === "relay"
+          ? "Kompyuter ulandi. Maʼlumot lokal REPORT orqali tortiladi (NAT/firewall muammosiz)."
+          : "Kompyuter platformaga ulandi. FOM javob berdi."
+        : "Kompyuter roʻyxatdan oʻtdi. REPORT.exe ni tekshiring.",
+      organizationId,
+      reportUrl: configUrl,
+      testOk,
+      testMessage,
+      syncStarted,
+      mode,
+      pollJobs: true,
+      nextHeartbeatSec: 60,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(400).json({ ok: false, message });
+  }
+});
+
+/** Agent polls pending REPORT fetch jobs (platform → pharmacy PC → REPORT.exe). */
+fomSiteRouter.post("/fom/agent/poll", express.json({ limit: "32kb" }), async (req, res): Promise<void> => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    if (!token) {
+      res.status(401).json({ ok: false, message: "Token yoʻq." });
+      return;
+    }
+    const { resolveOrgByAgentToken } = await import("../lib/fomAgent");
+    const organizationId = await resolveOrgByAgentToken(token);
+    if (organizationId == null) {
+      res.status(401).json({ ok: false, message: "Token notoʻgʻri." });
+      return;
+    }
+    const saved = await loadOrgFomConfig(organizationId);
+    const port = saved?.agentPort && saved.agentPort > 0 ? saved.agentPort : 8084;
+    const jobs = takeAgentJobs(organizationId, 4).map((j) => ({
+      ...j,
+      localUrl: `http://127.0.0.1:${port}/P_GetReport_XML?pDateFrom=${encodeURIComponent(j.from)}&pDateTo=${encodeURIComponent(j.to)}&pFilial_id=${encodeURIComponent(j.filialId)}&pReport_id=${j.reportId}`,
+    }));
+    res.json({ ok: true, jobs, sleepSec: jobs.length ? 0 : 2 });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+/** Agent posts REPORT XML result for a job. */
+fomSiteRouter.post(
+  "/fom/agent/job-result",
+  express.json({ limit: "32mb" }),
+  async (req, res): Promise<void> => {
+    try {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const token = typeof body.token === "string" ? body.token.trim() : "";
+      const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
+      if (!token || !jobId) {
+        res.status(400).json({ ok: false, message: "token va jobId kerak." });
+        return;
+      }
+      const { resolveOrgByAgentToken } = await import("../lib/fomAgent");
+      const organizationId = await resolveOrgByAgentToken(token);
+      if (organizationId == null) {
+        res.status(401).json({ ok: false, message: "Token notoʻgʻri." });
+        return;
+      }
+      if (body.ok === false) {
+        failAgentJob(jobId, typeof body.message === "string" ? body.message : "REPORT xato");
+        res.json({ ok: true });
+        return;
+      }
+      const xml = typeof body.xml === "string" ? body.xml : "";
+      if (!xml.trim()) {
+        failAgentJob(jobId, "Boʻsh XML");
+        res.status(400).json({ ok: false, message: "xml boʻsh." });
+        return;
+      }
+      const accepted = completeAgentJob(jobId, xml);
+      res.json({ ok: accepted });
+    } catch (error) {
+      res.status(400).json({ ok: false, message: error instanceof Error ? error.message : String(error) });
+    }
+  },
+);
 
 function tokenFrom(req: Request): string {
   const header = req.get("authorization")?.replace(/^Bearer\s+/i, "");

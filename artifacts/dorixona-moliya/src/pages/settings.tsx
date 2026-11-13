@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import {
-  Activity, AlertCircle, Boxes, Building2, Check, CheckCheck, Copy, Eye, EyeOff, FileText, Link2,
-  PackageSearch, Receipt, RefreshCw, Truck, Users,
+  Activity, AlertCircle, Boxes, Building2, Check, CheckCheck, Copy, Eye, EyeOff, FileText,
+  MonitorSmartphone, PackageSearch, Receipt, RefreshCw, Terminal, Truck, Users,
 } from 'lucide-react';
 import { useGetFomStatus, getGetFomStatusQueryKey, useTestFomConnection, useSyncFom } from '@workspace/api-client-react';
 import type { FomReportState } from '@workspace/api-client-react';
@@ -35,6 +35,20 @@ type CompanyFomSettings = {
   apiTokenHint: string | null;
   updatedAt: string | null;
   startDate?: string;
+};
+
+type FomAgentPayload = {
+  agent: {
+    tokenSet: boolean;
+    online: boolean;
+    machine: string | null;
+    host: string | null;
+    port: number | null;
+    lastSeenAt: string | null;
+    reportListening: boolean | null;
+  };
+  preferredPort: number;
+  script: string;
 };
 
 async function companyFomApi<T>(path: string, init?: RequestInit): Promise<T> {
@@ -169,6 +183,29 @@ export function SettingsPage() {
     enabled: canEdit,
   });
 
+  const agentQ = useQuery({
+    queryKey: ['company-fom-agent'],
+    queryFn: () => companyFomApi<FomAgentPayload>('/api/fom/agent'),
+    enabled: canEdit,
+    refetchInterval: 30_000,
+  });
+
+  const rotateAgent = useMutation({
+    mutationFn: () => companyFomApi<FomAgentPayload>('/api/fom/agent/rotate', { method: 'POST', body: '{}' }),
+    onSuccess: () => {
+      toast({ title: 'Agent token yangilandi — skriptni qayta nusxalang' });
+      void qc.invalidateQueries({ queryKey: ['company-fom-agent'] });
+      void qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() });
+    },
+    onError: (error: Error) => toast({ title: error.message, variant: 'destructive' }),
+  });
+
+  useEffect(() => {
+    if (!agentQ.data?.agent?.online) return;
+    void qc.invalidateQueries({ queryKey: ['company-fom-settings'] });
+    void qc.invalidateQueries({ queryKey: getGetFomStatusQueryKey() });
+  }, [agentQ.data?.agent?.online, agentQ.data?.agent?.lastSeenAt, qc]);
+
   useEffect(() => {
     const s = settingsQ.data;
     if (!s) return;
@@ -262,21 +299,69 @@ export function SettingsPage() {
     <DataState loading={q.isLoading} error={q.isError} empty={false} retry={() => q.refetch()} />
     {message && <div className={`notice ${message.tone}`} data-testid="status-fom-message">{message.text}</div>}
 
-    {canEdit && <Panel title="FOM ulanishi" subtitle="Har bir kompaniya o‘z F-APTEKA (REPORT.exe / SQL) serveriga alohida ulanadi" className="fom-connect">
-      <div className="fom-setup-guide" data-testid="fom-setup-guide">
-        <div className="fom-setup-head"><Link2 size={16} /><b>Qanday ulanadi?</b><span>5 qadam · 2–3 daqiqa</span></div>
-        <ol>
-          <li><b>Tarmoq.</b> Apteka kompyuterida Radmin VPN, ochiq IP yoki boshqa yoʻl ochiq boʻlsin — PHARMXS FOM ga yetishi kerak.</li>
-          <li><b>REPORT.exe.</b> F-APTEKA da ishlayotganini tekshiring; Host/IP va Portni yozib oling.</li>
-          <li><b>Filial ID.</b> Faqat raqamlar: <code>1, 2, 3</code>. Login yoki ism emas. Boʻsh qoldirsangiz — avtomatik aniqlanadi.</li>
-          <li><b>Saqlash → Sinash.</b> Avval saqlang, keyin «Ulanishni sinash» ni bosing.</li>
-          <li><b>Toʻliq tortish.</b> Birinchi marta <code>{startLabel}</code> dan torting; keyin yangilanishlar avtomatik/incremental boʻladi.</li>
-        </ol>
+    {canEdit && <Panel title="FOM ulanishi" subtitle="Har bir kompaniya o‘z FOM kompyuteriga alohida ulanadi" className="fom-connect">
+      <div className="fom-form-section fom-agent-panel" data-testid="panel-fom-agent">
+        <div className="fom-agent-head">
+          <h3><Terminal size={15} /> 1-qadam: PowerShell bilan ulash</h3>
+          {agentQ.data?.agent && (
+            <StatusBadge tone={agentQ.data.agent.online ? 'good' : 'warn'}>
+              {agentQ.data.agent.online ? 'Kompyuter onlayn' : 'Hali ulanmagan'}
+            </StatusBadge>
+          )}
+        </div>
+        <p className="fom-agent-lead">
+          REPORT.exe ishlayotgan dorixona kompyuterida <b>Admin PowerShell</b> oching → skriptni nusxa → Ctrl+V → Enter.
+          Agent lokal REPORT dan o‘qiydi (router/NAT ochiq bo‘lishi shart emas), Windows yoqilganda oʻzi ishlayveradi.
+        </p>
+        {agentQ.data?.agent?.online && (
+          <div className="fom-agent-meta" data-testid="fom-agent-online">
+            <MonitorSmartphone size={16} />
+            <div>
+              <b>{agentQ.data.agent.machine || 'Kompyuter'}</b>
+              <span>
+                {agentQ.data.agent.host || '—'}
+                {agentQ.data.agent.port ? `:${agentQ.data.agent.port}` : ''}
+                {agentQ.data.agent.reportListening === false ? ' · REPORT tinglanmayapti' : agentQ.data.agent.reportListening ? ' · REPORT tinglanmoqda' : ''}
+                {agentQ.data.agent.lastSeenAt ? ` · oxirgi: ${dateTime(agentQ.data.agent.lastSeenAt)}` : ''}
+              </span>
+            </div>
+          </div>
+        )}
+        <div className="fom-script-box">
+          <div className="fom-script-toolbar">
+            <span>Admin PowerShell skripti (shu kompaniya)</span>
+            <div className="heading-button-group">
+              <button type="button" className="button secondary" disabled={!agentQ.data?.script || rotateAgent.isPending} onClick={() => rotateAgent.mutate()} data-testid="button-rotate-fom-agent">
+                Tokenni yangilash
+              </button>
+              <button type="button" className="button primary" disabled={!agentQ.data?.script} onClick={() => void copyText('script', agentQ.data?.script ?? '')} data-testid="button-copy-fom-agent-script">
+                {copied === 'script' ? <CheckCheck size={15} /> : <Copy size={15} />}
+                {copied === 'script' ? 'Nusxa olindi' : 'Nusxa olish'}
+              </button>
+            </div>
+          </div>
+          <textarea
+            className="fom-script-ta"
+            readOnly
+            rows={8}
+            value={agentQ.isLoading ? 'Yuklanmoqda…' : (agentQ.data?.script ?? agentQ.error?.message ?? 'Skript yuklanmadi')}
+            spellCheck={false}
+            data-testid="textarea-fom-agent-script"
+          />
+        </div>
+        <div className="connect-actions fom-agent-actions">
+          <button type="button" className="button secondary" onClick={runTest} disabled={test.isPending || !status?.configured} data-testid="button-test-fom-settings">
+            <Activity size={15} />{test.isPending ? 'Tekshirilmoqda…' : 'Ulanishni sinash'}
+          </button>
+          <button type="button" className="button primary" onClick={() => runSync(undefined, 'full')} disabled={!status?.configured || status?.running || sync.isPending} data-testid="button-fom-full-sync">
+            <RefreshCw size={15} />2-qadam: Birinchi toʻliq tortish ({startLabel} dan)
+          </button>
+        </div>
       </div>
 
-      <form className="fom-form" onSubmit={e => { e.preventDefault(); if (filialLooksWrong) { setMessage({ tone: 'error', text: 'Filial ID faqat raqam boʻlishi kerak (masalan: 1, 2). Login yoki matn emas.' }); return; } saveSettings.mutate(); }} data-testid="form-fom-settings">
-        <div className="fom-form-section">
-          <h3>Server manzili</h3>
+      <details className="fom-advanced" data-testid="fom-advanced-settings">
+        <summary>Qoʻlda sozlash (ixtiyoriy)</summary>
+        <form className="fom-form" onSubmit={e => { e.preventDefault(); if (filialLooksWrong) { setMessage({ tone: 'error', text: 'Filial ID faqat raqam boʻlishi kerak (masalan: 1, 2).' }); return; } saveSettings.mutate(); }} data-testid="form-fom-settings">
           <div className="form-grid fom-grid-server">
             <label className="f-proto">Protokol
               <select value={protocol} onChange={e => setProtocol(e.target.value as 'http' | 'https')} data-testid="input-fom-protocol">
@@ -286,109 +371,52 @@ export function SettingsPage() {
             </label>
             <label className="f-host">Host / IP
               <span className="field-with-actions">
-                <input required value={host} onChange={e => setHost(e.target.value)} placeholder="84.54.70.12" data-testid="input-fom-host" autoComplete="off" />
+                <input value={host} onChange={e => setHost(e.target.value)} placeholder="84.54.70.12" data-testid="input-fom-host" autoComplete="off" />
                 <button type="button" className="icon-button" title="Nusxa olish" aria-label="Hostni nusxa olish" onClick={() => void copyText('host', host)} data-testid="button-copy-fom-host">
                   {copied === 'host' ? <CheckCheck size={15} /> : <Copy size={15} />}
                 </button>
               </span>
-              <small className="field-hint">Radmin yoki ochiq IP — domen emas, odatda raqamli manzil</small>
             </label>
             <label className="f-port">Port
               <input value={port} onChange={e => setPort(e.target.value.replace(/[^\d]/g, ''))} placeholder="8080" inputMode="numeric" data-testid="input-fom-port" />
             </label>
-          </div>
-          <div className="connect-preview" data-testid="fom-url-preview">
-            <span>Ulanish manzili</span>
-            <div className="connect-preview-row">
-              <code>{reportPreview || 'Host va portni kiriting…'}</code>
-              <button type="button" className="icon-button" disabled={!reportPreview} title="Manzilni nusxa olish" aria-label="Manzilni nusxa olish" onClick={() => void copyText('url', reportPreview)} data-testid="button-copy-fom-url">
-                {copied === 'url' ? <CheckCheck size={15} /> : <Copy size={15} />}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="fom-form-section">
-          <h3>Filiallar va tortish</h3>
-          <div className="form-grid">
-            <label className="span-2">Filial ID lari
+            <label className="span-2">Filial ID
               <span className="field-with-actions">
-                <input
-                  value={filialIds}
-                  onChange={e => setFilialIds(e.target.value.replace(/[^\d,\s;]/g, ''))}
-                  placeholder="1, 2, 3"
-                  data-testid="input-fom-filials"
-                  autoComplete="off"
-                  aria-invalid={filialLooksWrong}
-                />
+                <input value={filialIds} onChange={e => setFilialIds(e.target.value.replace(/[^\d,\s;]/g, ''))} placeholder="1, 2, 3" data-testid="input-fom-filials" autoComplete="off" aria-invalid={filialLooksWrong} />
                 <button type="button" className="icon-button" title="Nusxa olish" aria-label="Filial ID larni nusxa olish" onClick={() => void copyText('filials', filialIds)} data-testid="button-copy-fom-filials">
                   {copied === 'filials' ? <CheckCheck size={15} /> : <Copy size={15} />}
                 </button>
               </span>
-              <small className={`field-hint ${filialLooksWrong ? 'bad' : ''}`}>
-                {filialLooksWrong
-                  ? 'Xato: bu yerda login/ism emas — faqat FOM dagi filial raqamlari (1, 2, 3)'
-                  : 'FOM dagi filial raqamlari. Vergul bilan ajrating. Boʻsh = avtomatik'}
-              </small>
             </label>
-            <label>Birinchi tortish sanasi
+            <label>Birinchi tortish
               <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} data-testid="input-fom-start-date" />
-              <small className="field-hint">Birinchi toʻliq tortish shu sanadan boshlanadi</small>
             </label>
-            <label>Avto-interval (daqiqa)
+            <label>Avto-interval (daq.)
               <input type="number" min={0} max={1440} value={intervalMinutes} onChange={e => setIntervalMinutes(e.target.value)} data-testid="input-fom-interval" />
-              <small className="field-hint">0 = avtomatik yangilanish oʻchirilgan</small>
             </label>
-            <label>Timeout (soniya)
+            <label>Timeout (son.)
               <input type="number" min={5} max={600} value={timeoutSeconds} onChange={e => setTimeoutSeconds(e.target.value)} data-testid="input-fom-timeout" />
             </label>
-            <label>Dastlabki kunlar (zaxira)
+            <label>Dastlabki kunlar
               <input type="number" min={1} max={3650} value={initialDays} onChange={e => setInitialDays(e.target.value)} data-testid="input-fom-initial-days" />
-              <small className="field-hint">Sana berilmasa, shu kunlik tarix olinadi</small>
+            </label>
+            <label className="span-2">API token <em>(ixtiyoriy)</em>
+              <span className="field-with-actions secret-input">
+                <input type={showToken ? 'text' : 'password'} value={apiToken} onChange={e => setApiToken(e.target.value)} placeholder={settingsQ.data?.apiTokenSet ? (settingsQ.data.apiTokenHint ?? 'Saqlangan token bor') : 'Agar FOM talab qilsa'} data-testid="input-fom-token" autoComplete="new-password" />
+                <button type="button" className="icon-button" title={showToken ? 'Yashirish' : 'Koʻrsatish'} aria-label={showToken ? 'Tokenni yashirish' : 'Tokenni koʻrsatish'} onClick={() => setShowToken(v => !v)} data-testid="button-toggle-fom-token">
+                  {showToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </span>
             </label>
           </div>
-        </div>
-
-        <div className="fom-form-section">
-          <h3>Xavfsizlik</h3>
-          <label className="span-2">API token <em>(ixtiyoriy)</em>
-            <span className="field-with-actions secret-input">
-              <input
-                type={showToken ? 'text' : 'password'}
-                value={apiToken}
-                onChange={e => setApiToken(e.target.value)}
-                placeholder={settingsQ.data?.apiTokenSet ? (settingsQ.data.apiTokenHint ?? 'Saqlangan token bor — yangisini yozing yoki boʻsh qoldiring') : 'Agar FOM server talab qilsa'}
-                data-testid="input-fom-token"
-                autoComplete="new-password"
-              />
-              <button type="button" className="icon-button" title={showToken ? 'Yashirish' : 'Koʻrsatish'} aria-label={showToken ? 'Tokenni yashirish' : 'Tokenni koʻrsatish'} onClick={() => setShowToken(v => !v)} data-testid="button-toggle-fom-token">
-                {showToken ? <EyeOff size={15} /> : <Eye size={15} />}
-              </button>
-              <button type="button" className="icon-button" title="Nusxa olish" aria-label="Tokenni nusxa olish" onClick={() => void copyText('token', apiToken)} data-testid="button-copy-fom-token">
-                {copied === 'token' ? <CheckCheck size={15} /> : <Copy size={15} />}
-              </button>
-            </span>
-            <small className="field-hint">Koʻpchilik FOM da token shart emas. Saqlangan tokenni qayta koʻrsatmaymiz — yangisini kiriting.</small>
-          </label>
-        </div>
-
-        <div className="connect-actions">
-          <p className="field-hint">
-            {settingsQ.data?.source === 'saved' ? 'Sozlama saqlangan' : settingsQ.data?.source === 'env' ? 'Server muhitidan' : 'Hali saqlanmagan'}
-            {settingsQ.data?.updatedAt ? ` · ${dateTime(settingsQ.data.updatedAt)}` : ''}
-            {settingsQ.isError ? ' · yuklab boʻlmadi (admin/moliya huquqi kerak)' : ''}
-          </p>
-          <button type="submit" className="button primary" disabled={saveSettings.isPending} data-testid="button-save-fom-settings">
-            {saveSettings.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
-          </button>
-          <button type="button" className="button secondary" onClick={runTest} disabled={test.isPending || !host.trim()} data-testid="button-test-fom-settings">
-            <Activity size={15} />{test.isPending ? 'Tekshirilmoqda…' : 'Ulanishni sinash'}
-          </button>
-          <button type="button" className="button primary" onClick={() => runSync(undefined, 'full')} disabled={!status?.configured || status?.running || sync.isPending} data-testid="button-fom-full-sync">
-            <RefreshCw size={15} />Birinchi toʻliq tortish ({startLabel} dan)
-          </button>
-        </div>
-      </form>
+          {reportPreview ? <p className="field-hint" data-testid="fom-url-preview">Manzil: <code>{reportPreview}</code></p> : null}
+          <div className="connect-actions">
+            <button type="submit" className="button primary" disabled={saveSettings.isPending} data-testid="button-save-fom-settings">
+              {saveSettings.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
+            </button>
+          </div>
+        </form>
+      </details>
     </Panel>}
 
     {status && <>

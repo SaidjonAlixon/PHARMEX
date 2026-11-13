@@ -58,6 +58,10 @@ export interface FomConfig {
   initialDays: number;
   intervalMinutes: number;
   refsIntervalMinutes: number;
+  /** Pharmacy PC agent fetches REPORT locally (NAT / closed inbound). */
+  agentRelay?: boolean;
+  agentOrganizationId?: number;
+  agentLocalPort?: number;
 }
 
 /** Values saved from the settings page; they take precedence over env. */
@@ -251,8 +255,8 @@ export async function fetchFomReport(
   from: Date,
   to: Date,
 ): Promise<FomRow[]> {
-  if (!config.reportUrl) throw new FomError("FOM server manzili sozlanmagan.");
-  const sqlCfg = config.reportUrl.startsWith("mssql://") ? fomSqlConfig() : null;
+  if (!config.reportUrl && !config.agentRelay) throw new FomError("FOM server manzili sozlanmagan.");
+  const sqlCfg = config.reportUrl?.startsWith("mssql://") ? fomSqlConfig() : null;
   if (sqlCfg) {
     try {
       return parseFomXml(await execFomSqlReport(sqlCfg, reportId, filialId, from, to, Math.max(config.timeoutMs, 300_000)));
@@ -262,14 +266,49 @@ export async function fetchFomReport(
       throw new FomError(message);
     }
   }
+  const viaAgent = async () => {
+    if (!config.agentOrganizationId) {
+      throw new FomError("FOM agent sozlanmagan — Sozlamalar → PowerShell skriptini qayta ishga tushiring.");
+    }
+    const { requestAgentFetch } = await import("./fomAgentRelay");
+    const xml = await requestAgentFetch({
+      organizationId: config.agentOrganizationId,
+      reportId,
+      filialId,
+      from,
+      to,
+      timeoutMs: Math.max(config.timeoutMs, 180_000),
+    });
+    return parseFomXml(xml);
+  };
+
+  if (config.agentRelay && config.agentOrganizationId) {
+    try {
+      return await viaAgent();
+    } catch (error) {
+      throw new FomError(
+        `FOM agent orqali olinmadi (${error instanceof Error ? error.message : String(error)}). Admin PowerShell skriptini qayta ishga tushiring.`,
+      );
+    }
+  }
+  if (!config.reportUrl) throw new FomError("FOM server manzili sozlanmagan.");
   const url = reportUrl(config.reportUrl, reportId, filialId, from, to);
   let response: Response;
   try {
     const headers: Record<string, string> = config.apiToken
       ? { Authorization: `Bearer ${config.apiToken}`, "X-Token": config.apiToken }
       : {};
-    response = await fetch(url, { headers, signal: AbortSignal.timeout(config.timeoutMs) });
+    response = await fetch(url, { headers, signal: AbortSignal.timeout(Math.min(config.timeoutMs, 20_000)) });
   } catch (error) {
+    if (config.agentOrganizationId) {
+      try {
+        return await viaAgent();
+      } catch (relayError) {
+        throw new FomError(
+          `FOM agent orqali olinmadi (${relayError instanceof Error ? relayError.message : String(relayError)}).`,
+        );
+      }
+    }
     throw new FomError(`FOM serveriga ulanib boʻlmadi (${connectionReason(error, config)}).`);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());

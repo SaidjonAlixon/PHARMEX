@@ -1599,7 +1599,9 @@ export async function startFomSync(options: SyncOptions): Promise<{ started: boo
   const organizationId = options.organizationId ?? null;
   const config = options.config ?? fomConfig();
   const lock = getLock(organizationId);
-  if (!config.reportUrl) return { started: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
+  if (!config.reportUrl && !config.agentRelay) {
+    return { started: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
+  }
   if (lock.running || lock.starting) {
     if (options.trigger === "manual") {
       lock.queued = options;
@@ -1721,9 +1723,10 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   // the first run, or a range the user asked for explicitly.
   const since = sqlMode && !options.from && !options.to && previous ? changesSince(previous) : null;
   const sourceNow = sqlMode ? await fetchFomSourceNow(config).catch(() => null) : null;
+  // First successful run always starts from org startDate (e.g. 2025-01-01).
   const from = since
     ? utcDay(since)
-    : utcDay(options.from ?? (sqlMode && !previous ? floor : defaultFrom(config, to, previous)));
+    : utcDay(options.from ?? (!previous ? floor : defaultFrom(config, to, previous)));
   const details: SyncDetails = {
     trigger: options.trigger,
     from: from.toISOString().slice(0, 10),
@@ -2048,19 +2051,31 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
 /** Test call: reads the organisations reference (small, undated). */
 export async function testFomConnection(configOverride?: FomConfig | null): Promise<{ ok: boolean; message: string }> {
   const config = configOverride ?? fomConfig();
-  if (!config.reportUrl) return { ok: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
+  if (!config.reportUrl && !config.agentRelay) {
+    return { ok: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
+  }
   try {
     const today = new Date();
     // Report 189 is missing from older P_GetReport_XML versions; the catalog is always there.
     const key: FomReportKey = (await fomReportIdFor(config, "organizations")) == null ? "catalog" : "organizations";
     const rows = await fetchFomReport(
-      { ...config, timeoutMs: Math.min(config.timeoutMs, key === "catalog" ? 120_000 : 20_000) },
+      {
+        ...config,
+        timeoutMs: Math.min(
+          Math.max(config.timeoutMs, config.agentRelay ? 90_000 : 20_000),
+          key === "catalog" ? 120_000 : config.agentRelay ? 90_000 : 20_000,
+        ),
+      },
       (await fomReportIdFor(config, key))!,
       config.filialIds[0] ?? "1",
       today,
       today,
     );
-    return { ok: true, message: `FOM serveri javob berdi: ${rows.length} ta ${key === "catalog" ? "tovar" : "tashkilot"}.` };
+    const via = config.agentRelay ? " (agent/relay)" : "";
+    return {
+      ok: true,
+      message: `FOM serveri javob berdi${via}: ${rows.length} ta ${key === "catalog" ? "tovar" : "tashkilot"}.`,
+    };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }

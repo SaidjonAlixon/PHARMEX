@@ -19,7 +19,29 @@ export const DEFAULT_FOM_START_DATE = "2025-01-01";
 export type OrgFomSavedConfig = FomSavedConfig & {
   /** ISO date YYYY-MM-DD — first full sync floor */
   startDate?: string;
+  /** Pharmacy PC agent (PowerShell) */
+  agentToken?: string;
+  agentHost?: string;
+  agentPort?: number;
+  agentMachine?: string;
+  agentLocalIps?: string[];
+  agentReportListening?: boolean;
+  agentLastSeenAt?: string;
+  /** Fetch REPORT via pharmacy PowerShell agent (when cloud cannot reach public IP). */
+  agentRelay?: boolean;
 };
+
+const ORG_ONLY_KEYS = new Set([
+  "startDate",
+  "agentToken",
+  "agentHost",
+  "agentPort",
+  "agentMachine",
+  "agentLocalIps",
+  "agentReportListening",
+  "agentLastSeenAt",
+  "agentRelay",
+]);
 
 export function orgFomSettingsKey(organizationId: number): string {
   return `${ORG_KEY_PREFIX}${organizationId}`;
@@ -95,10 +117,34 @@ export function resolveOrgFomConfig(saved: OrgFomSavedConfig | null): FomConfig 
   }
   const merged = { ...env };
   for (const [key, value] of Object.entries(saved) as Array<[keyof OrgFomSavedConfig, unknown]>) {
-    if (key === "startDate") continue;
+    if (ORG_ONLY_KEYS.has(key)) continue;
     if (value !== undefined) (merged as Record<string, unknown>)[key] = value;
   }
+  if (saved.agentRelay) {
+    merged.agentRelay = true;
+    merged.agentOrganizationId = undefined; // set by caller with org id
+    merged.agentLocalPort = saved.agentPort && saved.agentPort > 0 ? saved.agentPort : 8084;
+    // Placeholder so status/UI treat org as configured even when public IP is unreachable
+    if (!merged.reportUrl) {
+      merged.reportUrl = `http://127.0.0.1:${merged.agentLocalPort}`;
+    }
+  }
   return merged;
+}
+
+/** Resolve org config including agent relay binding. */
+export function resolveOrgFomConfigForSync(organizationId: number, saved: OrgFomSavedConfig | null): FomConfig {
+  const cfg = resolveOrgFomConfig(saved);
+  // If pharmacy installed the PowerShell agent, always pull via local REPORT (NAT-safe).
+  if (saved?.agentToken?.trim()) {
+    cfg.agentRelay = saved.agentRelay !== false;
+    cfg.agentOrganizationId = organizationId;
+    cfg.agentLocalPort = saved.agentPort && saved.agentPort > 0 ? saved.agentPort : 8084;
+    if (!cfg.reportUrl) {
+      cfg.reportUrl = `http://127.0.0.1:${cfg.agentLocalPort}`;
+    }
+  }
+  return cfg;
 }
 
 export function orgStartDate(saved: OrgFomSavedConfig | null): string {
@@ -140,8 +186,8 @@ export function scheduleFomSync(): void {
     try {
       const orgs = await listOrgFomConfigs();
       for (const { organizationId, saved } of orgs) {
-        const cfg = resolveOrgFomConfig(saved);
-        if (!cfg.reportUrl || cfg.intervalMinutes <= 0) continue;
+        const cfg = resolveOrgFomConfigForSync(organizationId, saved);
+        if ((!cfg.reportUrl && !cfg.agentRelay) || cfg.intervalMinutes <= 0) continue;
         await startFomSync({
           trigger: "auto",
           organizationId,
