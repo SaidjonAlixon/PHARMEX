@@ -1960,13 +1960,20 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
   box-shadow: 8px 0 32px rgba(0,0,0,.45);
 }
 .dark .sidebar .brand-card {
-  background: linear-gradient(180deg, #0a1428 65%, rgba(7,15,32,.98));
-  border: none; box-shadow: none;
-  padding-bottom: 14px;
+  background: #fff;
+  border: 1px solid rgba(226,232,240,.95);
+  border-radius: 14px;
+  margin: 2px 2px 0;
+  padding: 10px 12px;
+  box-shadow:
+    0 0 0 1px rgba(15,179,199,.06),
+    0 10px 24px rgba(0,0,0,.28);
 }
 .dark .sidebar .brand-logo {
-  filter: brightness(1.38) contrast(1.1) saturate(1.12) drop-shadow(0 0 14px rgba(15,179,199,.28));
+  filter: none;
 }
+.dark .sidebar .brand-logo.logo-light { display: block; }
+.dark .sidebar .brand-logo.logo-dark { display: none; }
 .dark .workspace-label {
   color: #5eead4;
   margin-top: 10px;
