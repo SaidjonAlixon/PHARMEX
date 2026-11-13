@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Building2, CalendarDays, Check, Clock3, CreditCard, Headphones, Infinity as InfinityIcon,
-  Loader2, QrCode, RefreshCw, Send, ShieldCheck, Sparkles, Wallet, X, Zap,
+  Building2, CalendarDays, Check, Clock3, CreditCard, Headphones, Loader2, QrCode,
+  RefreshCw, Send, ShieldCheck, Sparkles, Users, Wallet, X, Zap,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
@@ -19,6 +19,7 @@ type OrgSub = {
   planExpiresAt: string | null;
   daysLeft: number | null;
   branchLimit: number | null;
+  userLimit?: number | null;
   telegramEnabled: boolean;
   telegramLinked: boolean;
   features: string[];
@@ -29,11 +30,17 @@ type PlanRow = {
   name: string;
   priceUzs: number;
   branchLimit: number | null;
+  userLimit?: number | null;
   telegram: boolean;
   features: string[];
   highlight?: boolean;
   applyOnly?: boolean;
 };
+
+function limitLabel(n: number | null | undefined) {
+  if (n == null) return 'Cheksiz';
+  return `${n} ta`;
+}
 
 type PayMethod = 'card' | 'click';
 
@@ -234,6 +241,8 @@ export function PlansPage() {
 
   const busy = paying || checkout.isPending;
   const currentPlan = plans.find((p) => p.code === org?.planCode) || null;
+  const branchLimitShown = org?.branchLimit ?? currentPlan?.branchLimit ?? null;
+  const userLimitShown = org?.userLimit ?? currentPlan?.userLimit ?? null;
 
   const displayPrice = (p: PlanRow) => {
     if (p.applyOnly || p.priceUzs <= 0) return 'Kelishiladi';
@@ -269,8 +278,8 @@ export function PlansPage() {
             </div>
 
             <div className="sub-hero-meta-inline">
-              <span><Building2 size={14} /> Filial limiti: <b>{org.branchLimit == null ? '∞' : `${org.branchLimit} ta`}</b></span>
-              <span><InfinityIcon size={14} /> Foydalanuvchilar: <b>∞</b></span>
+              <span><Building2 size={14} /> Filial limiti: <b>{limitLabel(branchLimitShown)}</b></span>
+              <span><Users size={14} /> Foydalanuvchilar: <b>{limitLabel(userLimitShown)}</b></span>
               <span><CalendarDays size={14} /> Amal: <b>{endsLabel}</b></span>
             </div>
 
@@ -338,10 +347,23 @@ export function PlansPage() {
               <p className="plan-branches"><Building2 size={14} /> {p.branchLimit == null ? 'Istalgancha filial' : p.branchLimit >= 50 ? `${p.branchLimit} tagacha filial` : `${p.branchLimit} ta filial`}</p>
               <ul>{p.features.map((f) => <li key={f}><Check size={14} />{f}</li>)}</ul>
               <div className="plan-card-foot">
-                {isCurrent && (
-                  <div className="plan-expires">
-                    <Clock3 size={12} />
-                    <span>{ended ? 'Muddat tugagan' : `Tugash: ${endsLabel}`}</span>
+                {isCurrent && remain && (
+                  <div className={`plan-expires-card ${ended ? 'ended' : ''}`} aria-live="polite">
+                    <div className="plan-expires-head">
+                      <Clock3 size={13} />
+                      <span>{ended ? 'Muddat tugagan' : 'Tugashiga'}</span>
+                    </div>
+                    {!ended && (
+                      <div className="plan-expires-ticks">
+                        <span><b>{remain.days}</b><em>kun</em></span>
+                        <i>:</i>
+                        <span><b>{pad2(remain.hours)}</b><em>soat</em></span>
+                        <i>:</i>
+                        <span><b>{pad2(remain.minutes)}</b><em>daq</em></span>
+                        <i>:</i>
+                        <span><b>{pad2(remain.seconds)}</b><em>sek</em></span>
+                      </div>
+                    )}
                   </div>
                 )}
                 {applyOnly ? (

@@ -5,6 +5,8 @@ export type PlanDef = {
   name: string;
   priceUzs: number;
   branchLimit: number | null;
+  /** null = cheksiz */
+  userLimit: number | null;
   telegram: boolean;
   features: string[];
   highlight?: boolean;
@@ -18,6 +20,7 @@ export const PLANS: Record<PlanCode, PlanDef> = {
     name: "Boshlangʻich",
     priceUzs: 299_000,
     branchLimit: 2,
+    userLimit: 5,
     telegram: false,
     features: [
       "7 kun bepul sinov",
@@ -32,6 +35,7 @@ export const PLANS: Record<PlanCode, PlanDef> = {
     name: "Biznes",
     priceUzs: 499_000,
     branchLimit: 5,
+    userLimit: 15,
     telegram: false,
     highlight: true,
     features: [
@@ -47,6 +51,7 @@ export const PLANS: Record<PlanCode, PlanDef> = {
     name: "Korxona",
     priceUzs: 799_000,
     branchLimit: 50,
+    userLimit: 50,
     telegram: true,
     features: [
       "50 tagacha filial",
@@ -61,6 +66,7 @@ export const PLANS: Record<PlanCode, PlanDef> = {
     name: "Maxsus",
     priceUzs: 0,
     branchLimit: null,
+    userLimit: null,
     telegram: true,
     applyOnly: true,
     features: [

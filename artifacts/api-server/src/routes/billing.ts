@@ -27,6 +27,7 @@ router.get("/billing/plans", (_req, res): void => {
       name: p.name,
       priceUzs: p.priceUzs,
       branchLimit: p.branchLimit,
+      userLimit: p.userLimit,
       telegram: p.telegram,
       features: p.features,
       highlight: Boolean(p.highlight),
