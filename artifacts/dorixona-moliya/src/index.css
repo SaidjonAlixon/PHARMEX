@@ -2051,18 +2051,10 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 .dark .cabinet-ticks em { color: #047857; }
 .dark .cabinet-ticks > i { color: #059669; }
 .dark .cabinet-countdown.is-ended {
-  color: #fb7185;
-  background: rgba(127,29,29,.35);
-  border-color: rgba(251,113,133,.35);
+  color: #be123c;
+  background: #fff5f5;
+  border-color: rgba(190,18,60,.28);
 }
-.dark .cabinet-ticks > span {
-  background: linear-gradient(180deg, #152448 0%, #0d1830 100%);
-  border-color: rgba(52,211,153,.28);
-  box-shadow: 0 4px 10px rgba(0,0,0,.25);
-}
-.dark .cabinet-ticks b { color: #f8fafc; text-shadow: 0 0 12px rgba(94,234,212,.2); }
-.dark .cabinet-ticks em { color: #5eead4; }
-.dark .cabinet-ticks > i { color: #2dd4bf; opacity: .55; }
 .dark .cabinet-marquee {
   background: linear-gradient(90deg, #9f1239, #be123c 40%, #9f1239);
   border-top-color: rgba(251,113,133,.45);
