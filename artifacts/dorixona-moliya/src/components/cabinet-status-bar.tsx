@@ -1,9 +1,9 @@
-import { Building2, Clock3 } from 'lucide-react';
+import { Building2, Clock3, Info } from 'lucide-react';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import type { OrgBrief } from '@/lib/access';
 
 const TEST_MARQUEE =
-  'Bu platforma test holatda ishlamoqda — barcha imkoniyatlar ketma-ketlik bilan qoʻshib borilmoqda…!';
+  'PHARMXS sinov rejimida ishlamoqda. Yangi imkoniyatlar bosqichma-bosqich joriy etilmoqda.';
 const MARQUEE_COPIES = 6;
 
 function pad(n: number) {
@@ -67,13 +67,13 @@ function OrgStrip({
         </span>
         {countdown && !countdown.ended ? (
           <div className="cabinet-ticks">
-            <span><b>{pad(countdown.days)}</b><em>k</em></span>
+            <span className="is-days"><b>{pad(countdown.days)}</b><em>kun</em></span>
             <i>:</i>
-            <span><b>{pad(countdown.hours)}</b><em>s</em></span>
+            <span><b>{pad(countdown.hours)}</b><em>soat</em></span>
             <i>:</i>
-            <span><b>{pad(countdown.minutes)}</b><em>d</em></span>
+            <span><b>{pad(countdown.minutes)}</b><em>daq</em></span>
             <i>:</i>
-            <span><b>{pad(countdown.seconds)}</b><em>s</em></span>
+            <span><b>{pad(countdown.seconds)}</b><em>sek</em></span>
           </div>
         ) : (
           <strong className="cabinet-ended-note">Yangilang</strong>
@@ -91,7 +91,7 @@ function Marquee() {
           <div key={group} className="cabinet-marquee-group" aria-hidden={group === 1 || undefined}>
             {Array.from({ length: MARQUEE_COPIES }, (_, i) => (
               <span key={i} className="cabinet-marquee-item">
-                <em aria-hidden>●</em>
+                <Info className="cabinet-marquee-info" size={14} strokeWidth={2.4} aria-hidden />
                 {TEST_MARQUEE}
               </span>
             ))}
