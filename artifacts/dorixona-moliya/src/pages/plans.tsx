@@ -362,7 +362,7 @@ export function PlansPage() {
                     data-testid={`button-checkout-${p.code}`}
                   >
                     <Wallet size={16} />
-                    {trialLocked ? 'Hozir bepul sinovdasiz' : isCurrent ? 'Obunani uzaytirish' : 'Obuna olish'}
+                    {trialLocked ? 'Hozir bepul sinovdasiz' : isCurrent ? 'Obunani uzaytirish' : "Obuna bo'lish"}
                   </button>
                 )}
               </div>

@@ -89,5 +89,5 @@ export function planCta(p: PlanCard): { href: string; label: string; kind: 'free
   if (p.applyOnly || p.code === 'custom') {
     return { href: '/sign-up?plan=custom', label: 'Ariza qoldirish', kind: 'apply' };
   }
-  return { href: '/sign-in?next=/tariflar', label: 'Obuna olish', kind: 'pay' };
+  return { href: '/sign-in?next=/tariflar', label: "Obuna bo'lish", kind: 'pay' };
 }
