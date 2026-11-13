@@ -1231,9 +1231,9 @@ body { background: var(--wash); }
   flex: 0 0 auto;
 }
 .cabinet-countdown {
-  display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto;
-  width: 268px; min-width: 268px; max-width: 268px;
-  padding: 3px 8px 3px 9px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex: 0 0 auto;
+  width: 292px; min-width: 292px; max-width: 292px;
+  padding: 4px 10px; border-radius: 999px;
   background: #fff; border: 1px solid rgba(16,185,129,.24);
   color: #047857; box-sizing: border-box;
 }
@@ -1242,34 +1242,34 @@ body { background: var(--wash); }
   width: auto; min-width: 0; max-width: none;
 }
 .cabinet-countdown-head {
-  display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
-  width: 52px; font-size: 9px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex: 0 0 auto;
+  font-size: 9px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
   white-space: nowrap;
 }
 .cabinet-ticks {
-  display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px; flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
 }
 .cabinet-ticks > span {
-  display: inline-flex; align-items: baseline; justify-content: center; gap: 2px;
-  width: 40px; min-width: 40px; max-width: 40px; height: 22px; padding: 0;
-  border-radius: 6px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  width: 46px; min-width: 46px; max-width: 46px; height: 24px; padding: 0 2px;
+  border-radius: 7px; box-sizing: border-box;
   background: #f4fbf8; border: 1px solid rgba(16,185,129,.22);
 }
-.cabinet-ticks > span.is-days { width: 44px; min-width: 44px; max-width: 44px; }
+.cabinet-ticks > span.is-days { width: 50px; min-width: 50px; max-width: 50px; }
 .cabinet-ticks b {
-  width: 1.6ch; text-align: center;
-  font-size: 11.5px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
+  min-width: 1.7ch; text-align: center;
+  font-size: 12px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
   letter-spacing: 0; color: #0f2f24; line-height: 1; font-weight: 850;
 }
-.cabinet-ticks > span.is-days b { width: 2ch; }
+.cabinet-ticks > span.is-days b { min-width: 2ch; }
 .cabinet-ticks em {
-  font-style: normal; font-size: 7px; font-weight: 800; color: #047857;
+  font-style: normal; font-size: 7.5px; font-weight: 800; color: #047857;
   text-transform: lowercase; line-height: 1;
 }
 .cabinet-ticks > i {
-  font-style: normal; font-weight: 800; color: #059669; opacity: .4;
-  font-size: 10px; width: 6px; text-align: center; flex: 0 0 auto;
+  font-style: normal; font-weight: 800; color: #059669; opacity: .45;
+  font-size: 11px; width: 7px; text-align: center; flex: 0 0 auto;
 }
 .cabinet-ended-note { font-size: 10px; white-space: nowrap; font-weight: 800; }
 .cabinet-marquee {
