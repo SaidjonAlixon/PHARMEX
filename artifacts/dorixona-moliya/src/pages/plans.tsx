@@ -401,13 +401,15 @@ export function PlansPage() {
       </div>
 
       {org?.telegramEnabled && (
-        <Panel title="Telegram xabarnoma (Korxona)" subtitle="Muhim eslatmalar bot orqali keladi">
-          <p className="muted-line">Botga /start yuboring va chat ID ni kiriting.</p>
-          <div className="inline-form">
-            <input value={chatId} onChange={(e) => setChatId(e.target.value)} placeholder="Chat ID" data-testid="input-telegram-chat" />
-            <button type="button" className="button" disabled={telegram.isPending} onClick={() => telegram.mutate()}>
-              <Send size={15} /> {org.telegramLinked ? 'Yangilash' : 'Bogʻlash'}
-            </button>
+        <Panel title="Telegram xabarnoma (Korxona)" subtitle="Muhim eslatmalar bot orqali keladi" className="plans-telegram-panel">
+          <div className="plans-telegram">
+            <p className="muted-line">Botga /start yuboring va chat ID ni kiriting.</p>
+            <div className="inline-form">
+              <input value={chatId} onChange={(e) => setChatId(e.target.value)} placeholder="Chat ID" data-testid="input-telegram-chat" />
+              <button type="button" className="button primary" disabled={telegram.isPending} onClick={() => telegram.mutate()}>
+                <Send size={15} /> {org.telegramLinked ? 'Yangilash' : 'Bogʻlash'}
+              </button>
+            </div>
           </div>
         </Panel>
       )}

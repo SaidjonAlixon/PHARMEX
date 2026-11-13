@@ -36,7 +36,6 @@ function useCountdown(endsAt: string | null | undefined) {
 
 function OrgStrip({
   organization,
-  pageLabel,
 }: {
   organization: OrgBrief | null;
   pageLabel?: string;
@@ -47,20 +46,25 @@ function OrgStrip({
 
   return (
     <div className="cabinet-status-main" data-testid="cabinet-status-bar">
-      <div className="cabinet-org">
-        <span className="cabinet-org-icon" aria-hidden><Building2 size={14} /></span>
-        <div className="cabinet-org-text">
-          <span className="cabinet-org-label">{pageLabel || 'Kompaniya'}</span>
-          <b title={name}>{name}</b>
-        </div>
-        <span className="cabinet-plan-chip" title={`Tarif: ${plan}`}>{plan}</span>
+      <span className="cabinet-org-icon" aria-hidden><Building2 size={15} /></span>
+
+      <div className="cabinet-meta-col" title={name}>
+        <span className="cabinet-meta-label">Kompaniya nomi</span>
+        <b className="cabinet-meta-value">{name}</b>
+      </div>
+
+      <div className="cabinet-meta-divider" aria-hidden />
+
+      <div className="cabinet-meta-col" title={`Tarif: ${plan}`}>
+        <span className="cabinet-meta-label">Tarif</span>
+        <b className="cabinet-meta-value cabinet-meta-plan">{plan}</b>
       </div>
 
       <div className={`cabinet-countdown ${countdown?.ended ? 'is-ended' : ''}`} aria-live="polite">
-        <Clock3 size={13} />
-        <span className="cabinet-countdown-label">
-          {countdown?.ended ? 'Tugagan' : 'Tugashiga'}
-        </span>
+        <div className="cabinet-countdown-head">
+          <Clock3 size={12} />
+          <span>{countdown?.ended ? 'Muddat tugagan' : 'Obuna muddati'}</span>
+        </div>
         {countdown && !countdown.ended ? (
           <div className="cabinet-ticks">
             <span><b>{pad(countdown.days)}</b><em>kun</em></span>
@@ -115,6 +119,7 @@ export function CabinetHead({
       <div className="cabinet-head-row">
         {menu}
         <OrgStrip organization={organization} pageLabel={pageLabel} />
+        <div className="cabinet-head-spacer" />
         {actions}
       </div>
       <Marquee />
