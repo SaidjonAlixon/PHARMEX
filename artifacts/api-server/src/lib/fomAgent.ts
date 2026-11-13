@@ -195,7 +195,8 @@ export function buildFomAgentOneLiner(opts: { platformUrl: string; token: string
     "$ErrorActionPreference='Stop';",
     `$u='${platform}/api/fom/agent/install.ps1?token=${token}';`,
     "$p=Join-Path $env:TEMP 'pharmxs-fom-agent.ps1';",
-    "(Invoke-WebRequest -Uri $u -UseBasicParsing).Content | Set-Content -Path $p -Encoding UTF8;",
+    "$c=(Invoke-WebRequest -Uri $u -UseBasicParsing).Content;",
+    "[IO.File]::WriteAllText($p,$c,(New-Object System.Text.UTF8Encoding $false));",
     "& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p",
   ].join(" ");
 }
