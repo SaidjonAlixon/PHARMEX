@@ -1200,56 +1200,58 @@ body { background: var(--wash); }
 .crumb svg { color: var(--px-teal); }
 
 .cabinet-head-spacer { flex: 1 1 auto; min-width: 8px; }
+.cabinet-head-row { min-height: 48px; }
 .cabinet-status-main {
-  flex: 0 1 auto; width: max-content; max-width: min(100%, 720px); min-width: 0;
-  display: inline-flex; align-items: center; justify-content: flex-start; gap: 12px;
-  margin: 0; padding: 6px 10px; border-radius: 14px;
-  background: linear-gradient(135deg, rgba(16,185,129,.16), rgba(15,179,199,.1));
-  border: 1px solid rgba(16,185,129,.28);
-  box-shadow: 0 4px 12px rgba(16,185,129,.08);
+  flex: 0 1 auto; width: max-content; max-width: min(100%, 680px); min-width: 0;
+  display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px;
+  margin: 0; padding: 4px 8px 4px 6px; border-radius: 11px;
+  background: linear-gradient(135deg, rgba(16,185,129,.14), rgba(15,179,199,.08));
+  border: 1px solid rgba(16,185,129,.26);
+  box-shadow: 0 2px 8px rgba(16,185,129,.06);
 }
 .cabinet-org-icon {
-  width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+  width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
   background: rgba(16,185,129,.2); color: #047857; flex: 0 0 auto;
 }
 .cabinet-meta-col {
-  display: grid; gap: 1px; min-width: 0; line-height: 1.15;
+  display: grid; gap: 0; min-width: 0; line-height: 1.1;
 }
 .cabinet-meta-label {
-  font-size: 8.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  font-size: 7.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
   color: #059669; white-space: nowrap;
 }
 .cabinet-meta-value {
-  font-size: 12.5px; font-weight: 800; color: var(--px-navy);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;
+  font-size: 12px; font-weight: 800; color: var(--px-navy);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px;
 }
 .cabinet-meta-plan { color: #047857; }
 .cabinet-meta-divider {
-  width: 1px; align-self: stretch; min-height: 28px;
-  background: linear-gradient(180deg, transparent, rgba(16,185,129,.35), transparent);
+  width: 1px; height: 22px; align-self: center;
+  background: rgba(16,185,129,.28);
   flex: 0 0 auto;
 }
 .cabinet-countdown {
-  display: grid; gap: 4px; justify-items: center; flex: 0 0 auto;
-  padding: 5px 8px 6px; border-radius: 12px;
-  background: rgba(255,255,255,.62); border: 1px solid rgba(16,185,129,.2);
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  padding: 3px 7px 3px 8px; border-radius: 999px;
+  background: rgba(255,255,255,.7); border: 1px solid rgba(16,185,129,.2);
   color: #047857;
 }
 .cabinet-countdown.is-ended { color: #be123c; background: rgba(255,241,242,.85); border-color: rgba(190,18,60,.22); }
 .cabinet-countdown-head {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
-  white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 9px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
+  white-space: nowrap; opacity: .9;
 }
 .cabinet-ticks { display: inline-flex; align-items: center; gap: 2px; }
 .cabinet-ticks > span {
-  display: grid; justify-items: center; gap: 0; min-width: 26px; padding: 2px 4px;
-  border-radius: 7px; background: rgba(255,255,255,.95); border: 1px solid rgba(16,185,129,.22);
+  display: inline-flex; align-items: baseline; justify-content: center; gap: 1px;
+  min-width: 0; padding: 2px 5px; border-radius: 6px;
+  background: rgba(255,255,255,.95); border: 1px solid rgba(16,185,129,.2);
 }
-.cabinet-ticks b { font-size: 11.5px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--px-navy); line-height: 1.05; }
-.cabinet-ticks em { font-style: normal; font-size: 7.5px; font-weight: 800; color: #059669; letter-spacing: .02em; text-transform: uppercase; }
-.cabinet-ticks > i { font-style: normal; font-weight: 800; color: #059669; opacity: .5; font-size: 10px; }
-.cabinet-ended-note { font-size: 10.5px; white-space: nowrap; font-weight: 800; }
+.cabinet-ticks b { font-size: 11.5px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--px-navy); line-height: 1; font-weight: 850; }
+.cabinet-ticks em { font-style: normal; font-size: 8px; font-weight: 800; color: #059669; text-transform: lowercase; }
+.cabinet-ticks > i { font-style: normal; font-weight: 800; color: #059669; opacity: .4; font-size: 10px; }
+.cabinet-ended-note { font-size: 10px; white-space: nowrap; font-weight: 800; }
 .cabinet-marquee {
   position: relative; overflow: hidden;
   border-top: 1px solid rgba(244,63,94,.28);

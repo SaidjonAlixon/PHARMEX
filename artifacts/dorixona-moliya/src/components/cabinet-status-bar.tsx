@@ -61,22 +61,22 @@ function OrgStrip({
       </div>
 
       <div className={`cabinet-countdown ${countdown?.ended ? 'is-ended' : ''}`} aria-live="polite">
-        <div className="cabinet-countdown-head">
+        <span className="cabinet-countdown-head">
           <Clock3 size={12} />
-          <span>{countdown?.ended ? 'Muddat tugagan' : 'Obuna muddati'}</span>
-        </div>
+          <span>{countdown?.ended ? 'Tugagan' : 'Muddat'}</span>
+        </span>
         {countdown && !countdown.ended ? (
           <div className="cabinet-ticks">
-            <span><b>{pad(countdown.days)}</b><em>kun</em></span>
+            <span><b>{pad(countdown.days)}</b><em>k</em></span>
             <i>:</i>
-            <span><b>{pad(countdown.hours)}</b><em>soat</em></span>
+            <span><b>{pad(countdown.hours)}</b><em>s</em></span>
             <i>:</i>
-            <span><b>{pad(countdown.minutes)}</b><em>daq</em></span>
+            <span><b>{pad(countdown.minutes)}</b><em>d</em></span>
             <i>:</i>
-            <span><b>{pad(countdown.seconds)}</b><em>sek</em></span>
+            <span><b>{pad(countdown.seconds)}</b><em>s</em></span>
           </div>
         ) : (
-          <strong className="cabinet-ended-note">Tarifni yangilang</strong>
+          <strong className="cabinet-ended-note">Yangilang</strong>
         )}
       </div>
     </div>
