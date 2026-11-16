@@ -838,53 +838,120 @@ fomSiteRouter.post("/fom/agent/push-org-names", express.json({ limit: "4mb" }), 
     }
     const updated: Array<{ id: string; name: string }> = [];
     let suppliers = 0;
+    const existingSuppliers = await db
+      .select({
+        id: counterpartiesTable.id,
+        name: counterpartiesTable.name,
+        fomId: counterpartiesTable.fomId,
+      })
+      .from(counterpartiesTable)
+      .where(
+        and(
+          eq(counterpartiesTable.organizationId, organizationId),
+          eq(counterpartiesTable.kind, "supplier"),
+        ),
+      );
+    const byFom = new Map(existingSuppliers.filter((r) => r.fomId).map((r) => [r.fomId!, r]));
+    const byName = new Map(existingSuppliers.map((r) => [r.name.toLowerCase(), r]));
+
     for (const [fomId, meta] of byId) {
+      // Filial / ombor — faqat branches (СКЛАД ni supplier qilmaslik).
       if (meta.apt) {
         const kind = /склад|sklad|ombor|склад/i.test(meta.name) ? "warehouse" : "pharmacy";
-        const result = await db
-          .insert(branchesTable)
-          .values({
-            name: meta.name,
-            fomId,
-            kind,
-            source: "fom",
-            organizationId,
-          })
-          .onConflictDoUpdate({
-            target: [branchesTable.organizationId, branchesTable.source, branchesTable.fomId],
-            set: {
-              name: sql`excluded.name`,
-              kind: sql`excluded.kind`,
-            },
-          })
-          .returning({ fomId: branchesTable.fomId, name: branchesTable.name });
-        if (result[0]) updated.push({ id: result[0].fomId!, name: result[0].name });
+        try {
+          const result = await db
+            .insert(branchesTable)
+            .values({
+              name: meta.name,
+              fomId,
+              kind,
+              source: "fom",
+              organizationId,
+            })
+            .onConflictDoUpdate({
+              target: [branchesTable.organizationId, branchesTable.source, branchesTable.fomId],
+              set: {
+                name: sql`excluded.name`,
+                kind: sql`excluded.kind`,
+              },
+            })
+            .returning({ fomId: branchesTable.fomId, name: branchesTable.name });
+          if (result[0]) updated.push({ id: result[0].fomId!, name: result[0].name });
+        } catch {
+          /* keep going */
+        }
+        continue;
       }
-      // Yetkazib beruvchilar: INC yoki APT boʻlmagan nomli tashkilotlar.
-      if (meta.inc || !meta.apt) {
-        await db
-          .insert(counterpartiesTable)
-          .values({
-            name: meta.name,
-            kind: "supplier",
-            fomId,
-            taxId: meta.inn,
-            note: "FOM: yetkazib beruvchi",
-            organizationId,
-          })
-          .onConflictDoUpdate({
-            target: [counterpartiesTable.organizationId, counterpartiesTable.kind, counterpartiesTable.fomId],
-            set: {
-              name: sql`excluded.name`,
-              taxId: sql`CASE WHEN excluded.tax_id <> '' THEN excluded.tax_id ELSE ${counterpartiesTable.taxId} END`,
-            },
-          });
+
+      // Yetkazib beruvchi: INC yoki oddiy (APT emas) tashkilot.
+      if (!(meta.inc || !meta.apt)) continue;
+      let name = meta.name;
+      const taken = byName.get(name.toLowerCase());
+      if (taken && taken.fomId && taken.fomId !== fomId) name = `${name} (#${fomId})`;
+      try {
+        const existing = byFom.get(fomId);
+        if (existing) {
+          if (existing.name !== name || meta.inn) {
+            await db
+              .update(counterpartiesTable)
+              .set({
+                name,
+                ...(meta.inn ? { taxId: meta.inn } : {}),
+                note: "FOM: yetkazib beruvchi",
+              })
+              .where(eq(counterpartiesTable.id, existing.id));
+            byName.delete(existing.name.toLowerCase());
+            existing.name = name;
+            byName.set(name.toLowerCase(), existing);
+          }
+        } else if (taken && !taken.fomId) {
+          await db
+            .update(counterpartiesTable)
+            .set({
+              fomId,
+              name,
+              ...(meta.inn ? { taxId: meta.inn } : {}),
+              note: "FOM: yetkazib beruvchi",
+            })
+            .where(eq(counterpartiesTable.id, taken.id));
+          taken.fomId = fomId;
+          byFom.set(fomId, taken);
+        } else {
+          const [saved] = await db
+            .insert(counterpartiesTable)
+            .values({
+              name,
+              kind: "supplier",
+              fomId,
+              taxId: meta.inn,
+              note: "FOM: yetkazib beruvchi",
+              organizationId,
+            })
+            .onConflictDoUpdate({
+              target: [counterpartiesTable.organizationId, counterpartiesTable.kind, counterpartiesTable.fomId],
+              set: {
+                name: sql`excluded.name`,
+                taxId: sql`CASE WHEN excluded.tax_id <> '' THEN excluded.tax_id ELSE ${counterpartiesTable.taxId} END`,
+              },
+            })
+            .returning({
+              id: counterpartiesTable.id,
+              name: counterpartiesTable.name,
+              fomId: counterpartiesTable.fomId,
+            });
+          if (saved) {
+            byFom.set(fomId, { id: saved.id, name: saved.name, fomId: saved.fomId });
+            byName.set(saved.name.toLowerCase(), { id: saved.id, name: saved.name, fomId: saved.fomId });
+          }
+        }
         suppliers += 1;
+      } catch {
+        /* name/fom unique race — skip one row, do not fail whole push */
       }
     }
     // Backfill purchase rows that still show "Kontragent #id".
     let purchasesFixed = 0;
-    if (byId.size) {
+    if (byFom.size) {
       const result = await db.execute(sql`
         UPDATE pharmacy_purchases AS p
         SET supplier_name = c.name,

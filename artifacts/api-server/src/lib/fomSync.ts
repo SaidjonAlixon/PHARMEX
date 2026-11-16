@@ -297,11 +297,11 @@ export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Pro
 
   let imported = branchRows.length;
   for (const kind of ["supplier", "customer"] as const) {
-    // Suppliers: INC flag OR any named org that is not a pharmacy branch (APT).
+    // Suppliers: INC, or named non-APT orgs. Never APT branches (СКЛАД / filial).
     const wanted = rows.filter((row) =>
       row.I &&
       (kind === "supplier"
-        ? flag(row.INC) || (!!row.N?.trim() && !flag(row.APT) && row.APT !== "1")
+        ? !flag(row.APT) && row.APT !== "1" && (!!row.N?.trim() || flag(row.INC))
         : flag(row.INV) || flag(row.DIS) || flag(row.INS)),
     );
     if (wanted.length === 0) continue;
