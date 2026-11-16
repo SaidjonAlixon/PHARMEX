@@ -166,6 +166,50 @@ async function loadLookups(organizationId: number | null = null): Promise<Lookup
 const supplierOf = (lookups: Lookups, orgId: string) =>
   lookups.suppliers.get(orgId) ?? lookups.suppliersByInn.get(orgId);
 
+async function ensureSupplierNamed(
+  lookups: Lookups,
+  orgId: string,
+  label?: string | null,
+): Promise<{ id: number; name: string } | null> {
+  if (!orgId) return null;
+  const existing = supplierOf(lookups, orgId);
+  const nice =
+    (label?.trim() && !/^Kontragent\s*#/i.test(label.trim()) ? label.trim() : null) ||
+    lookups.orgNames.get(orgId) ||
+    null;
+  if (existing) {
+    if (nice && (/^Kontragent\s*#/i.test(existing.name) || existing.name !== nice)) {
+      await db
+        .update(counterpartiesTable)
+        .set({ name: nice })
+        .where(eq(counterpartiesTable.id, existing.id));
+      existing.name = nice;
+      lookups.orgNames.set(orgId, nice);
+    }
+    return existing;
+  }
+  if (!nice) return null;
+  const [saved] = await db
+    .insert(counterpartiesTable)
+    .values({
+      name: nice,
+      kind: "supplier",
+      fomId: orgId,
+      note: "FOM: yetkazib beruvchi",
+      organizationId: lookups.organizationId,
+    })
+    .onConflictDoUpdate({
+      target: [counterpartiesTable.organizationId, counterpartiesTable.kind, counterpartiesTable.fomId],
+      set: { name: sql`excluded.name` },
+    })
+    .returning({ id: counterpartiesTable.id, name: counterpartiesTable.name });
+  if (!saved) return null;
+  const entry = { id: saved.id, name: saved.name };
+  lookups.suppliers.set(orgId, entry);
+  lookups.orgNames.set(orgId, saved.name);
+  return entry;
+}
+
 async function ensureBranches(lookups: Lookups, fomIds: Iterable<string>) {
   const missing = [...new Set(fomIds)].filter((id) => id && !lookups.branches.has(id));
   if (missing.length === 0) return;
@@ -195,22 +239,57 @@ async function ensureProducts(lookups: Lookups, fomIds: Iterable<string>) {
   }
 }
 
+/** Upgrade placeholder product names when a real name appears in REPORT lines / catalog. */
+async function applyProductNames(lookups: Lookups, named: Iterable<{ fomId: string; name?: string | null }>) {
+  const updates = new Map<string, string>();
+  for (const item of named) {
+    const id = item.fomId?.trim();
+    const name = item.name?.trim();
+    if (!id || !name || /^FOM tovar #/i.test(name)) continue;
+    updates.set(id, name);
+  }
+  if (updates.size === 0) return;
+  await ensureProducts(lookups, updates.keys());
+  for (const [fomId, name] of updates) {
+    const product = lookups.products.get(fomId);
+    if (!product) continue;
+    await db
+      .update(productsTable)
+      .set({ name })
+      .where(
+        and(
+          eq(productsTable.id, product.id),
+          eq(productsTable.source, SOURCE),
+          sql`(${productsTable.name} = '' OR ${productsTable.name} LIKE 'FOM tovar #%')`,
+        ),
+      );
+  }
+}
+
 // ---------------------------------------------------------------- reference data
 
 export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Promise<number> {
-  const branchRows = rows.filter((row) => row.I && flag(row.APT));
+  // APT flag from report 189, or discovery rows that already mark APT=1.
+  const branchRows = rows.filter((row) => row.I && (flag(row.APT) || row.APT === "1"));
   if (branchRows.length) {
     const inserted = await db
       .insert(branchesTable)
       .values(
         branchRows.map((row) => {
           const name = row.N?.trim() || `Filial ${row.I}`;
-          return { name, fomId: row.I, kind: /склад|sklad|ombor/i.test(name) ? "warehouse" : "pharmacy", source: SOURCE, organizationId: lookups.organizationId };
+          return { name, fomId: row.I, kind: /склад|sklad|ombor|склад/i.test(name) ? "warehouse" : "pharmacy", source: SOURCE, organizationId: lookups.organizationId };
         }),
       )
       .onConflictDoUpdate({
         target: [branchesTable.organizationId, branchesTable.source, branchesTable.fomId],
-        set: { name: sql`excluded.name`, kind: sql`excluded.kind` },
+        set: {
+          // Never replace a real Cyrillic name with "Filial N" / "Филиал N".
+          name: sql`CASE
+            WHEN excluded.name ~* '^(filial|филиал)[[:space:]]*[0-9]+$' THEN ${branchesTable.name}
+            ELSE excluded.name
+          END`,
+          kind: sql`excluded.kind`,
+        },
       })
       .returning({ id: branchesTable.id, fomId: branchesTable.fomId });
     for (const row of inserted) lookups.branches.set(row.fomId!, row.id);
@@ -218,8 +297,12 @@ export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Pro
 
   let imported = branchRows.length;
   for (const kind of ["supplier", "customer"] as const) {
+    // Suppliers: INC flag OR any named org that is not a pharmacy branch (APT).
     const wanted = rows.filter((row) =>
-      row.I && (kind === "supplier" ? flag(row.INC) : flag(row.INV) || flag(row.DIS) || flag(row.INS)),
+      row.I &&
+      (kind === "supplier"
+        ? flag(row.INC) || (!!row.N?.trim() && !flag(row.APT) && row.APT !== "1")
+        : flag(row.INV) || flag(row.DIS) || flag(row.INS)),
     );
     if (wanted.length === 0) continue;
     const existing = await db
@@ -345,6 +428,7 @@ export interface StockBatch {
   expiry: string | null;
   /** Cost of the whole quantity, when the source knows it (direct SQL stock). */
   costValue?: string;
+  name?: string;
 }
 
 /**
@@ -369,6 +453,7 @@ export async function importStockSnapshot(
   if (owner.size === 0) return 0;
   await ensureBranches(lookups, owner.keys());
   await ensureProducts(lookups, batches.map((row) => row.productFomId));
+  await applyProductNames(lookups, batches.map((row) => ({ fomId: row.productFomId, name: row.name })));
 
   // Direct SQL stock knows each branch's batch cost; then balances carry that exact cost.
   const exactCosts = batches.some((row) => row.costValue);
@@ -485,6 +570,7 @@ interface Line {
   net: bigint;
   vat: bigint;
   expiry: string | null;
+  name?: string;
 }
 
 interface Doc {
@@ -493,11 +579,18 @@ interface Doc {
   date: Date;
   branchFomId: string;
   orgId: string;
+  /** Real supplier name from FOM ORG / report ONAME when present. */
+  supplierLabel?: string;
   invoiceNo: string;
   invoiceDate: string | null;
   person: string;
   category: string;
   lines: Line[];
+}
+
+function productNameOf(row: FomRow): string | undefined {
+  const name = (row.GN ?? row.NM ?? row.NA ?? row.GOOD ?? row.TN ?? "").trim();
+  return name || undefined;
 }
 
 function toLine(row: FomRow): Line | null {
@@ -509,7 +602,14 @@ function toLine(row: FomRow): Line | null {
     const product = moneyCents(fomNumber(row.P)) * qty;
     net = divideRounded(product, 1000n);
   }
-  return { productFomId: row.G, qty, net, vat: moneyCents(fomNumber(row.SN)), expiry: fomDay(row.E) };
+  return {
+    productFomId: row.G,
+    qty,
+    net,
+    vat: moneyCents(fomNumber(row.SN)),
+    expiry: fomDay(row.E),
+    name: productNameOf(row),
+  };
 }
 
 function groupDocs(
@@ -526,12 +626,14 @@ function groupDocs(
     const key = keyOf(row);
     let doc = docs.get(key);
     if (!doc) {
+      const supplierLabel = (row.ONAME ?? row.ON ?? row.ORGNAME ?? row.NI ?? "").trim() || undefined;
       doc = {
         sourceId: `${prefix}:${filial}:${key}`,
         number: row.N?.trim() || row.ID?.trim() || "",
         date,
         branchFomId: row.F?.trim() || filial,
         orgId: row.I?.trim() ?? "",
+        supplierLabel,
         invoiceNo: row.PN?.trim() ?? "",
         invoiceDate: fomDay(row.PD),
         person: row.NI?.trim() ?? "",
@@ -539,6 +641,9 @@ function groupDocs(
         lines: [],
       };
       docs.set(key, doc);
+    } else if (!doc.supplierLabel) {
+      const supplierLabel = (row.ONAME ?? row.ON ?? row.ORGNAME ?? "").trim();
+      if (supplierLabel) doc.supplierLabel = supplierLabel;
     }
     doc.lines.push(line);
   }
@@ -585,7 +690,15 @@ async function insertMovements(tx: Tx, rows: (typeof inventoryMovementsTable.$in
 
 export async function importPurchases(lookups: Lookups, docs: Doc[]): Promise<number> {
   await ensureBranches(lookups, docs.map((doc) => doc.branchFomId));
-  await ensureProducts(lookups, docs.flatMap((doc) => doc.lines.map((line) => line.productFomId)));
+  const lines = docs.flatMap((doc) => doc.lines);
+  await ensureProducts(lookups, lines.map((line) => line.productFomId));
+  await applyProductNames(lookups, lines.map((line) => ({ fomId: line.productFomId, name: line.name })));
+  for (const doc of docs) {
+    if (doc.orgId) {
+      if (doc.supplierLabel) lookups.orgNames.set(doc.orgId, doc.supplierLabel);
+      await ensureSupplierNamed(lookups, doc.orgId, doc.supplierLabel);
+    }
+  }
   const lastCost = new Map<number, { date: number; unit: bigint }>();
 
   for (const part of chunks(docs, 200)) {
@@ -595,10 +708,15 @@ export async function importPurchases(lookups: Lookups, docs: Doc[]): Promise<nu
         const figures = doc.lines.map(lineFigures);
         const total = figures.reduce((sum, line) => sum + line.gross, 0n);
         const vat = figures.reduce((sum, line) => sum + line.vat, 0n);
+        const supplierName =
+          (doc.supplierLabel && !/^Kontragent\s*#/i.test(doc.supplierLabel) ? doc.supplierLabel : null) ||
+          supplier?.name ||
+          lookups.orgNames.get(doc.orgId) ||
+          (doc.orgId ? `Kontragent #${doc.orgId}` : "Nomaʼlum yetkazib beruvchi");
         return {
           branchId: lookups.branches.get(doc.branchFomId)!,
           counterpartyId: supplier?.id ?? null,
-          supplierName: supplier?.name ?? lookups.orgNames.get(doc.orgId) ?? (doc.orgId ? `Kontragent #${doc.orgId}` : "Nomaʼlum yetkazib beruvchi"),
+          supplierName,
           documentNo: doc.number,
           invoiceNo: doc.invoiceNo,
           invoiceDate: doc.invoiceDate,
@@ -701,7 +819,9 @@ export async function importSales(
   kind: "retail" | "insurance",
 ): Promise<number> {
   await ensureBranches(lookups, docs.map((doc) => doc.branchFomId));
-  await ensureProducts(lookups, docs.flatMap((doc) => doc.lines.map((line) => line.productFomId)));
+  const saleLines = docs.flatMap((doc) => doc.lines);
+  await ensureProducts(lookups, saleLines.map((line) => line.productFomId));
+  await applyProductNames(lookups, saleLines.map((line) => ({ fomId: line.productFomId, name: line.name })));
 
   for (const part of chunks(docs, 200)) {
     await db.transaction(async (tx) => {
@@ -1527,11 +1647,22 @@ export function fomSyncRunning(organizationId?: number | null) {
   return false;
 }
 
-function windows(from: Date, to: Date): Array<[Date, Date]> {
+/**
+ * Chunk dated REPORT pulls. Prefer large windows (fewer round-trips).
+ * Env FOM_WINDOW_DAYS overrides (default 365 = nearly whole year per request).
+ */
+function windows(from: Date, to: Date, opts?: { agentRelay?: boolean }): Array<[Date, Date]> {
+  const spanDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / DAY_MS) + 1);
+  // Agent+REPORT: large windows often return HTML 200 — keep chunks small (7 days).
+  const preferred =
+    Number(process.env.FOM_WINDOW_DAYS) ||
+    // Agent+REPORT: large windows often return HTML; 3-day chunks keep SQL fallback reliable.
+    (opts?.agentRelay ? 3 : 365);
+  const chunkDays = spanDays <= preferred ? spanDays : preferred;
   const result: Array<[Date, Date]> = [];
   let start = from;
   while (start <= to) {
-    const end = new Date(Math.min(to.getTime(), start.getTime() + 30 * DAY_MS));
+    const end = new Date(Math.min(to.getTime(), start.getTime() + (chunkDays - 1) * DAY_MS));
     result.push([start, end]);
     start = new Date(end.getTime() + DAY_MS);
   }
@@ -1562,10 +1693,15 @@ async function previousSuccess(organizationId: number | null = null): Promise<Sy
   }
 }
 
-/** Incremental start: two days before the previous successful range end (late edits in FOM). */
+/** Incremental start: re-read a recent window so late FOM edits and day gaps are filled (upsert by sourceId). */
 function defaultFrom(config: FomConfig, to: Date, previous: SyncDetails | null): Date {
+  // Agent relay cannot do SQL change-tracking — always re-pull last 14 days through today.
+  // Existing rows update in place; missing days (e.g. after a zombie sync) get filled.
+  if (config.agentRelay) {
+    return new Date(to.getTime() - 14 * DAY_MS);
+  }
   if (previous?.to) {
-    return new Date(Math.max(new Date(previous.to).getTime() - 2 * DAY_MS, to.getTime() - 365 * DAY_MS));
+    return new Date(Math.max(new Date(previous.to).getTime() - 1 * DAY_MS, to.getTime() - 90 * DAY_MS));
   }
   return new Date(to.getTime() - config.initialDays * DAY_MS);
 }
@@ -1711,6 +1847,172 @@ function startDay(_config: FomConfig, _today: Date, startDate?: string): Date {
   return new Date("2025-01-01");
 }
 
+/**
+ * Find every live pharmacy/warehouse id that answers REPORT with real rows.
+ * Report 189 APT alone is often incomplete (2 stubs) — always validate via sales/stock/purchases.
+ */
+export async function discoverFomBranches(
+  config: FomConfig,
+  opts: { configuredIds: string[]; floor: Date; today: Date; orgRows?: FomRow[] },
+): Promise<FomRow[]> {
+  const names = new Map<string, string>();
+  const evidenced = new Set<string>(); // ids that returned business XML rows
+  const isPlaceholder = (label: string) => /^(filial|филиал)\s+\d+$/i.test(label.trim()) || /^\d+$/.test(label.trim());
+  /** Prefer Cyrillic pharmacy names over product codes / "Filial N". */
+  const nameScore = (label?: string) => {
+    const t = label?.trim() ?? "";
+    if (!t || isPlaceholder(t)) return -1;
+    if (/[А-Яа-яЁёЎўҚқҒғҲҳ]/.test(t)) return 40 + Math.min(t.length, 40);
+    if (/[A-Za-zА-Яа-я]/.test(t) && t.length >= 3) return 20 + Math.min(t.length, 20);
+    return 1;
+  };
+  const add = (id: string, name?: string, hasData = false) => {
+    const clean = String(id ?? "").trim();
+    if (!/^\d+$/.test(clean)) return;
+    if (hasData) evidenced.add(clean);
+    const label = name?.trim();
+    if (!label) {
+      if (!names.has(clean)) names.set(clean, `Филиал ${clean}`);
+      return;
+    }
+    const prev = names.get(clean);
+    if (!prev || nameScore(label) >= nameScore(prev)) names.set(clean, label);
+  };
+
+  // Names from report 189 — APT is only a name hint, NOT proof the filial is live.
+  for (const row of opts.orgRows ?? []) {
+    if (!row.I) continue;
+    add(row.I, row.N, false);
+  }
+  for (const id of opts.configuredIds) add(id, undefined, false);
+
+  // Short window so agent probes stay fast (full history is pulled later).
+  const probeFrom = new Date(opts.today);
+  probeFrom.setUTCDate(probeFrom.getUTCDate() - 60);
+  const probeConfig: FomConfig = { ...config, timeoutMs: Math.min(config.timeoutMs, 90_000) };
+
+  const markFromRows = (rows: FomRow[], filialHint?: string) => {
+    if (filialHint && rows.length > 0) add(filialHint, undefined, true);
+    for (const row of rows) {
+      // Stock lines: O/F = department. Never use row.N (product name / code).
+      const id = (row.O ?? row.F ?? "").trim();
+      const name = (row.ON ?? row.FN ?? "").trim();
+      if (id && /^\d+$/.test(id)) add(id, name || undefined, true);
+    }
+  };
+
+  // Fast path: already know live filials (saved filialIds / previous sync) — skip heavy probes.
+  const known = sortIds([
+    ...opts.configuredIds.filter((id) => id && id !== "0"),
+    ...(opts.orgRows ?? []).filter((r) => r.I && (flag(r.APT) || r.APT === "1")).map((r) => r.I),
+  ]);
+  if (known.length >= 2) {
+    for (const id of known) add(id, names.get(id), true);
+    logger.info({ filials: known.map((id) => [id, names.get(id)]), fast: true }, "FOM filials from known ids");
+    return known.map((id) => ({ I: id, N: names.get(id) || `Филиал ${id}`, APT: "1" }));
+  }
+
+  // Stock (6) seeds — collect department ids + ON/FN names when XML has rows.
+  for (const seed of sortIds(["1", "2", "3", "4", "5", "0"])) {
+    try {
+      const rows = await fetchFomReport(probeConfig, 6, seed, probeFrom, opts.today);
+      if (rows.length > 0) markFromRows(rows, seed);
+    } catch (error) {
+      logger.warn({ err: error, seed }, "FOM stock probe for filials failed");
+    }
+  }
+
+  // Probe ids 1..10 through max(evidence)+2: retail (4) then purchases (1).
+  const probeIds = [...Array.from({ length: 10 }, (_, i) => String(i + 1)), "0"];
+  let missStreak = 0;
+  for (const id of probeIds) {
+    if (evidenced.has(id)) {
+      missStreak = 0;
+      continue;
+    }
+    let found = false;
+    for (const reportId of [4, 1, 6]) {
+      try {
+        const rows = await fetchFomReport(probeConfig, reportId, id, probeFrom, opts.today);
+        if (rows.length > 0) {
+          markFromRows(rows, id);
+          found = true;
+          break;
+        }
+      } catch {
+        // HTML 200 / bad id — try next report
+      }
+    }
+    if (found) missStreak = 0;
+    else {
+      missStreak += 1;
+      const hi = evidenced.size ? Math.max(...[...evidenced].map(Number)) : 0;
+      if (evidenced.size >= 2 && Number(id) > hi + 2 && missStreak >= 2 && id !== "0") break;
+    }
+  }
+
+  // Enrich names from report 189 for every evidenced id (I → N), even when APT is empty.
+  for (const row of opts.orgRows ?? []) {
+    if (!row.I) continue;
+    add(row.I, row.N, false);
+  }
+  // If 189 was empty/failed earlier, fetch again after we know live ids.
+  if ([...evidenced].some((id) => nameScore(names.get(id)) < 20)) {
+    try {
+      const orgAgain = await fetchFomReport(
+        probeConfig,
+        189,
+        [...evidenced][0] ?? "1",
+        opts.floor,
+        opts.today,
+      );
+      for (const row of orgAgain) {
+        if (!row.I) continue;
+        add(row.I, row.N, false);
+        // Some REPORT builds put department name on ON / NAME.
+        if (evidenced.has(row.I)) add(row.I, row.ON ?? row.NAME ?? row.N, false);
+      }
+      logger.info(
+        {
+          org189: orgAgain.length,
+          sample: orgAgain.slice(0, 8).map((r) => ({
+            I: r.I,
+            N: r.N,
+            APT: r.APT,
+            keys: Object.keys(r).slice(0, 12),
+          })),
+        },
+        "FOM report 189 name enrich",
+      );
+    } catch (error) {
+      logger.warn({ err: error }, "FOM report 189 name enrich failed");
+    }
+  }
+
+  // Prefer ids that returned stock/sales/purchases. Else APT rows from 189, else configured.
+  const aptFromOrg = (opts.orgRows ?? [])
+    .filter((r) => r.I && (flag(r.APT) || r.APT === "1"))
+    .map((r) => r.I);
+  const chosen = sortIds(
+    evidenced.size > 0
+      ? [...evidenced]
+      : aptFromOrg.length > 0
+        ? aptFromOrg
+        : opts.configuredIds.length > 0
+          ? opts.configuredIds
+          : [...names.keys()],
+  );
+  for (const id of chosen) if (!names.has(id)) add(id);
+
+  if (chosen.length === 0) {
+    add(opts.configuredIds.find((id) => id !== "0") ?? opts.configuredIds[0] ?? "1", process.env.FOM_BRANCH_NAME?.trim());
+  }
+
+  const resultIds = sortIds(chosen.length ? chosen : [...names.keys()]);
+  logger.info({ filials: resultIds.map((id) => [id, names.get(id)]), evidenced: [...evidenced] }, "FOM filials discovered");
+  return resultIds.map((id) => ({ I: id, N: names.get(id) || `Филиал ${id}`, APT: "1" }));
+}
+
 async function runFomSync(config: FomConfig, options: SyncOptions, importId: number): Promise<SyncDetails> {
   const organizationId = options.organizationId ?? null;
   const previous = await previousSuccess(organizationId);
@@ -1752,7 +2054,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   // Progress: refs and stock count as one unit each; dated work is planned once filials are known.
   // Until filials are known the dated work is estimated from the branches already imported.
   let estimated =
-    (since ? 1 : windows(from, to).length) *
+    (since ? 1 : windows(from, to, { agentRelay: !!config.agentRelay }).length) *
     (fomSqlMode(config) ? 2 * Math.max(1, lookups.branches.size) + 120 : 5 * Math.max(1, lookups.branches.size));
   details.progress = { done: 0, total: (skipRefs ? 0 : 2) + 1 + estimated };
   let lastWrite = 0;
@@ -1793,8 +2095,26 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   };
 
   const fetchReport = async (key: FomReportKey, filial: string, rangeFrom = from, rangeTo = to) => {
-    const id = await fomReportIdFor(config, key);
-    return id == null ? [] : fetchFomReport(config, id, filial, rangeFrom, rangeTo);
+    const { fomReportIdCandidates } = await import("./fomClient");
+    const preferred = await fomReportIdFor(config, key);
+    const ids = preferred != null
+      ? [preferred, ...fomReportIdCandidates(key).filter((id) => id !== preferred)]
+      : fomReportIdCandidates(key);
+    if (!ids.length) return [];
+    let lastError: unknown = null;
+    for (const id of ids) {
+      try {
+        const rows = await fetchFomReport(config, id, filial, rangeFrom, rangeTo);
+        if (rows.length > 0) return rows;
+        // Empty can mean wrong report version — try next candidate.
+        lastError = null;
+      } catch (error) {
+        lastError = error;
+        if (isConnectionError(error)) throw error;
+      }
+    }
+    if (lastError) throw lastError;
+    return [];
   };
 
   /** Runs `fetch` for every filial; one filial failing does not stop the others. */
@@ -1821,24 +2141,147 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   if (skipRefs) {
     for (const key of REFERENCE_REPORTS) details.reports[key] = previous!.reports[key];
     details.refsAt = previous!.refsAt;
+    // Keep previously known FOM branches in the filial list.
+    orgRows = [...lookups.branches.entries()].map(([id, _dbId]) => ({
+      I: id,
+      N: `Filial ${id}`,
+      APT: "1",
+    }));
   } else {
     await run("organizations", async () => {
-      orgRows = await fetchReport("organizations", firstFilial);
-      // Versions without report 189: read F-APTEKA's ORG table directly (SQL mode), else one named branch.
-      if (orgRows.length === 0 && (await fomReportIdFor(config, "organizations")) == null) {
+      try {
+        // Report 189 is often missing — fail fast (agent may synthesize from SQL).
+        const orgConfig: FomConfig = { ...config, timeoutMs: Math.min(config.timeoutMs, 90_000) };
+        orgRows = await fetchFomReport(orgConfig, 189, firstFilial, floor, to);
+      } catch (error) {
+        // Old ServiceReport often has no report 189 — discover filials another way.
+        logger.warn({ err: error }, "FOM organizations report unavailable");
+        orgRows = [];
+      }
+      if (orgRows.length === 0) {
         orgRows = await fetchFomOrganizationsDirect(config);
       }
-      if (orgRows.length === 0 && (await fomReportIdFor(config, "organizations")) == null) {
-        orgRows = (config.filialIds.length ? config.filialIds : [firstFilial]).map((id) => ({
-          I: id,
-          N: process.env.FOM_BRANCH_NAME?.trim() || `Filial ${id}`,
-          APT: "1",
-        }));
+      // Seed from branches already in PHARMXS (previous sync) so we never block on discovery.
+      if (orgRows.filter((r) => r.I && (flag(r.APT) || r.APT === "1")).length === 0 && lookups.branches.size > 0) {
+        orgRows = [
+          ...orgRows,
+          ...[...lookups.branches.keys()].map((id) => ({ I: id, N: `Филиал ${id}`, APT: "1" })),
+        ];
       }
-      return { rows: orgRows.length, imported: await importOrganizations(lookups, orgRows) };
+      // Always probe REPORT for live filials. APT from 189 alone often yields 2 stubs (0/1)
+      // while the pharmacy actually has 5+ branches with real names and stock/sales.
+      const aptOnly = orgRows.filter((row) => row.I && flag(row.APT));
+      try {
+        const discovered = await discoverFomBranches(config, {
+          configuredIds: config.filialIds.length ? config.filialIds : [...lookups.branches.keys()],
+          floor: floor,
+          today: to,
+          orgRows,
+        });
+        if (discovered.length > 0) {
+          const byId = new Map(orgRows.filter((r) => r.I).map((r) => [r.I, r]));
+          const betterName = (a?: string, b?: string) => {
+            const score = (s?: string) => {
+              const t = s?.trim() ?? "";
+              if (!t || /^filial\s+\d+$/i.test(t) || /^\d+$/.test(t)) return -1;
+              if (/[А-Яа-яЁёЎўҚқҒғҲҳ]/.test(t)) return 40 + Math.min(t.length, 40);
+              if (/[A-Za-zА-Яа-я]/.test(t) && t.length >= 3) return 20 + Math.min(t.length, 20);
+              return 1;
+            };
+            return score(a) >= score(b) ? (a?.trim() || b?.trim()) : (b?.trim() || a?.trim());
+          };
+          for (const row of discovered) {
+            const prev = byId.get(row.I);
+            byId.set(row.I, {
+              ...prev,
+              ...row,
+              N: betterName(prev?.N, row.N) || row.N,
+              APT: "1",
+            });
+          }
+          // Keep non-branch orgs (suppliers/customers) from 189 + discovered pharmacies.
+          orgRows = [
+            ...[...byId.values()].filter((r) => flag(r.APT) || r.APT === "1"),
+            ...orgRows.filter((r) => r.I && !flag(r.APT) && r.APT !== "1"),
+          ];
+          logger.info(
+            { aptOnly: aptOnly.map((r) => r.I), discovered: discovered.map((r) => `${r.I}:${r.N}`) },
+            "FOM organizations merged with discovery",
+          );
+        }
+      } catch (error) {
+        logger.warn({ err: error }, "FOM filial discovery failed — using APT rows only");
+        if (aptOnly.length === 0) {
+          orgRows = await discoverFomBranches(config, {
+            configuredIds: config.filialIds,
+            floor: floor,
+            today: to,
+            orgRows,
+          }).catch(() => orgRows);
+        }
+      }
+      // Persist full filial list so stock/docs hit every live branch (overwrite stubs like 0,1).
+      if (organizationId != null) {
+        const discovered = sortIds(
+          orgRows.filter((row) => row.I && (flag(row.APT) || row.APT === "1")).map((row) => row.I),
+        );
+        if (discovered.length > 0) {
+          config.filialIds = discovered;
+          try {
+            const { loadOrgFomConfig, saveOrgFomConfig } = await import("./fomSettings");
+            const saved = await loadOrgFomConfig(organizationId);
+            if (saved) await saveOrgFomConfig(organizationId, { ...saved, filialIds: discovered });
+          } catch (error) {
+            logger.warn({ err: error }, "Could not persist discovered filialIds");
+          }
+        }
+      }
+      try {
+        return { rows: orgRows.length, imported: await importOrganizations(lookups, orgRows) };
+      } catch (error) {
+        logger.warn({ err: error }, "importOrganizations failed — ensureBranches fallback");
+        const aptIds = orgRows.filter((r) => r.I && (flag(r.APT) || !("APT" in r) || r.APT === undefined)).map((r) => r.I);
+        await ensureBranches(lookups, aptIds.length ? aptIds : orgRows.map((r) => r.I).filter(Boolean));
+        // Apply real names when we have them.
+        for (const row of orgRows) {
+          if (!row.I || !row.N?.trim()) continue;
+          const branchId = lookups.branches.get(row.I);
+          if (branchId == null) continue;
+          await db
+            .update(branchesTable)
+            .set({ name: row.N.trim() })
+            .where(and(eq(branchesTable.id, branchId), eq(branchesTable.source, SOURCE)));
+        }
+        return { rows: orgRows.length, imported: lookups.branches.size };
+      }
     });
+    // Catalog after org discovery so we can try every filial for report 188.
+  }
+
+  // Every filial: configured ids, organisations flagged APT, and FOM branches already known.
+  details.filials = sortIds([
+    ...config.filialIds,
+    ...orgRows.filter((row) => row.I && (flag(row.APT) || row.APT === "1")).map((row) => row.I),
+    ...lookups.branches.keys(),
+  ]);
+  if (details.filials.length === 0) details.filials = [firstFilial];
+
+  if (!skipRefs) {
     await run("catalog", async () => {
-      const rows = await fetchReport("catalog", firstFilial);
+      const byId = new Map<string, FomRow>();
+      const seeds = sortIds([firstFilial, ...details.filials, "0", "1"]);
+      for (const filial of seeds) {
+        try {
+          const rows = await fetchReport("catalog", filial);
+          for (const row of rows) {
+            if (row.I && row.N?.trim()) byId.set(row.I, row);
+          }
+          if (byId.size > 0) break;
+        } catch (error) {
+          logger.warn({ err: error, filial }, "FOM catalog report unavailable");
+        }
+      }
+      const rows = [...byId.values()];
       const imported = await importCatalog(
         lookups,
         rows.map((row) => ({ fomId: row.I, name: row.N ?? "", manufacturer: row.P, unit: row.E, ikpu: row.C })),
@@ -1850,16 +2293,8 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     }
   }
 
-  // Every filial: configured ids, organisations flagged APT, and FOM branches already known.
-  details.filials = sortIds([
-    ...config.filialIds,
-    ...orgRows.filter((row) => flag(row.APT)).map((row) => row.I),
-    ...lookups.branches.keys(),
-  ]);
-  if (details.filials.length === 0) details.filials = [firstFilial];
-
-  // The 15-second auto runs refresh stock only every FOM_STOCK_INTERVAL_MIN (a heavy query on the pharmacy server).
-  const stockEveryMs = (Number(process.env.FOM_STOCK_INTERVAL_MIN) || 5) * 60_000;
+  // Auto runs refresh stock every FOM_STOCK_INTERVAL_MIN (default 1) — keep UI near real-time.
+  const stockEveryMs = (Number(process.env.FOM_STOCK_INTERVAL_MIN) || 1) * 60_000;
   const stockFresh =
     options.trigger === "auto" &&
     !!previous?.stockAt &&
@@ -1887,22 +2322,31 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       details.filials = sortIds([...details.filials, ...batches.map((row) => row.branchFomId)]);
       return { rows: rows.length, imported: await importStockSnapshot(lookups, [batches]) };
     }
-    const results = await perFilial(warn, (filial) => fetchReport("stock", filial));
-    const responses = results.map(({ filial, value }) =>
-      value
-        .filter((row) => row.G)
-        .map((row) => ({
-          branchFomId: row.O?.trim() || filial,
-          productFomId: row.G,
-          quantity: row.Q,
-          retailPrice: row.P,
-          expiry: fomDay(row.E),
-        })),
-    );
-    // Branches that only show up as O values in stock become filials for the dated reports too.
-    details.filials = sortIds([...details.filials, ...responses.flat().map((row) => row.branchFomId)]);
-    const rows = results.reduce((sum, { value }) => sum + value.length, 0);
-    return { rows, imported: await importStockSnapshot(lookups, responses) };
+    try {
+      const results = await perFilial(warn, (filial) => fetchReport("stock", filial));
+      const responses = results.map(({ filial, value }) =>
+        value
+          .filter((row) => row.G)
+          .map((row) => ({
+            branchFomId: (row.O ?? row.F)?.trim() || filial,
+            productFomId: row.G,
+            quantity: row.Q,
+            retailPrice: row.P,
+            expiry: fomDay(row.E),
+            name: productNameOf(row) ?? row.N?.trim() ?? undefined,
+          })),
+      );
+      // Branches that only show up as O values in stock become filials for the dated reports too.
+      details.filials = sortIds([...details.filials, ...responses.flat().map((row) => row.branchFomId)]);
+      const rows = results.reduce((sum, { value }) => sum + value.length, 0);
+      return { rows, imported: await importStockSnapshot(lookups, responses) };
+    } catch (error) {
+      // Report 6 HTML on older ServiceReports — continue dated docs; agent SQL may fill stock later.
+      const message = error instanceof Error ? error.message : String(error);
+      warn(`stock: ${message}`);
+      logger.warn({ err: error }, "FOM stock unavailable — continuing without snapshot");
+      return { rows: 0, imported: 0 };
+    }
   });
 
   const dated: Array<{ key: FomReportKey; prefix: string; keyOf: (row: FomRow) => string; save: (docs: Doc[]) => Promise<number> }> = [
@@ -1958,7 +2402,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
         },
       ]
     : [];
-  const ranges: Array<[Date, Date]> = since ? [[from, to]] : windows(from, to);
+  const ranges: Array<[Date, Date]> = since ? [[from, to]] : windows(from, to, { agentRelay: !!config.agentRelay });
   // Change mode: documents that reached F-APTEKA after the window passed them (late pharmacy rows).
   let missing: { inv: string[]; inc: string[] } = { inv: [], inc: [] };
   const recent = new Date(today.getTime() - DAY_MS);
@@ -1986,9 +2430,19 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       let imported = 0;
       await perFilial(warn, async (filial) => {
         for (const [start, end] of ranges) {
-          const data = await fetchReport(report.key, filial, start, end);
-          rows += data.length;
-          imported += await report.save(groupDocs(data, report.prefix, filial, report.keyOf));
+          try {
+            const data = await fetchReport(report.key, filial, start, end);
+            rows += data.length;
+            imported += await report.save(groupDocs(data, report.prefix, filial, report.keyOf));
+          } catch (error) {
+            if (isConnectionError(error)) throw error;
+            // One bad window (HTML) must not kill the whole filial/year.
+            warn(
+              `filial ${filial} ${fomDay(start.toISOString())}–${fomDay(end.toISOString())}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
           await tick(FOM_REPORTS[report.key].label);
         }
       });
@@ -2048,23 +2502,31 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
   return details;
 }
 
-/** Test call: reads the organisations reference (small, undated). */
+/** Test call: reads a small reference report. Agent-offline returns immediately (no 90s hang). */
 export async function testFomConnection(configOverride?: FomConfig | null): Promise<{ ok: boolean; message: string }> {
   const config = configOverride ?? fomConfig();
   if (!config.reportUrl && !config.agentRelay) {
     return { ok: false, message: "FOM server manzili sozlanmagan (Sozlamalar → FOM ulanishi)." };
   }
+  if (config.agentRelay && config.agentOrganizationId != null) {
+    const { loadOrgFomConfig } = await import("./fomSettings");
+    const { agentInfoFromSaved } = await import("./fomAgent");
+    const agent = agentInfoFromSaved(await loadOrgFomConfig(config.agentOrganizationId));
+    if (!agent.online) {
+      return {
+        ok: false,
+        message: "Dorixona kompyuteri hali ulanmagan. «Ulanish (.bat)» ni Admin sifatida oching — REPORT.exe ishlasin.",
+      };
+    }
+  }
   try {
     const today = new Date();
-    // Report 189 is missing from older P_GetReport_XML versions; the catalog is always there.
     const key: FomReportKey = (await fomReportIdFor(config, "organizations")) == null ? "catalog" : "organizations";
     const rows = await fetchFomReport(
       {
         ...config,
-        timeoutMs: Math.min(
-          Math.max(config.timeoutMs, config.agentRelay ? 90_000 : 20_000),
-          key === "catalog" ? 120_000 : config.agentRelay ? 90_000 : 20_000,
-        ),
+        // Keep Holat/test snappy — sync jobs already use the full timeout.
+        timeoutMs: Math.min(config.timeoutMs, config.agentRelay ? 25_000 : 12_000),
       },
       (await fomReportIdFor(config, key))!,
       config.filialIds[0] ?? "1",

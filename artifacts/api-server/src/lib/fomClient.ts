@@ -134,16 +134,18 @@ export function reportUrl(
 
 export class FomError extends Error {}
 
-// Older P_GetReport_XML versions only know the v1 reports (1, 2, 4, 5) and lack 6 / 189.
+// FOM/1C docs (P_GetReport_XML): 188 catalog, 1 purchases, 2 returns, 3 writeoffs, 4 retail, 5 insurance.
+// Older builds lack 6 / 11 / 12 / 14 / 15 / 189.
 const REPORT_FALLBACKS: Record<FomReportKey, number[]> = {
   organizations: [189],
   catalog: [188],
+  // Prefer classic ids first — many ServiceReports builds only have 1/2/3/4/5/6/188.
   stock: [6],
-  purchases: [11, 1],
-  supplierReturns: [12, 2],
+  purchases: [1, 11],
+  supplierReturns: [2, 12],
   writeOffs: [3],
-  retailSales: [14, 4],
-  insuranceSales: [15, 5],
+  retailSales: [4, 14],
+  insuranceSales: [5, 15],
   incomes: [],
   receipts: [],
   stockDocuments: [],
@@ -211,10 +213,23 @@ export const fetchFomStockDocumentsDirect = (config: FomConfig, scope: FomScope)
 export const fetchFomTransfersDirect = (config: FomConfig, scope: FomScope) =>
   fetchDirect(config, (cfg, timeoutMs) => fomSqlTransfers(cfg, scope, timeoutMs));
 
+/** Candidate report ids (newest first; v1 last). HTTP/agent uses full list. */
+export function fomReportIdCandidates(key: FomReportKey): number[] {
+  const listed = REPORT_FALLBACKS[key];
+  if (listed.length) return [...listed];
+  const primary = FOM_REPORTS[key].id;
+  return primary > 0 ? [primary] : [];
+}
+
 /** Report id to request for a section; null when the connected FOM version has no such report. */
 export async function fomReportIdFor(config: FomConfig, key: FomReportKey): Promise<number | null> {
   const sqlCfg = config.reportUrl?.startsWith("mssql://") ? fomSqlConfig() : null;
-  if (!sqlCfg) return FOM_REPORTS[key].id || null;
+  if (!sqlCfg) {
+    const ids = fomReportIdCandidates(key);
+    if (!ids.length) return null;
+    // Prefer first candidate (v1 docs: 1/2/3/4/5/188). fetchReport still tries the rest.
+    return ids[0] ?? null;
+  }
   let info;
   try {
     info = await fomSqlProcInfo(sqlCfg, config.timeoutMs);
@@ -277,7 +292,8 @@ export async function fetchFomReport(
       filialId,
       from,
       to,
-      timeoutMs: Math.max(config.timeoutMs, 180_000),
+      // Honour caller timeout (probes use ~90s; full pulls use org timeoutMs up to 10 min).
+      timeoutMs: Math.max(30_000, config.timeoutMs || 120_000),
     });
     return parseFomXml(xml);
   };
@@ -371,6 +387,9 @@ export function parseFomXml(xml: string): FomRow[] {
     );
   if (!cleaned.trim().startsWith("<")) {
     throw new FomError(`FOM javobi XML emas: ${cleaned.trim().slice(0, 160)}`);
+  }
+  if (/<html[\s>]/i.test(cleaned) || /<body>\s*<b>\s*200\s*ok/i.test(cleaned)) {
+    throw new FomError("FOM HTML «200 OK» qaytardi (report/filial/sana mos emas yoki ServiceReport xato).");
   }
   const root: XmlNode = { name: "#root", attrs: {}, children: [], text: "" };
   const stack: XmlNode[] = [root];

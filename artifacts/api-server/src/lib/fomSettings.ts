@@ -1,5 +1,5 @@
-import { eq, like } from "drizzle-orm";
-import { db, integrationSettingsTable } from "@workspace/db";
+import { and, desc, eq, like } from "drizzle-orm";
+import { db, integrationImportsTable, integrationSettingsTable } from "@workspace/db";
 import { logger } from "./logger";
 import {
   fomConfig,
@@ -19,6 +19,8 @@ export const DEFAULT_FOM_START_DATE = "2025-01-01";
 export type OrgFomSavedConfig = FomSavedConfig & {
   /** ISO date YYYY-MM-DD — first full sync floor */
   startDate?: string;
+  /** Auto refresh cadence in seconds after the first full pull (default 5). */
+  intervalSeconds?: number;
   /** Pharmacy PC agent (PowerShell) */
   agentToken?: string;
   agentHost?: string;
@@ -27,12 +29,17 @@ export type OrgFomSavedConfig = FomSavedConfig & {
   agentLocalIps?: string[];
   agentReportListening?: boolean;
   agentLastSeenAt?: string;
+  /** Last successful /api/fom/agent/poll — required for relay pulls. */
+  agentLastPollAt?: string;
+  /** Desktop agent build (2+ reads filial names from local MSSQL ORG/OTDEL). */
+  agentVersion?: number;
   /** Fetch REPORT via pharmacy PowerShell agent (when cloud cannot reach public IP). */
   agentRelay?: boolean;
 };
 
 const ORG_ONLY_KEYS = new Set([
   "startDate",
+  "intervalSeconds",
   "agentToken",
   "agentHost",
   "agentPort",
@@ -40,6 +47,8 @@ const ORG_ONLY_KEYS = new Set([
   "agentLocalIps",
   "agentReportListening",
   "agentLastSeenAt",
+  "agentLastPollAt",
+  "agentVersion",
   "agentRelay",
 ]);
 
@@ -84,14 +93,33 @@ export async function loadOrgFomConfig(organizationId: number): Promise<OrgFomSa
   }
 }
 
-export async function saveOrgFomConfig(organizationId: number, value: OrgFomSavedConfig): Promise<void> {
+export async function saveOrgFomConfig(
+  organizationId: number,
+  value: OrgFomSavedConfig,
+  opts?: { reschedule?: boolean },
+): Promise<void> {
   const json = JSON.stringify(value);
   const key = orgFomSettingsKey(organizationId);
   await db
     .insert(integrationSettingsTable)
     .values({ key, value: json })
     .onConflictDoUpdate({ target: integrationSettingsTable.key, set: { value: json, updatedAt: new Date() } });
-  scheduleFomSync();
+  // Agent poll updates must NOT reset the auto-sync timer (was hammering CPU/DB every ~1s).
+  if (opts?.reschedule !== false) scheduleFomSync();
+}
+
+/** Lightweight heartbeat: only last-seen timestamps, no scheduler reset. */
+export async function touchOrgAgentPoll(organizationId: number): Promise<OrgFomSavedConfig | null> {
+  const existing = await loadOrgFomConfig(organizationId);
+  if (!existing) return null;
+  const now = new Date().toISOString();
+  const prev = existing.agentLastPollAt ? new Date(existing.agentLastPollAt).getTime() : 0;
+  const next = { ...existing, agentLastPollAt: now, agentLastSeenAt: now };
+  // Persist at most every 20s — online check only needs recent poll.
+  if (!Number.isFinite(prev) || Date.now() - prev > 20_000) {
+    await saveOrgFomConfig(organizationId, next, { reschedule: false });
+  }
+  return next;
 }
 
 export async function orgFomConfigUpdatedAt(organizationId: number): Promise<Date | null> {
@@ -187,7 +215,34 @@ export function scheduleFomSync(): void {
       const orgs = await listOrgFomConfigs();
       for (const { organizationId, saved } of orgs) {
         const cfg = resolveOrgFomConfigForSync(organizationId, saved);
-        if ((!cfg.reportUrl && !cfg.agentRelay) || cfg.intervalMinutes <= 0) continue;
+        const everySec =
+          saved.intervalSeconds && saved.intervalSeconds > 0
+            ? saved.intervalSeconds
+            : cfg.intervalMinutes > 0
+              ? cfg.intervalMinutes * 60
+              : 0;
+        if ((!cfg.reportUrl && !cfg.agentRelay) || everySec <= 0) continue;
+        // Honour interval: skip while a run is active or still fresh.
+        const [row] = await db
+          .select({
+            completedAt: integrationImportsTable.completedAt,
+            status: integrationImportsTable.status,
+            startedAt: integrationImportsTable.startedAt,
+          })
+          .from(integrationImportsTable)
+          .where(
+            and(
+              eq(integrationImportsTable.organizationId, organizationId),
+              eq(integrationImportsTable.integration, "fom"),
+            ),
+          )
+          .orderBy(desc(integrationImportsTable.startedAt))
+          .limit(1);
+        if (row?.status === "running") continue;
+        const finishedAt = row?.completedAt ?? row?.startedAt;
+        if (finishedAt && Date.now() - new Date(finishedAt).getTime() < everySec * 1000) {
+          continue;
+        }
         await startFomSync({
           trigger: "auto",
           organizationId,
@@ -209,9 +264,10 @@ export function scheduleFomSync(): void {
     }
   };
 
-  // Poll frequently enough for the tightest org interval; each org still self-gates via interval.
-  const pollMs = Math.max(30_000, Number(process.env.FOM_SYNC_INTERVAL_SEC || 0) * 1000 || 60_000);
-  firstRun = setTimeout(() => void tick(), 15_000);
+  // Poll often enough for 5-second org intervals (env can override).
+  const envSec = Number(process.env.FOM_SYNC_INTERVAL_SEC || 0);
+  const pollMs = envSec > 0 ? Math.max(5_000, envSec * 1000) : 5_000;
+  firstRun = setTimeout(() => void tick(), 5_000);
   timer = setInterval(() => void tick(), pollMs);
   logger.info({ pollSeconds: pollMs / 1000 }, "FOM auto sync scheduler enabled");
 }

@@ -1,0 +1,20 @@
+{
+  "name": "@workspace/fom-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PHARMXS FOM Agent — pharmacy PC desktop connector",
+  "main": "dist/agent.cjs",
+  "bin": {
+    "pharmxs-fom-agent": "dist/agent.cjs"
+  },
+  "scripts": {
+    "build": "node ./build.mjs",
+    "start": "node ./dist/agent.cjs",
+    "pack:win": "node ./build.mjs && node ./pack-win.mjs"
+  },
+  "pkg": {
+    "assets": ["dist/ui.html"],
+    "targets": ["node18-win-x64"],
+    "outputPath": "release"
+  }
+}

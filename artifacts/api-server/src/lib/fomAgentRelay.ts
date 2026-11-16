@@ -72,7 +72,7 @@ function drop(id: string) {
   }
 }
 
-export function takeAgentJobs(organizationId: number, limit = 4): AgentFetchJob[] {
+export function takeAgentJobs(organizationId: number, limit = 8): AgentFetchJob[] {
   const q = orgQueue(organizationId);
   return q.slice(0, Math.max(1, limit)).map((x) => x.job);
 }

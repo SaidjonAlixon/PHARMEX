@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PHARMXS FOM Agent</title>
+  <style>
+    :root {
+      --bg: #0f1419; --card: #1a222d; --line: #2a3544; --text: #e8eef6;
+      --muted: #8b9bb0; --accent: #1aa3b5; --good: #2fba6e; --bad: #e05858; --warn: #e0a23a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: "Segoe UI", system-ui, sans-serif; color: var(--text);
+      background: radial-gradient(1100px 520px at 8% -12%, #16303a 0%, var(--bg) 55%);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 440px; margin: 0 auto; padding: 16px 14px 24px; }
+    .brand { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+    .logo {
+      width: 36px; height: 36px; border-radius: 10px; font-weight: 800; font-size: 12px;
+      display: grid; place-items: center; background: linear-gradient(145deg, #1ec8d8, #0e7f8c);
+    }
+    h1 { margin: 0; font-size: 15px; }
+    .sub { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+    .card {
+      background: color-mix(in srgb, var(--card) 92%, transparent);
+      border: 1px solid var(--line); border-radius: 14px; padding: 13px; margin-bottom: 10px;
+    }
+    .card h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+    label { display: block; font-size: 11px; color: var(--muted); margin: 8px 0 5px; }
+    input {
+      width: 100%; border: 1px solid var(--line); background: #121820; color: var(--text);
+      border-radius: 10px; padding: 10px 12px; font-size: 13px; outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+    .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    button {
+      border: 0; border-radius: 10px; padding: 10px 12px; font-size: 12.5px; font-weight: 600;
+      cursor: pointer; color: #06262b; background: var(--accent);
+    }
+    button.secondary { background: #243041; color: var(--text); }
+    button.danger { background: #5a2430; color: #ffc9cf; }
+    button.big { width: 100%; padding: 12px; font-size: 13.5px; margin-top: 8px; }
+    button:disabled { opacity: .5; cursor: default; }
+    .status-line {
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      padding: 10px 12px; border-radius: 10px; background: #121820; border: 1px solid var(--line);
+      margin-bottom: 8px;
+    }
+    .status-line b { font-size: 13px; }
+    .status-line small { color: var(--muted); font-size: 11px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+      padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap;
+    }
+    .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    .badge.on .dot { background: var(--good); box-shadow: 0 0 8px var(--good); }
+    .badge.run .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .badge.off .dot { background: var(--bad); }
+    .badge.warn .dot { background: var(--warn); }
+    .pct { font-size: 36px; font-weight: 700; letter-spacing: -.03em; margin: 4px 0 2px; }
+    .bar { height: 10px; border-radius: 999px; background: #121820; overflow: hidden; border: 1px solid var(--line); }
+    .bar > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #128a98, #2ad4e6); transition: width .35s ease; }
+    .msg { font-size: 12.5px; line-height: 1.45; margin-top: 8px; min-height: 34px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .grid div { background: #121820; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+    .grid span { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .grid b { display: block; font-size: 15px; margin-top: 3px; }
+    .hint { font-size: 11px; color: var(--muted); line-height: 1.4; margin-top: 8px; }
+    .log { max-height: 120px; overflow: auto; font-size: 11px; color: var(--muted); font-family: Consolas, monospace; }
+    .log div { border-bottom: 1px solid #1e2834; padding: 3px 0; }
+    .step { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+    .step strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo">PX</div>
+      <div>
+        <h1>PHARMXS FOM Agent <span style="opacity:.7;font-weight:600">v7</span></h1>
+        <div class="sub">FOM baza → platforma · SQL fallback · faqat shu kompaniya</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>1. FOM baza</h2>
+      <div class="status-line">
+        <div>
+          <b id="fomTitle">Tekshirilmoqda…</b>
+          <small id="fomDetail">REPORT.exe porti</small>
+        </div>
+        <span class="badge off" id="fomBadge"><span class="dot"></span><span id="fomBadgeText">—</span></span>
+      </div>
+      <p class="hint">FOM kompyuterida <b>REPORT.exe</b> ishlashi kerak (odatda :8084).</p>
+    </div>
+
+    <div class="card">
+      <h2>2. Platforma tokeni</h2>
+      <p class="step">Admin panel → Sozlamalar → tokenni nusxa qiling</p>
+      <label>Platforma</label>
+      <input id="platform" value="https://pharmxs.uz" />
+      <label>Token</label>
+      <input id="token" placeholder="pxa_…" autocomplete="off" />
+      <div class="row">
+        <button id="btnConnect">Platformaga ulash</button>
+        <button class="secondary" id="btnAutostart">Avto-start</button>
+      </div>
+      <div class="status-line" style="margin-top:10px">
+        <div>
+          <b id="platTitle">Token kutilmoqda</b>
+          <small id="platDetail">Admin panelda «Kompyuter onlayn» chiqadi</small>
+        </div>
+        <span class="badge off" id="platBadge"><span class="dot"></span><span id="platBadgeText">—</span></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3. Sinxronlash</h2>
+      <button class="big" id="btnSync" disabled>Sinxronlashni boshlash (01.01.2025 → bugun)</button>
+      <div class="pct" id="pct">0%</div>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="msg" id="msg">Avval FOM va tokenni ulang, keyin sinxronlashni boshlang.</div>
+      <div class="grid">
+        <div><span>Filiallar</span><b id="nBranches">0</b></div>
+        <div><span>Tovarlar</span><b id="nProducts">0</b></div>
+        <div><span>Kirim</span><b id="nPurchases">0</b></div>
+        <div><span>Cheklar</span><b id="nSales">0</b></div>
+      </div>
+      <div class="grid" style="margin-top:8px">
+        <div><span>Davr</span><b id="range">—</b></div>
+        <div><span>Holat</span><b id="syncState">—</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin:0 0 6px;align-items:center">
+        <h2 style="margin:0">Jurnal</h2>
+        <button class="danger" id="btnQuit" style="padding:7px 10px">Chiqish</button>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    function log(line) {
+      const d = document.createElement('div');
+      d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + line;
+      $('log').prepend(d);
+      while ($('log').children.length > 100) $('log').lastChild.remove();
+    }
+    async function api(path, opts) {
+      const res = await fetch(path, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || res.statusText);
+      return data;
+    }
+    function setBadge(el, textEl, kind, text) {
+      el.className = 'badge ' + kind;
+      textEl.textContent = text;
+    }
+    function paintLocal(s) {
+      const fomOk = !!s.reportListening;
+      $('fomTitle').textContent = fomOk ? 'FOM bazasiga ulandi' : 'FOM / REPORT topilmadi';
+      $('fomDetail').textContent = fomOk
+        ? ('REPORT tinglanmoqda · port ' + (s.reportPort || 8084))
+        : 'REPORT.exe ni yoqing, keyin yangilanadi';
+      setBadge($('fomBadge'), $('fomBadgeText'), fomOk ? 'on' : 'off', fomOk ? 'Ulangan' : 'Yoʻq');
+
+      const platOk = !!s.platformOnline;
+      $('platTitle').textContent = platOk ? ('Platformaga ulandi' + (s.companyName ? (': ' + s.companyName) : '')) : 'Platformaga ulanmagan';
+      $('platDetail').textContent = platOk
+        ? 'Admin panelda «Kompyuter onlayn» koʻrinadi'
+        : 'Token kiriting va «Platformaga ulash»';
+      setBadge($('platBadge'), $('platBadgeText'), platOk ? 'on' : 'off', platOk ? 'Onlayn' : 'Offline');
+
+      $('btnSync').disabled = !(fomOk && platOk);
+    }
+    function paintLive(live) {
+      const sync = live.sync || {};
+      const pct = Math.max(0, Math.min(100, Number(sync.percent) || 0));
+      $('pct').textContent = pct + '%';
+      $('bar').style.width = pct + '%';
+      $('msg').textContent = sync.message || live.message || '—';
+      $('range').textContent = (sync.from && sync.to) ? (sync.from + ' → ' + sync.to) : (sync.from || '—');
+      $('syncState').textContent = sync.running ? 'Jarayonda' : (sync.status === 'success' ? 'Tayyor' : (sync.status || '—'));
+      const t = sync.totals || {};
+      $('nBranches').textContent = fmt(t.branches);
+      $('nProducts').textContent = fmt(t.products);
+      $('nPurchases').textContent = fmt(t.purchases);
+      $('nSales').textContent = fmt(t.sales);
+      paintLocal({
+        reportListening: live.reportListening,
+        reportPort: live.reportPort,
+        platformOnline: live.online || live.platformOnline,
+        companyName: live.companyName,
+      });
+    }
+    function fmt(n) {
+      const v = Number(n || 0);
+      return v.toLocaleString('uz-UZ');
+    }
+    async function refresh() {
+      try {
+        const live = await api('/api/local/live');
+        paintLive(live);
+      } catch (e) {
+        $('msg').textContent = e.message;
+      }
+    }
+    async function boot() {
+      const cfg = await api('/api/local/config');
+      $('platform').value = cfg.platform || 'https://pharmxs.uz';
+      $('token').value = cfg.token || '';
+      await refresh();
+    }
+    $('btnConnect').onclick = async () => {
+      try {
+        $('btnConnect').disabled = true;
+        await api('/api/local/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            platform: $('platform').value.trim(),
+            token: $('token').value.trim(),
+            connectOnly: true,
+          }),
+        });
+        log('Platformaga ulandi — admin panelni tekshiring');
+        await refresh();
+      } catch (e) {
+        log('Xato: ' + e.message);
+        alert(e.message);
+      } finally {
+        $('btnConnect').disabled = false;
+      }
+    };
+    $('btnSync').onclick = async () => {
+      try {
+        $('btnSync').disabled = true;
+        const r = await api('/api/local/sync', { method: 'POST' });
+        log(r.message || 'Sinxronlash boshlandi');
+        await refresh();
+      } catch (e) {
+        log('Sync xato: ' + e.message);
+        alert(e.message);
+      } finally {
+        $('btnSync').disabled = false;
+      }
+    };
+    $('btnAutostart').onclick = async () => {
+      try {
+        const r = await api('/api/local/autostart', { method: 'POST' });
+        log(r.message || 'Avto-start');
+        alert(r.message || 'OK');
+      } catch (e) { alert(e.message); }
+    };
+    $('btnQuit').onclick = async () => {
+      if (!confirm('Agent yopilsinmi?')) return;
+      await api('/api/local/quit', { method: 'POST' });
+      window.close();
+    };
+    boot();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

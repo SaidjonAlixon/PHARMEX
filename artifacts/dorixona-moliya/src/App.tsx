@@ -315,7 +315,10 @@ function Shell({ children, filters, setFilters }: { children: ReactNode; filters
               return <button key={option.value} type="button" className={active ? 'selected' : ''} onClick={() => choosePeriod(option.value)} title={option.hint} data-testid={`period-${option.value}`}>{Icon && <Icon size={14} />}{option.label}</button>;
             })}</div>
             {rangeOpen && <form className="period-range" onSubmit={applyRange} data-testid="bar-date-range">
-              <label>Sanadan<input type="date" required value={draft.from} max={draft.to || undefined} onChange={e => setDraft({ ...draft, from: e.target.value })} data-testid="input-global-from" /></label>
+              <label>Sanadan<input type="date" required value={draft.from} max={todayDay()} onChange={e => {
+                const from = e.target.value;
+                setDraft(d => ({ from, to: d.to && d.to < from ? from : d.to }));
+              }} data-testid="input-global-from" /></label>
               <label>sanagacha<input type="date" required value={draft.to} min={draft.from || undefined} max={todayDay()} onChange={e => setDraft({ ...draft, to: e.target.value })} data-testid="input-global-to" /></label>
               <button type="submit" className="button primary small" disabled={!draft.from || !draft.to || draft.from > draft.to} data-testid="button-apply-range"><Check size={13} /> Tasdiqlash</button>
               <button type="button" className="button secondary small" onClick={() => setRangeOpen(false)} data-testid="button-cancel-range">Bekor qilish</button>
