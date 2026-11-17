@@ -9,6 +9,7 @@ export type AppUserRole = typeof AppUserRole[keyof typeof AppUserRole];
 
 
 export const AppUserRole = {
+  platform_admin: 'platform_admin',
   admin: 'admin',
   finance: 'finance',
   viewer: 'viewer',
@@ -194,6 +195,42 @@ export interface InventoryItem {
   /** @nullable */
   expiryDate?: string | null;
   source: InventoryItemSource;
+}
+
+export interface WarehouseTopSeller {
+  rank: number;
+  productId: number;
+  productName: string;
+  unit: string;
+  stockQty: number;
+  soldQty: number;
+  sales: string;
+  /** @nullable */
+  expiryDate?: string | null;
+}
+
+export interface WarehouseSlowMover {
+  productId: number;
+  productName: string;
+  unit: string;
+  stockQty: number;
+  /** @nullable */
+  stockValue?: string | null;
+  soldQty: number;
+  /** @nullable */
+  lastSoldAt?: string | null;
+  /** @nullable */
+  daysSinceSale?: number | null;
+  /** @nullable */
+  expiryDate?: string | null;
+  /** @nullable */
+  expiryDays?: number | null;
+  expired: boolean;
+}
+
+export interface WarehouseInsights {
+  topSellers: WarehouseTopSeller[];
+  slowMovers: WarehouseSlowMover[];
 }
 
 export interface ProductDetail {
@@ -1265,6 +1302,14 @@ export type FomStatusDataRangesItem = {
   count: number;
 };
 
+/**
+ * @nullable
+ */
+export type FomStatusProgress = {
+  done?: number;
+  total?: number;
+} | null;
+
 export interface FomReportState {
   key: string;
   reportId: number;
@@ -1304,6 +1349,40 @@ export interface FomTotals {
   stockDocuments: number;
 }
 
+export type FomSyncChunkStatus = typeof FomSyncChunkStatus[keyof typeof FomSyncChunkStatus];
+
+
+export const FomSyncChunkStatus = {
+  pending: 'pending',
+  running: 'running',
+  done: 'done',
+  error: 'error',
+} as const;
+
+export interface FomSyncChunk {
+  id: string;
+  /** @nullable */
+  from: string | null;
+  /** @nullable */
+  to: string | null;
+  /** @nullable */
+  filialId?: string | null;
+  reportKey: string;
+  status: FomSyncChunkStatus;
+  rows: number;
+  /** @nullable */
+  error?: string | null;
+  /** @nullable */
+  finishedAt?: string | null;
+}
+
+export interface FomChunkSummary {
+  done: number;
+  running: number;
+  pending: number;
+  error: number;
+}
+
 export interface FomStatus {
   connected: boolean;
   configured: boolean;
@@ -1333,6 +1412,11 @@ export interface FomStatus {
   totals: FomTotals;
   /** First and last FOM record held in the PHARMXS database, per section */
   dataRanges: FomStatusDataRangesItem[];
+  windowDays?: number;
+  chunks?: FomSyncChunk[];
+  chunkSummary?: FomChunkSummary;
+  /** @nullable */
+  progress?: FomStatusProgress;
 }
 
 export type FomSettingsSource = typeof FomSettingsSource[keyof typeof FomSettingsSource];
@@ -1369,6 +1453,8 @@ export interface FomSettings {
   apiTokenHint: string | null;
   /** @nullable */
   updatedAt: string | null;
+  /** First full-sync floor (default 2025-01-01) */
+  startDate?: string;
 }
 
 export type FomSettingsInputProtocol = typeof FomSettingsInputProtocol[keyof typeof FomSettingsInputProtocol];
@@ -1412,6 +1498,7 @@ export interface FomSettingsInput {
   /** @maxLength 500 */
   apiToken?: string;
   clearApiToken?: boolean;
+  startDate?: string;
 }
 
 export interface FomSyncInput {
@@ -1500,6 +1587,15 @@ export type ListInventoryParams = {
  */
 branchId?: BranchIdParameter;
 search?: string;
+};
+
+export type GetWarehouseInsightsParams = {
+/**
+ * @minimum 1
+ */
+branchId?: BranchIdParameter;
+dateFrom?: DateFromParameter;
+dateTo?: DateToParameter;
 };
 
 export type GetProductParams = {

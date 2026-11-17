@@ -12,6 +12,7 @@ import purchasesRouter from "./purchases";
 import stockRouter from "./stock";
 import reportsRouter from "./reports";
 import fomRouter, { fomSiteRouter } from "./fom";
+import fomOpsRouter from "./fomOps";
 import authRouter from "./auth";
 import accountsRouter from "./accounts";
 import billingRouter from "./billing";
@@ -23,6 +24,8 @@ import { localAuthEnabled } from "../lib/localAuth";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(fomOpsRouter);
+// FOM PC outbound agent (hello/poll/job-result) — no VPN; before auth.
 router.use(fomSiteRouter);
 if (localAuthEnabled) router.use(authRouter);
 // Public Click callbacks + plan catalog; authenticated routes guard themselves.

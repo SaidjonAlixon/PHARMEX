@@ -45,9 +45,9 @@ app.use(
 );
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 app.use(cors({ credentials: true, origin: true }));
-// Agent job-result posts large base64 XML (full-year FOM reports can be hundreds of MB).
-app.use(express.json({ limit: "512mb" }));
-app.use(express.urlencoded({ extended: true, limit: "512mb" }));
+// FOM PC posts large weekly XML chunks (base64) via agent job-result.
+app.use(express.json({ limit: "128mb" }));
+app.use(express.urlencoded({ extended: true, limit: "128mb" }));
 
 if (localAuthEnabled) {
   assertLocalAuthConfig();

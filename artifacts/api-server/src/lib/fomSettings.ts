@@ -160,18 +160,17 @@ export function resolveOrgFomConfig(saved: OrgFomSavedConfig | null): FomConfig 
   return merged;
 }
 
-/** Resolve org config including agent relay binding. */
+/**
+ * Pharmacy-PC pull (no Radmin/VPN): VPS queues REPORT jobs; FOM PC PowerShell
+ * fetches localhost SERVICEREPORTS and posts XML back over HTTPS outbound.
+ */
 export function resolveOrgFomConfigForSync(organizationId: number, saved: OrgFomSavedConfig | null): FomConfig {
   const cfg = resolveOrgFomConfig(saved);
-  // If pharmacy installed the PowerShell agent, always pull via local REPORT (NAT-safe).
-  if (saved?.agentToken?.trim()) {
-    cfg.agentRelay = saved.agentRelay !== false;
-    cfg.agentOrganizationId = organizationId;
-    cfg.agentLocalPort = saved.agentPort && saved.agentPort > 0 ? saved.agentPort : 8084;
-    if (!cfg.reportUrl) {
-      cfg.reportUrl = `http://127.0.0.1:${cfg.agentLocalPort}`;
-    }
-  }
+  const port = saved?.agentPort && saved.agentPort > 0 ? saved.agentPort : 8084;
+  cfg.agentRelay = true;
+  cfg.agentOrganizationId = organizationId;
+  cfg.agentLocalPort = port;
+  cfg.reportUrl = `http://127.0.0.1:${port}`;
   return cfg;
 }
 

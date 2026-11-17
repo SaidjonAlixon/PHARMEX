@@ -5,10 +5,13 @@
  * Dorixona moliyaviy boshqaruv platformasi API
  * OpenAPI spec version: 0.1.0
  */
+import type { FomChunkSummary } from './fomChunkSummary';
 import type { FomReportState } from './fomReportState';
 import type { FomSiteState } from './fomSiteState';
 import type { FomStatusDataRangesItem } from './fomStatusDataRangesItem';
 import type { FomStatusLastSyncStatus } from './fomStatusLastSyncStatus';
+import type { FomStatusProgress } from './fomStatusProgress';
+import type { FomSyncChunk } from './fomSyncChunk';
 import type { FomTotals } from './fomTotals';
 
 export interface FomStatus {
@@ -40,4 +43,9 @@ export interface FomStatus {
   totals: FomTotals;
   /** First and last FOM record held in the PHARMXS database, per section */
   dataRanges: FomStatusDataRangesItem[];
+  windowDays?: number;
+  chunks?: FomSyncChunk[];
+  chunkSummary?: FomChunkSummary;
+  /** @nullable */
+  progress?: FomStatusProgress;
 }

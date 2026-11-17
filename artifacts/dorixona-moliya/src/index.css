@@ -2267,6 +2267,48 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 .dark select option, .dark select optgroup { background: #0e1a34; color: #e3eaf8; }
 
 /* FOM connection form */
+.fom-progress-bar {
+  position: relative;
+  height: 28px;
+  margin: 0 0 14px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.fom-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #0fb3c7, #1fb84f);
+  transition: width .35s ease;
+}
+.fom-progress-bar > span {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 12px;
+  font: 700 12px/1 var(--app-font-mono);
+  color: var(--ink);
+  mix-blend-mode: normal;
+}
+.fom-report-meter {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 99px;
+  background: #e4ebf5;
+  overflow: hidden;
+}
+.fom-report-meter > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0fb3c7, #1fb84f);
+  transition: width .3s ease;
+}
+.dark .fom-report-meter { background: #1a2744; }
+
 .fom-connect { margin-bottom: 18px; }
 .fom-setup-guide {
   margin: 0 0 18px;
@@ -2340,6 +2382,41 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 .fom-connect .form-grid { gap: 12px 14px; align-items: start; }
 .fom-grid-server {
   grid-template-columns: 110px minmax(0, 1fr) 110px;
+}
+.fom-grid-pull {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.fom-grid-pull .f-filials,
+.fom-grid-pull .f-start { grid-column: span 3; }
+.fom-grid-pull .f-interval,
+.fom-grid-pull .f-timeout,
+.fom-grid-pull .f-days { grid-column: span 2; }
+.fom-form select {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 11px;
+  border: 1px solid #d5dfee;
+  background: #fff;
+  color: var(--px-navy);
+  font-size: 13.5px;
+  padding: 10px 36px 10px 11px;
+  outline: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230b8fa3' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+.fom-form select:focus {
+  border-color: var(--px-teal);
+  box-shadow: 0 0 0 4px rgba(15,179,199,.14);
+}
+.dark .fom-form select {
+  background-color: #0b1630;
+  border-color: #263759;
+  color: var(--ink);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235fd8e6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 .fom-form-section .field-hint { margin-top: 5px; }
 .fom-form-section .field-hint.bad { color: #d13b3b; font-weight: 600; }
@@ -2440,7 +2517,14 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 }
 .fom-advanced > summary::-webkit-details-marker { display: none; }
 .fom-advanced[open] > summary { color: var(--ink); border-bottom: 1px solid var(--line); margin-bottom: 12px; }
-.fom-agent-actions { margin-top: 12px; justify-content: flex-start; }
+.fom-agent-actions { margin-top: 4px; justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
+.fom-agent-actions a.button.disabled,
+.fom-agent-actions a.button:not([href]) {
+  pointer-events: none;
+  opacity: .55;
+}
+.fom-form-section .fom-script-box + .fom-script-box { margin-top: 10px; }
+.fom-form-section .fom-agent-lead { margin: 0 0 10px; }
 .fom-agent-panel { margin-top: 0; }
 .fom-agent-head {
   display: flex;
@@ -2572,9 +2656,17 @@ html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *
 @media (max-width: 900px) {
   .fom-grid-server { grid-template-columns: 1fr 1fr; }
   .fom-grid-server .f-host { grid-column: 1 / -1; }
+  .fom-grid-pull { grid-template-columns: 1fr 1fr; }
+  .fom-grid-pull .f-filials,
+  .fom-grid-pull .f-start,
+  .fom-grid-pull .f-interval,
+  .fom-grid-pull .f-timeout,
+  .fom-grid-pull .f-days { grid-column: auto; }
+  .fom-grid-pull .f-days { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
   .fom-grid-server { grid-template-columns: 1fr; }
+  .fom-grid-pull { grid-template-columns: 1fr; }
   .fom-connect .form-grid .span-2 { grid-column: auto; }
   .fom-setup-head span { display: none; }
   .connect-actions { justify-content: stretch; }

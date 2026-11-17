@@ -403,8 +403,39 @@ router.get("/receipts/summary", async (req, res): Promise<void> => {
       cost: costKnown ? centsMoney(cost) : null,
       profit: costKnown ? centsMoney(net - cost) : null,
       channels: [
-        ...channels,
-        ...unpaid.filter((row) => moneyCents(row.amount) !== 0n).map((row) => ({ name: "", method: row.method, amount: row.amount, count: row.count })),
+        ...channels.map((row) => ({
+          ...row,
+          name:
+            row.name?.trim() ||
+            (row.method === "cash"
+              ? "Naqd"
+              : row.method === "card"
+                ? "UzCard"
+                : row.method === "other"
+                  ? "Boshqa"
+                  : row.method === "transfer"
+                    ? "Boshqa"
+                    : row.method === "credit"
+                      ? "Nasiya"
+                      : row.name),
+        })),
+        ...unpaid
+          .filter((row) => moneyCents(row.amount) !== 0n)
+          .map((row) => ({
+            name:
+              row.method === "cash"
+                ? "Naqd"
+                : row.method === "card"
+                  ? "UzCard"
+                  : row.method === "other"
+                    ? "Boshqa"
+                    : row.method === "credit"
+                      ? "Nasiya"
+                      : "Boshqa",
+            method: row.method,
+            amount: row.amount,
+            count: row.count,
+          })),
       ]
         .map((row) => ({ ...row, amount: centsMoney(moneyCents(row.amount)) }))
         .sort((a, b) => Number(moneyCents(b.amount) - moneyCents(a.amount))),

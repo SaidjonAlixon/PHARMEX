@@ -53,6 +53,7 @@ import type {
   GetReceiptSummaryParams,
   GetReportParams,
   GetStockDocumentParams,
+  GetWarehouseInsightsParams,
   HealthStatus,
   InventoryItem,
   ListCashAccountsParams,
@@ -90,7 +91,8 @@ import type {
   StockDocumentDetail,
   StockDocumentInput,
   UpdateUserRoleParams,
-  UserRoleInput
+  UserRoleInput,
+  WarehouseInsights
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -936,6 +938,90 @@ export function useListInventory<TData = Awaited<ReturnType<typeof listInventory
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListInventoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWarehouseInsightsUrl = (params?: GetWarehouseInsightsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/warehouse-insights?${stringifiedParams}` : `/api/warehouse-insights`
+}
+
+/**
+ * @summary Warehouse top sellers and slow-moving stock
+ */
+export const getWarehouseInsights = async (params?: GetWarehouseInsightsParams, options?: Parameters<typeof customFetch>[1]): Promise<WarehouseInsights> => {
+
+  return customFetch<WarehouseInsights>(getGetWarehouseInsightsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWarehouseInsightsQueryKey = (params?: GetWarehouseInsightsParams,) => {
+    return [
+    `/api/warehouse-insights`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWarehouseInsightsQueryOptions = <TData = Awaited<ReturnType<typeof getWarehouseInsights>>, TError = ErrorType<unknown>>(params?: GetWarehouseInsightsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWarehouseInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWarehouseInsightsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWarehouseInsights>>> = ({ signal }) => getWarehouseInsights(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWarehouseInsights>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWarehouseInsightsQueryResult = NonNullable<Awaited<ReturnType<typeof getWarehouseInsights>>>
+export type GetWarehouseInsightsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Warehouse top sellers and slow-moving stock
+ */
+
+export function useGetWarehouseInsights<TData = Awaited<ReturnType<typeof getWarehouseInsights>>, TError = ErrorType<unknown>>(
+ params?: GetWarehouseInsightsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWarehouseInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWarehouseInsightsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -203,16 +203,18 @@ export async function applyAgentHello(input: AgentHelloInput): Promise<{
   };
 
   const prevSeen = existing.agentLastSeenAt ? new Date(existing.agentLastSeenAt).getTime() : 0;
+  const versionChanged = (existing.agentVersion ?? 0) !== (saved.agentVersion ?? 0);
   const sameShape =
     existing.agentHost === saved.agentHost &&
     existing.agentPort === saved.agentPort &&
     existing.agentMachine === saved.agentMachine &&
     existing.agentReportListening === saved.agentReportListening &&
     existing.agentRelay === saved.agentRelay &&
-    (existing.reportUrl ?? null) === (saved.reportUrl ?? null);
-  // Heartbeat every ~1s from continuous agent — only persist every 45s unless shape changed.
-  if (!sameShape || !Number.isFinite(prevSeen) || Date.now() - prevSeen > 45_000) {
-    await saveOrgFomConfig(organizationId, saved, { reschedule: !sameShape });
+    (existing.reportUrl ?? null) === (saved.reportUrl ?? null) &&
+    !versionChanged;
+  // Heartbeat every ~1s from continuous agent — only persist every 45s unless shape/version changed.
+  if (!sameShape || !Number.isFinite(prevSeen) || Date.now() - prevSeen > 45_000 || versionChanged) {
+    await saveOrgFomConfig(organizationId, saved, { reschedule: !sameShape || versionChanged });
   }
   return { organizationId, saved, configUrl: reportUrl };
 }

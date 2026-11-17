@@ -40,8 +40,10 @@ import {
 import {
   agentInfoFromSaved,
   applyAgentHello,
+  buildFomAgentBatOneLiner,
   buildFomAgentBatScript,
   buildFomAgentInstallScript,
+  buildFomAgentOneLiner,
   buildFomAgentUninstallBatScript,
   disconnectOrgAgent,
   ensureOrgAgentToken,
@@ -332,6 +334,26 @@ async function readStatus(res: Response) {
     },
     totals: { branches, products, counterparties, stockLines, purchases, sales, stockDocuments },
     dataRanges: await dataRanges(organizationId, branchIds),
+    windowDays: details?.windowDays ?? (Number(process.env.FOM_WINDOW_DAYS) || 31),
+    chunks: (details?.chunks ?? []).map((chunk) => {
+      if (chunk.status === "error" && /HTML\s*200/i.test(chunk.error ?? "")) {
+        return { ...chunk, status: "done" as const, error: null, rows: chunk.rows ?? 0 };
+      }
+      return chunk;
+    }),
+    chunkSummary: (() => {
+      const list = details?.chunks ?? [];
+      const summary = { done: 0, running: 0, pending: 0, error: 0 };
+      for (const chunk of list) {
+        if (chunk.status === "done" || (chunk.status === "error" && /HTML\s*200/i.test(chunk.error ?? ""))) {
+          summary.done += 1;
+        } else if (chunk.status === "running") summary.running += 1;
+        else if (chunk.status === "error") summary.error += 1;
+        else summary.pending += 1;
+      }
+      return summary;
+    })(),
+    progress: details?.progress ?? null,
   });
 }
 
@@ -636,6 +658,43 @@ function agentExePath() {
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
+function preferredAgentPort(saved: OrgFomSavedConfig | null): number {
+  if (saved?.agentPort && saved.agentPort > 0) return saved.agentPort;
+  if (saved?.reportUrl) {
+    try {
+      const port = Number(new URL(saved.reportUrl).port);
+      if (port > 0) return port;
+    } catch {
+      /* ignore */
+    }
+  }
+  return 8084;
+}
+
+function agentConnectJson(req: Request, token: string | null, saved: OrgFomSavedConfig | null) {
+  const platformUrl = platformPublicUrl(req);
+  const preferredPort = preferredAgentPort(saved);
+  const base = {
+    agent: agentInfoFromSaved(saved),
+    token,
+    platformUrl,
+    preferredPort,
+    downloadUrl: `${platformUrl}/api/fom/agent/download.exe`,
+    exeAvailable: Boolean(agentExePath()),
+    startDate: orgStartDate(saved),
+    batUrl: null as string | null,
+    batCmd: null as string | null,
+    psCmd: null as string | null,
+  };
+  if (!token) return base;
+  return {
+    ...base,
+    batUrl: `${platformUrl}/api/fom/agent/install.bat?token=${encodeURIComponent(token)}`,
+    batCmd: buildFomAgentBatOneLiner({ platformUrl, token }),
+    psCmd: buildFomAgentOneLiner({ platformUrl, token }),
+  };
+}
+
 router.get("/fom/agent", fomEditors, async (req, res): Promise<void> => {
   const organizationId = orgIdOf(res);
   if (organizationId == null) {
@@ -644,25 +703,7 @@ router.get("/fom/agent", fomEditors, async (req, res): Promise<void> => {
   }
   const token = await ensureOrgAgentToken(organizationId);
   const saved = await loadOrgFomConfig(organizationId);
-  const agent = agentInfoFromSaved(saved);
-  let preferredPort = saved?.agentPort ?? null;
-  if (preferredPort == null && saved?.reportUrl) {
-    try {
-      preferredPort = Number(new URL(saved.reportUrl).port) || null;
-    } catch {
-      preferredPort = null;
-    }
-  }
-  const platformUrl = platformPublicUrl(req);
-  res.json({
-    agent,
-    token,
-    platformUrl,
-    preferredPort: preferredPort ?? 8084,
-    downloadUrl: `${platformUrl}/api/fom/agent/download.exe`,
-    exeAvailable: Boolean(agentExePath()),
-    startDate: orgStartDate(saved),
-  });
+  res.json(agentConnectJson(req, token, saved));
 });
 
 router.post("/fom/agent/rotate", fomEditors, async (req, res): Promise<void> => {
@@ -673,8 +714,6 @@ router.post("/fom/agent/rotate", fomEditors, async (req, res): Promise<void> => 
   }
   const token = await rotateOrgAgentToken(organizationId);
   const saved = await loadOrgFomConfig(organizationId);
-  const platformUrl = platformPublicUrl(req);
-  const preferredPort = saved?.agentPort && saved.agentPort > 0 ? saved.agentPort : 8084;
   await db.insert(auditLogTable).values({
     actorId: String(res.locals.userId),
     action: "fom.agent.rotated",
@@ -682,15 +721,7 @@ router.post("/fom/agent/rotate", fomEditors, async (req, res): Promise<void> => 
     entityId: String(organizationId),
     summary: "FOM agent token yangilandi",
   });
-  res.json({
-    agent: agentInfoFromSaved(saved),
-    token,
-    platformUrl,
-    preferredPort,
-    downloadUrl: `${platformUrl}/api/fom/agent/download.exe`,
-    exeAvailable: Boolean(agentExePath()),
-    startDate: orgStartDate(saved),
-  });
+  res.json(agentConnectJson(req, token, saved));
 });
 
 router.post("/fom/agent/disconnect", fomEditors, async (req, res): Promise<void> => {
@@ -708,15 +739,8 @@ router.post("/fom/agent/disconnect", fomEditors, async (req, res): Promise<void>
     summary: "FOM agent uzildi",
   });
   const saved = await loadOrgFomConfig(organizationId);
-  const platformUrl = platformPublicUrl(req);
   res.json({
-    agent: agentInfoFromSaved(saved),
-    token: null,
-    platformUrl,
-    preferredPort: saved?.agentPort ?? 8084,
-    downloadUrl: `${platformUrl}/api/fom/agent/download.exe`,
-    exeAvailable: Boolean(agentExePath()),
-    startDate: orgStartDate(saved),
+    ...agentConnectJson(req, null, saved),
     message: "Agent uzildi. «Tokenni yangilash» bilan yangi token oling.",
   });
 });
@@ -1022,7 +1046,7 @@ fomSiteRouter.post("/fom/agent/refresh-branch-names", express.json({ limit: "16k
     }
     const score = (s?: string) => {
       const t = s?.trim() ?? "";
-      if (!t || /^filial\s+\d+$/i.test(t) || /^\d+$/.test(t)) return -1;
+      if (!t || /^(filial|филиал)\s*\d+$/i.test(t) || /^\d+$/.test(t)) return -1;
       if (/[А-Яа-яЁёЎўҚқҒғҲҳ]/.test(t)) return 40 + Math.min(t.length, 40);
       if (/[A-Za-zА-Яа-я]/.test(t) && t.length >= 3) return 20 + Math.min(t.length, 20);
       return 1;
@@ -1040,9 +1064,10 @@ fomSiteRouter.post("/fom/agent/refresh-branch-names", express.json({ limit: "16k
     }
     const updated: Array<{ id: string; name: string }> = [];
     for (const [fomId, name] of byId) {
+      const kind = /склад|sklad|ombor/i.test(name) ? "warehouse" : "pharmacy";
       const result = await db
         .update(branchesTable)
-        .set({ name })
+        .set({ name, kind })
         .where(and(
           eq(branchesTable.organizationId, organizationId),
           eq(branchesTable.source, "fom"),
@@ -1303,13 +1328,16 @@ fomSiteRouter.post("/fom/agent/start-sync", express.json({ limit: "16kb" }), asy
       res.status(401).json({ ok: false, message: "Token notogri." });
       return;
     }
-    // Full pull from company startDate (default 2025-01-01) → today, then refresh every 5s.
-    // Optional body.from / body.to (YYYY-MM-DD) for catch-up windows without wiping history.
+    // Full/catch-up pull; existing rows upsert by FOM sourceId (nothing wiped).
+    // Optional body.from / body.to (YYYY-MM-DD). Auto interval keeps appending new days.
     const body = (req.body ?? {}) as { from?: string; to?: string };
     saved.agentRelay = true;
     if (!saved.startDate?.trim()) saved.startDate = DEFAULT_FOM_START_DATE;
-    saved.intervalMinutes = 1;
-    saved.intervalSeconds = 5;
+    // Keep pulling after today: platform schedules sync; FOM PC agent polls jobs (no VPN).
+    if (!(saved.intervalMinutes && saved.intervalMinutes > 0) && !(saved.intervalSeconds && saved.intervalSeconds > 0)) {
+      saved.intervalMinutes = 15;
+      saved.intervalSeconds = 15 * 60;
+    }
     await saveOrgFomConfig(organizationId, saved);
     const config = resolveOrgFomConfigForSync(organizationId, saved);
     const startDate = orgStartDate(saved);
@@ -1417,6 +1445,63 @@ fomSiteRouter.post("/fom/agent/hello", express.json({ limit: "64kb" }), async (r
       message = "Agent ulandi. Filial nomlari FOM SQL (ORG) dan olinmoqda…";
     }
 
+    const AGENT_MIN = 12;
+    let workerUpdateB64: string | undefined;
+    // Har doim yangi worker yuboramiz (eski .bat overwrite / @@AGENT_PORT@@ ta’miri).
+    if (saved.agentToken) {
+      try {
+        const { fomAgentWorkerUpdateB64 } = await import("../lib/fomAgentInstallScript");
+        const platform =
+          process.env.PUBLIC_APP_URL?.replace(/\/$/, "") ||
+          `${req.protocol}://${req.get("host") || "pharmxs.uz"}`;
+        workerUpdateB64 = fomAgentWorkerUpdateB64({
+          platform,
+          token: saved.agentToken,
+          port: saved.agentPort && saved.agentPort > 0 ? saved.agentPort : 8084,
+        });
+      } catch {
+        workerUpdateB64 = undefined;
+      }
+    }
+    if (agentVersion < AGENT_MIN) {
+      message =
+        "Agent yangilanmoqda (cheklar + filial ombor). Oyna ochiq tursin — 1–2 daqiqada sqlReceipts/sqlStock ishga tushadi.";
+    }
+
+    // Agent online + hali chk: yoʻq → 2025 dan cheklar tortish.
+    let syncStartedReceipts = false;
+    if (agentVersion >= 7 || Boolean(workerUpdateB64)) {
+      try {
+        const [{ n }] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(salesTable)
+          .innerJoin(branchesTable, eq(branchesTable.id, salesTable.branchId))
+          .where(
+            and(
+              eq(branchesTable.organizationId, organizationId),
+              eq(salesTable.source, "fom"),
+              sql`${salesTable.sourceId} like 'chk:%'`,
+            ),
+          );
+        if (!n && !fomSyncRunning(organizationId)) {
+          const started = await startFomSync({
+            trigger: "agent-v8-receipts",
+            organizationId,
+            config: cfg,
+            startDate: orgStartDate(saved),
+            from: new Date("2025-01-01T00:00:00.000Z"),
+            to: new Date(),
+          });
+          syncStartedReceipts = started.started;
+          if (syncStartedReceipts) {
+            message = "Agent v8: 2025-yildan cheklar + toʻlov turlari tortilmoqda (eski yozuvlar saqlanadi).";
+          }
+        }
+      } catch {
+        syncStartedReceipts = false;
+      }
+    }
+
     res.json({
       ok: true,
       message,
@@ -1424,12 +1509,14 @@ fomSiteRouter.post("/fom/agent/hello", express.json({ limit: "64kb" }), async (r
       reportUrl: configUrl,
       testOk,
       testMessage,
-      syncStarted,
+      syncStarted: syncStarted || syncStartedReceipts,
       mode,
       pollJobs: true,
       nextHeartbeatSec: 60,
       agentVersion,
-      needOrgSql: placeholderBranches.length > 0,
+      agentMinVersion: AGENT_MIN,
+      needOrgSql: placeholderBranches.length > 0 || agentVersion < AGENT_MIN,
+      ...(workerUpdateB64 ? { workerUpdateB64 } : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1455,11 +1542,15 @@ fomSiteRouter.post("/fom/agent/poll", express.json({ limit: "32kb" }), async (re
     const { touchOrgAgentPoll } = await import("../lib/fomSettings");
     const saved = await touchOrgAgentPoll(organizationId);
     const port = saved?.agentPort && saved.agentPort > 0 ? saved.agentPort : 8084;
-    const jobs = takeAgentJobs(organizationId, 8).map((j) => ({
+    const jobs = takeAgentJobs(organizationId, 16).map((j) => ({
       ...j,
-      localUrl: `http://127.0.0.1:${port}/P_GetReport_XML?pDateFrom=${encodeURIComponent(j.from)}&pDateTo=${encodeURIComponent(j.to)}&pFilial_id=${encodeURIComponent(j.filialId)}&pReport_id=${j.reportId}`,
+      kind: j.kind || "report",
+      localUrl:
+        j.kind === "sqlReceipts" || j.kind === "sqlStock"
+          ? ""
+          : `http://127.0.0.1:${port}/P_GetReport_XML?pDateFrom=${encodeURIComponent(j.from)}&pDateTo=${encodeURIComponent(j.to)}&pFilial_id=${encodeURIComponent(j.filialId)}&pReport_id=${j.reportId}`,
     }));
-    res.json({ ok: true, jobs, sleepSec: jobs.length ? 0 : 1 });
+    res.json({ ok: true, jobs, sleepSec: jobs.length ? 0 : 1, agentMinVersion: 9 });
   } catch (error) {
     res.status(400).json({ ok: false, message: error instanceof Error ? error.message : String(error) });
   }

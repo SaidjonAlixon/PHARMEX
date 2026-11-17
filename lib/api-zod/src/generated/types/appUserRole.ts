@@ -10,6 +10,7 @@ export type AppUserRole = typeof AppUserRole[keyof typeof AppUserRole];
 
 
 export const AppUserRole = {
+  platform_admin: 'platform_admin',
   admin: 'admin',
   finance: 'finance',
   viewer: 'viewer',

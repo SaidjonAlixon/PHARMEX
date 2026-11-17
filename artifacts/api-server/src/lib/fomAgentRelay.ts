@@ -4,6 +4,8 @@ import { fomDate } from "./fomClient";
 export type AgentFetchJob = {
   id: string;
   organizationId: number;
+  /** report = P_GetReport_XML; sqlReceipts = cheklar; sqlStock = qoldiq+narx+muddat */
+  kind: "report" | "sqlReceipts" | "sqlStock";
   reportId: number;
   filialId: string;
   from: string; // dd.mm.yyyy
@@ -13,7 +15,7 @@ export type AgentFetchJob = {
 
 type Pending = {
   job: AgentFetchJob;
-  resolve: (xml: string) => void;
+  resolve: (payload: string) => void;
   reject: (err: Error) => void;
   timer: NodeJS.Timeout;
 };
@@ -30,6 +32,21 @@ function orgQueue(organizationId: number): Pending[] {
   return q;
 }
 
+function enqueue(
+  job: AgentFetchJob,
+  timeoutMs: number,
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      drop(job.id);
+      reject(new Error("Dorixona kompyuteri FOM soʻroviga javob bermadi (agent offline yoki REPORT sekin)."));
+    }, Math.max(15_000, timeoutMs));
+    const item: Pending = { job, resolve, reject, timer };
+    pendingById.set(job.id, item);
+    orgQueue(job.organizationId).push(item);
+  });
+}
+
 /** Platform sync waits here; pharmacy agent fulfills via poll/result. */
 export function requestAgentFetch(opts: {
   organizationId: number;
@@ -43,21 +60,55 @@ export function requestAgentFetch(opts: {
   const job: AgentFetchJob = {
     id,
     organizationId: opts.organizationId,
+    kind: "report",
     reportId: opts.reportId,
     filialId: opts.filialId,
     from: fomDate(opts.from),
     to: fomDate(opts.to),
     createdAt: Date.now(),
   };
-  return new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      drop(id);
-      reject(new Error("Dorixona kompyuteri FOM soʻroviga javob bermadi (agent offline yoki REPORT sekin)."));
-    }, Math.max(15_000, opts.timeoutMs));
-    const item: Pending = { job, resolve, reject, timer };
-    pendingById.set(id, item);
-    orgQueue(opts.organizationId).push(item);
-  });
+  return enqueue(job, opts.timeoutMs);
+}
+
+/** Agent runs local MSSQL receipt lines + payments (real cheklar + toʻlov turlari). */
+export function requestAgentSqlReceipts(opts: {
+  organizationId: number;
+  from: Date;
+  to: Date;
+  timeoutMs: number;
+}): Promise<string> {
+  const id = `aj_${randomBytes(12).toString("base64url")}`;
+  const job: AgentFetchJob = {
+    id,
+    organizationId: opts.organizationId,
+    kind: "sqlReceipts",
+    reportId: 0,
+    filialId: "0",
+    from: fomDate(opts.from),
+    to: fomDate(opts.to),
+    createdAt: Date.now(),
+  };
+  return enqueue(job, opts.timeoutMs);
+}
+
+/** Agent runs local MSSQL stock (qty + retail PRICEROZ + nearest EXPDATA). */
+export function requestAgentSqlStock(opts: {
+  organizationId: number;
+  timeoutMs: number;
+}): Promise<string> {
+  const id = `aj_${randomBytes(12).toString("base64url")}`;
+  const today = new Date();
+  const job: AgentFetchJob = {
+    id,
+    organizationId: opts.organizationId,
+    kind: "sqlStock",
+    reportId: 0,
+    filialId: "0",
+    from: fomDate(today),
+    to: fomDate(today),
+    createdAt: Date.now(),
+  };
+  return enqueue(job, opts.timeoutMs);
 }
 
 function drop(id: string) {

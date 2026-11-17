@@ -296,19 +296,22 @@ export async function fomSqlNow(cfg: FomSqlConfig, timeoutMs: number): Promise<s
  * Columns: ID, DT, N, T entered at (local time), D day, F department, G good, Q, P, P1, V, C,
  * A line amount, DA line discount and CA line cost (KOL × price rounded to tiyin, KOL keeps 6 decimals).
  */
+/** Matches P_GetReport_XML report=4: local DBO, DOCTYPE 2/4, no STATE filter, LEFT JOIN INCOMELN. */
 export function fomSqlReceiptLines(cfg: FomSqlConfig, scope: FomScope, timeoutMs: number) {
   return queryRows(cfg, timeoutMs, `
-    SELECT I.ID, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(19), I.DATAENTER, 126) AS T,
+    SELECT I.ID, I.DOCTYPE AS DT, I.NUMBER AS N, CONVERT(varchar(19), ISNULL(I.DATAENTER, I.DATA), 126) AS T,
            CONVERT(varchar(10), I.DATA, 120) AS D, I.OTDEL AS F, IL.GOOD AS G,
-           CONVERT(varchar(40), L.KOL) AS Q, CONVERT(varchar(40), L.PRICE) AS P, CONVERT(varchar(40), L.PRICE1) AS P1,
-           CONVERT(varchar(40), L.NDS) AS V, CONVERT(varchar(40), IL.PRICEPRIH) AS C,
-           CONVERT(varchar(40), CAST(L.KOL * L.PRICE AS numeric(20, 2))) AS A,
-           CONVERT(varchar(40), CAST(L.KOL * CASE WHEN L.PRICE1 > L.PRICE THEN L.PRICE1 - L.PRICE ELSE 0 END AS numeric(20, 2))) AS DA,
-           CONVERT(varchar(40), CAST(L.KOL * IL.PRICEPRIH AS numeric(20, 2))) AS CA
+           CONVERT(varchar(40), L.KOL) AS Q,
+           CONVERT(varchar(40), CASE WHEN ISNULL(L.PRICE,0) <> 0 THEN L.PRICE ELSE ISNULL(L.PRICENONDS,0) END) AS P,
+           CONVERT(varchar(40), ISNULL(L.PRICE1,0)) AS P1,
+           CONVERT(varchar(40), L.NDS) AS V, CONVERT(varchar(40), ISNULL(IL.PRICEPRIH, 0)) AS C,
+           CONVERT(varchar(40), CAST(L.KOL * CASE WHEN ISNULL(L.PRICE,0) <> 0 THEN L.PRICE ELSE ISNULL(L.PRICENONDS,0) END AS numeric(20, 2))) AS A,
+           CONVERT(varchar(40), CAST(L.KOL * CASE WHEN ISNULL(L.PRICE1,0) > CASE WHEN ISNULL(L.PRICE,0) <> 0 THEN L.PRICE ELSE ISNULL(L.PRICENONDS,0) END THEN ISNULL(L.PRICE1,0) - CASE WHEN ISNULL(L.PRICE,0) <> 0 THEN L.PRICE ELSE ISNULL(L.PRICENONDS,0) END ELSE 0 END AS numeric(20, 2))) AS DA,
+           CONVERT(varchar(40), CAST(L.KOL * ISNULL(IL.PRICEPRIH, 0) AS numeric(20, 2))) AS CA
     FROM dbo.INVOICE I
     JOIN dbo.INVOICELN L ON L.INVOICE = I.ID
-    JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
-    WHERE I.DOCTYPE IN (2, 4) AND L.STATE IN (11, 12)
+    LEFT JOIN dbo.INCOMELN IL ON IL.ID = L.INCOMELN
+    WHERE I.DOCTYPE IN (2, 4)
       AND ${inScope("I", scope, "inv")}
     ORDER BY I.ID, L.ID`, bindScope(scope));
 }

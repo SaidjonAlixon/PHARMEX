@@ -129,35 +129,40 @@ export function WarehousePage({ filters }: { filters: Filters }) {
   const [totalsOpen, setTotalsOpen] = useState(false);
 
   const branchesQ = useListBranches();
-  const warehouses = useMemo(
-    () => (branchesQ.data || []).filter(b => b.kind === 'warehouse'),
-    [branchesQ.data],
-  );
+  const allBranches = branchesQ.data || [];
+  const warehouses = useMemo(() => {
+    const marked = allBranches.filter(b => b.kind === 'warehouse');
+    return marked.length ? marked : allBranches;
+  }, [allBranches]);
   const warehouseIds = useMemo(() => new Set(warehouses.map(w => w.id)), [warehouses]);
+  const branchById = useMemo(() => new Map(allBranches.map(b => [b.id, b])), [allBranches]);
 
-  const filterIsWarehouse = filters.branchId && warehouseIds.has(Number(filters.branchId));
-  const activeWarehouseId = filterIsWarehouse
-    ? filters.branchId
-    : warehouseId || (warehouses.length === 1 ? String(warehouses[0].id) : '');
-
-  const activeWarehouse = warehouses.find(w => String(w.id) === String(activeWarehouseId));
-
+  // Yuqoridagi filial filtri — asosiy: qaysi filial tanlansa, shu filial qoldigʻi.
+  const filterBranchId = filters.branchId || '';
+  const filterBranch = filterBranchId ? branchById.get(Number(filterBranchId)) : undefined;
+  const activeBranchId = filterBranchId
+    || warehouseId
+    || (warehouses.length === 1 ? String(warehouses[0].id) : '');
+  const activeBranch = activeBranchId
+    ? (branchById.get(Number(activeBranchId)) || warehouses.find(w => String(w.id) === String(activeBranchId)))
+    : undefined;
   const invQ = useListInventory({
-    branchId: activeWarehouseId ? Number(activeWarehouseId) : undefined,
+    branchId: activeBranchId ? Number(activeBranchId) : undefined,
     search: search || undefined,
   });
 
   const insightsQ = useGetWarehouseInsights({
-    branchId: activeWarehouseId ? Number(activeWarehouseId) : undefined,
+    branchId: activeBranchId ? Number(activeBranchId) : undefined,
     dateFrom: filters.dateFrom || undefined,
     dateTo: filters.dateTo || undefined,
   });
 
   const inventory = useMemo(() => {
     const list = invQ.data || [];
-    if (activeWarehouseId) return list;
+    if (activeBranchId) return list;
+    if (!warehouseIds.size) return list;
     return list.filter(r => warehouseIds.has(r.branchId));
-  }, [invQ.data, activeWarehouseId, warehouseIds]);
+  }, [invQ.data, activeBranchId, warehouseIds]);
 
   const buckets = useMemo(() => {
     const inStock = inventory.filter(i => matchesFilter(i, 'in'));
@@ -200,7 +205,8 @@ export function WarehousePage({ filters }: { filters: Filters }) {
     ? `${date(filters.dateFrom)} — ${date(filters.dateTo)}`
     : 'Barcha davr';
 
-  const warehouseTitle = activeWarehouse?.name || (warehouses.length ? `${warehouses.length} ta ombor` : 'Ombor');
+  const warehouseTitle = activeBranch?.name
+    || (filterBranchId ? 'Filial' : (warehouses.length ? `${warehouses.length} ta ombor` : 'Ombor'));
 
   const downloadExcel = (list: InventoryItem[], title: string) => {
     if (!list.length && stockFilter !== 'all') return;
@@ -221,9 +227,9 @@ export function WarehousePage({ filters }: { filters: Filters }) {
 
   return <>
     <PageHeading
-      eyebrow="OMBOR · СКЛАД"
+      eyebrow={activeBranch?.kind === 'pharmacy' ? 'OMBOR · FILIAL' : 'OMBOR · СКЛАД'}
       title="Ombor"
-      subtitle={`${warehouseTitle} · filtrni tanlang — yuqoridagi raqamlar shu boʻlimga yangilanadi. Davr: ${periodLabel}.`}
+      subtitle={`${warehouseTitle} · tanlangan filial/ombor qoldigʻi, muddati yaqin va oʻtganlar. Davr: ${periodLabel}.`}
       actions={
         <button
           type="button"
@@ -354,12 +360,12 @@ export function WarehousePage({ filters }: { filters: Filters }) {
       }
     >
       <div className="warehouse-toolbar">
-        {warehouses.length > 1 && !filterIsWarehouse && (
+        {warehouses.length > 1 && !filterBranchId && (
           <label className="filter-control">
             <span>OMBOR</span>
             <select
               aria-label="Ombor"
-              value={activeWarehouseId}
+              value={activeBranchId}
               onChange={e => setWarehouseId(e.target.value)}
               data-testid="select-warehouse"
             >
@@ -412,7 +418,7 @@ export function WarehousePage({ filters }: { filters: Filters }) {
 
       {emptyWarehouses ? (
         <div className="inline-empty" data-testid="empty-warehouse-branches">
-          Hali ombor turi bilan filial yoʻq. «Filiallar» boʻlimida ombor (sklad) qoʻshing yoki FOM sinxronini tekshiring.
+          Hali filial/ombor yoʻq. FOM sinxronini ishga tushiring yoki «Filiallar» boʻlimida ombor qoʻshing.
         </div>
       ) : (
         <>

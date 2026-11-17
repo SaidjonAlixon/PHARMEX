@@ -314,7 +314,7 @@ export const ListInventoryResponseItem = zod.object({
   "group": zod.string(),
   "manufacturer": zod.string().optional(),
   "ikpu": zod.string().optional(),
-  "unit": zod.string(),
+  "unit": zod.string().describe('Oʻlchov birligi (dona, уп, …)'),
   "branchId": zod.number().int(),
   "branchName": zod.string(),
   "quantity": zod.number(),
@@ -325,6 +325,45 @@ export const ListInventoryResponseItem = zod.object({
   "source": zod.enum(['demo', 'manual', 'fom'])
 })
 export const ListInventoryResponse = zod.array(ListInventoryResponseItem)
+
+
+/**
+ * @summary Warehouse top sellers and slow-moving stock
+ */
+
+
+
+export const GetWarehouseInsightsQueryParams = zod.object({
+  "branchId": zod.coerce.number().int().min(1).optional(),
+  "dateFrom": zod.coerce.date().optional(),
+  "dateTo": zod.coerce.date().optional()
+})
+
+export const GetWarehouseInsightsResponse = zod.object({
+  "topSellers": zod.array(zod.object({
+  "rank": zod.number().int(),
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "unit": zod.string(),
+  "stockQty": zod.number(),
+  "soldQty": zod.number(),
+  "sales": zod.string(),
+  "expiryDate": zod.coerce.date().nullish()
+})),
+  "slowMovers": zod.array(zod.object({
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "unit": zod.string(),
+  "stockQty": zod.number(),
+  "stockValue": zod.string().nullish(),
+  "soldQty": zod.number(),
+  "lastSoldAt": zod.coerce.date().nullish(),
+  "daysSinceSale": zod.number().int().nullish(),
+  "expiryDate": zod.coerce.date().nullish(),
+  "expiryDays": zod.number().int().nullish(),
+  "expired": zod.boolean()
+}))
+})
 
 
 /**
@@ -345,7 +384,7 @@ export const GetProductResponse = zod.object({
   "group": zod.string(),
   "manufacturer": zod.string().optional(),
   "ikpu": zod.string().optional(),
-  "unit": zod.string(),
+  "unit": zod.string().describe('Oʻlchov birligi (dona, уп, …)'),
   "branchId": zod.number().int(),
   "branchName": zod.string(),
   "quantity": zod.number(),
@@ -362,7 +401,7 @@ export const GetProductResponse = zod.object({
   "group": zod.string(),
   "manufacturer": zod.string().optional(),
   "ikpu": zod.string().optional(),
-  "unit": zod.string(),
+  "unit": zod.string().describe('Oʻlchov birligi (dona, уп, …)'),
   "branchId": zod.number().int(),
   "branchName": zod.string(),
   "quantity": zod.number(),
@@ -1999,7 +2038,29 @@ export const GetFomStatusResponse = zod.object({
   "from": zod.coerce.date().nullable(),
   "to": zod.coerce.date().nullable(),
   "count": zod.number().int()
-})).describe('First and last FOM record held in the PHARMXS database, per section')
+})).describe('First and last FOM record held in the PHARMXS database, per section'),
+  "windowDays": zod.number().int().optional(),
+  "chunks": zod.array(zod.object({
+  "id": zod.string(),
+  "from": zod.string().nullable(),
+  "to": zod.string().nullable(),
+  "filialId": zod.string().nullish(),
+  "reportKey": zod.string(),
+  "status": zod.enum(['pending', 'running', 'done', 'error']),
+  "rows": zod.number().int(),
+  "error": zod.string().nullish(),
+  "finishedAt": zod.coerce.date().nullish()
+})).optional(),
+  "chunkSummary": zod.object({
+  "done": zod.number().int(),
+  "running": zod.number().int(),
+  "pending": zod.number().int(),
+  "error": zod.number().int()
+}).optional(),
+  "progress": zod.object({
+  "done": zod.number().int().optional(),
+  "total": zod.number().int().optional()
+}).nullish()
 })
 
 
@@ -2019,7 +2080,7 @@ export const GetFomSettingsResponse = zod.object({
   "apiTokenSet": zod.boolean(),
   "apiTokenHint": zod.string().nullable(),
   "updatedAt": zod.coerce.date().nullable(),
-  "startDate": zod.string().optional()
+  "startDate": zod.coerce.date().optional().describe('First full-sync floor (default 2025-01-01)')
 })
 
 
@@ -2054,7 +2115,7 @@ export const SaveFomSettingsBody = zod.object({
   "timeoutSeconds": zod.number().int().min(saveFomSettingsBodyTimeoutSecondsMin).max(saveFomSettingsBodyTimeoutSecondsMax),
   "apiToken": zod.string().max(saveFomSettingsBodyApiTokenMax).optional(),
   "clearApiToken": zod.boolean().optional(),
-  "startDate": zod.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  "startDate": zod.coerce.date().optional()
 })
 
 export const SaveFomSettingsResponse = zod.object({
@@ -2070,7 +2131,7 @@ export const SaveFomSettingsResponse = zod.object({
   "apiTokenSet": zod.boolean(),
   "apiTokenHint": zod.string().nullable(),
   "updatedAt": zod.coerce.date().nullable(),
-  "startDate": zod.string().optional()
+  "startDate": zod.coerce.date().optional().describe('First full-sync floor (default 2025-01-01)')
 })
 
 

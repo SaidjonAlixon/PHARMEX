@@ -5,7 +5,36 @@ export const paymentLabels: Record<string, string> = {
   credit: 'Nasiya',
   other: 'Boshqa',
   mixed: 'Aralash',
+  humo: 'HUMO',
+  uzcard: 'UzCard',
+  nakopitel: 'Nakopitel',
 };
+
+/** FOM toʻlov qatori (Наличные / HUMO / UzCard / Прочее / Накопительная) — oʻzbekcha. */
+export const payBucketLabels = {
+  total: 'Jami',
+  cash: 'Naqd',
+  humo: 'HUMO',
+  uzcard: 'UzCard',
+  other: 'Boshqa',
+  nakopitel: 'Nakopitel',
+} as const;
+
+export type PayBucket = keyof typeof payBucketLabels;
+
+/** Hisob/kassa nomidan FOM uslubidagi toʻlov guruhini aniqlash. */
+export function payBucketOf(name?: string | null, method?: string | null): Exclude<PayBucket, 'total'> {
+  const u = `${name ?? ''} ${method ?? ''}`.toUpperCase();
+  if (method === 'cash' || /(?:^|\s)(NAQD|НАЛИЧ|КАССА|CASH)(?:\s|$)/.test(u)) return 'cash';
+  if (/HUMO/.test(u)) return 'humo';
+  if (/UZ\s*CARD|UZCARD/.test(u)) return 'uzcard';
+  if (/НАКОП|NAKOP/.test(u)) return 'nakopitel';
+  if (method === 'other' || /ПРОЧ|PROCH|BOSHQA|OTHER/.test(u)) return 'other';
+  if (method === 'card') return 'uzcard';
+  if (method === 'transfer') return 'other';
+  if (method === 'credit') return 'other';
+  return 'other';
+}
 
 export const moneyTypeLabels: Record<string, string> = {
   sale: 'Savdo tushumi',

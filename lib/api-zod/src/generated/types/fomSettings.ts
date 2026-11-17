@@ -25,4 +25,6 @@ export interface FomSettings {
   apiTokenHint: string | null;
   /** @nullable */
   updatedAt: Date | null;
+  /** First full-sync floor (default 2025-01-01) */
+  startDate?: Date;
 }

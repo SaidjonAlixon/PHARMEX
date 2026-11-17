@@ -25,9 +25,11 @@ import {
   fetchFomPaymentsDirect,
   fetchFomPurchasesDirect,
   fetchFomReceiptsDirect,
+  fetchFomReceiptsViaAgent,
   fetchFomReport,
   fetchFomStockDocumentsDirect,
   fetchFomStockDirect,
+  fetchFomStockViaAgent,
   fetchFomTransfersDirect,
   fomConfig,
   fomReportIdFor,
@@ -64,6 +66,22 @@ export interface ReportOutcome {
   warning?: string | null;
 }
 
+export type SyncChunkStatus = "pending" | "running" | "done" | "error";
+
+export interface SyncChunk {
+  id: string;
+  from: string | null;
+  to: string | null;
+  filialId?: string | null;
+  reportKey: string;
+  status: SyncChunkStatus;
+  rows: number;
+  error?: string | null;
+  /** Empty REPORT for a live filial — usually unpaid FOM module for that branch. */
+  note?: string | null;
+  finishedAt?: string | null;
+}
+
 export interface SyncDetails {
   trigger: string;
   from: string | null;
@@ -79,6 +97,10 @@ export interface SyncDetails {
   since?: string | null;
   /** Change mode: documents that arrived in F-APTEKA late and were fetched by id. */
   late?: number;
+  /** Weekly (or FOM_WINDOW_DAYS) pull windows tracked for the admin panel. */
+  windowDays?: number;
+  chunks?: SyncChunk[];
+  chunkSummary?: { done: number; running: number; pending: number; error: number };
   /** Work units done / planned in this run (one report window each). */
   progress?: { done: number; total: number };
   reports: Partial<Record<FomReportKey | "site", ReportOutcome>>;
@@ -218,7 +240,7 @@ async function ensureBranches(lookups: Lookups, fomIds: Iterable<string>) {
     .values(missing.map((id) => ({ name: `Filial ${id}`, fomId: id, source: SOURCE, organizationId: lookups.organizationId })))
     .onConflictDoUpdate({
       target: [branchesTable.organizationId, branchesTable.source, branchesTable.fomId],
-      set: { fomId: sql`excluded.fom_id` },
+      set: { updatedAt: new Date() },
     })
     .returning({ id: branchesTable.id, fomId: branchesTable.fomId });
   for (const row of rows) lookups.branches.set(row.fomId!, row.id);
@@ -270,7 +292,19 @@ async function applyProductNames(lookups: Lookups, named: Iterable<{ fomId: stri
 
 export async function importOrganizations(lookups: Lookups, rows: FomRow[]): Promise<number> {
   // APT flag from report 189, or discovery rows that already mark APT=1.
-  const branchRows = rows.filter((row) => row.I && (flag(row.APT) || row.APT === "1"));
+  // Dedupe by fomId — duplicate rows in one INSERT break ON CONFLICT DO UPDATE.
+  const branchById = new Map<string, FomRow>();
+  for (const row of rows) {
+    if (!row.I || !(flag(row.APT) || row.APT === "1")) continue;
+    const prev = branchById.get(row.I);
+    const score = (n?: string) => {
+      const t = n?.trim() ?? "";
+      if (!t || /^(filial|филиал)\s*\d+$/i.test(t)) return 0;
+      return t.length + (/[А-Яа-яЁё]/.test(t) ? 50 : 0);
+    };
+    if (!prev || score(row.N) >= score(prev.N)) branchById.set(row.I, row);
+  }
+  const branchRows = [...branchById.values()];
   if (branchRows.length) {
     const inserted = await db
       .insert(branchesTable)
@@ -560,6 +594,115 @@ async function syncBalanceCosts() {
     from ${productsTable} as p
     where p.id = b.product_id and p.source = ${SOURCE} and p.cost_price is not null
       and b.cost_price is distinct from p.cost_price`);
+}
+
+/** When REPORT 6 is empty, rebuild qoldiq from FOM movements already in PHARMXS. */
+export async function rebuildStockFromMovements(organizationId: number | null): Promise<number> {
+  if (organizationId == null) return 0;
+  const stamp = new Date();
+  const result = await db.execute(sql`
+    WITH branch_ids AS (
+      SELECT id FROM ${branchesTable}
+      WHERE ${branchesTable.organizationId} = ${organizationId} AND ${branchesTable.source} = ${SOURCE}
+    ),
+    agg AS (
+      SELECT m.branch_id, m.product_id,
+        SUM(CASE
+          WHEN m.movement_type IN ('purchase','transfer_in','customer_return','inventory_surplus') THEN m.quantity::numeric
+          WHEN m.movement_type IN ('sale','transfer_out','write_off','supplier_return','inventory_shortage','sale_void') THEN -m.quantity::numeric
+          ELSE 0
+        END) AS qty,
+        MAX(m.unit_cost) FILTER (WHERE m.unit_cost IS NOT NULL) AS cost
+      FROM ${inventoryMovementsTable} m
+      WHERE m.branch_id IN (SELECT id FROM branch_ids) AND m.source = ${SOURCE}
+      GROUP BY m.branch_id, m.product_id
+      HAVING SUM(CASE
+        WHEN m.movement_type IN ('purchase','transfer_in','customer_return','inventory_surplus') THEN m.quantity::numeric
+        WHEN m.movement_type IN ('sale','transfer_out','write_off','supplier_return','inventory_shortage','sale_void') THEN -m.quantity::numeric
+        ELSE 0
+      END) > 0.0005
+    )
+    INSERT INTO ${inventoryBalancesTable} (branch_id, product_id, quantity, cost_price, source, updated_at)
+    SELECT branch_id, product_id, qty, cost, ${SOURCE}, ${stamp}
+    FROM agg
+    ON CONFLICT (branch_id, product_id) DO UPDATE SET
+      quantity = EXCLUDED.quantity,
+      cost_price = COALESCE(EXCLUDED.cost_price, pharmacy_inventory_balances.cost_price),
+      source = ${SOURCE},
+      updated_at = EXCLUDED.updated_at
+  `);
+  const n = Number((result as { rowCount?: number }).rowCount ?? 0);
+  logger.info({ organizationId, rows: n }, "Rebuilt inventory balances from FOM movements");
+  await backfillRetailAndExpiryFromHistory(organizationId);
+  return n;
+}
+
+/**
+ * When FOM stock snapshot (retail/expiry) is missing, fill product retail from the
+ * latest sale price and nearest expiry from purchase lines.
+ */
+export async function backfillRetailAndExpiryFromHistory(organizationId: number | null): Promise<{ retail: number; expiry: number }> {
+  if (organizationId == null) return { retail: 0, expiry: 0 };
+  const retail = await db.execute(sql`
+    UPDATE ${productsTable} AS p
+    SET retail_price = s.unit_price
+    FROM (
+      SELECT DISTINCT ON (si.product_id) si.product_id, si.unit_price
+      FROM ${saleItemsTable} si
+      INNER JOIN ${salesTable} sa ON sa.id = si.sale_id
+      INNER JOIN ${branchesTable} br ON br.id = sa.branch_id
+      WHERE br.organization_id = ${organizationId}
+        AND si.unit_price IS NOT NULL AND si.unit_price::numeric > 0
+      ORDER BY si.product_id, sa.sold_at DESC NULLS LAST, si.id DESC
+    ) AS s
+    WHERE p.id = s.product_id
+      AND p.organization_id = ${organizationId}
+      AND p.source = ${SOURCE}
+      AND coalesce(p.retail_price, 0) = 0
+  `);
+  const expiry = await db.execute(sql`
+    UPDATE ${productsTable} AS p
+    SET expiry_date = e.expiry_date
+    FROM (
+      SELECT pi.product_id, MIN(pi.expiry_date) AS expiry_date
+      FROM ${purchaseItemsTable} pi
+      INNER JOIN ${purchasesTable} pu ON pu.id = pi.purchase_id
+      INNER JOIN ${branchesTable} br ON br.id = pu.branch_id
+      WHERE br.organization_id = ${organizationId}
+        AND pi.expiry_date IS NOT NULL
+      GROUP BY pi.product_id
+    ) AS e
+    WHERE p.id = e.product_id
+      AND p.organization_id = ${organizationId}
+      AND p.source = ${SOURCE}
+      AND p.expiry_date IS NULL
+  `);
+  const out = {
+    retail: Number((retail as { rowCount?: number }).rowCount ?? 0),
+    expiry: Number((expiry as { rowCount?: number }).rowCount ?? 0),
+  };
+  if (out.retail || out.expiry) {
+    logger.info({ organizationId, ...out }, "Backfilled retail/expiry from sales and purchases");
+  }
+  return out;
+}
+
+/** Mark СКЛАД / ombor named FOM branches as warehouse kind. */
+export async function syncWarehouseBranchKinds(organizationId: number | null): Promise<number> {
+  if (organizationId == null) return 0;
+  const updated = await db
+    .update(branchesTable)
+    .set({ kind: "warehouse" })
+    .where(
+      and(
+        eq(branchesTable.organizationId, organizationId),
+        eq(branchesTable.source, SOURCE),
+        sql`${branchesTable.name} ~* '(sklad|склад|ombor)'`,
+        ne(branchesTable.kind, "warehouse"),
+      ),
+    )
+    .returning({ id: branchesTable.id });
+  return updated.length;
 }
 
 // ---------------------------------------------------------------- documents
@@ -1071,12 +1214,18 @@ interface Channel {
 function channelOf(cashboxId: string | undefined, cashboxName: string | undefined, docType: string | undefined): Channel {
   const name = cashboxName?.trim() ?? "";
   const upper = name.toUpperCase();
-  if (cashboxId === "1" || upper === "КАССА") return { account: "Naqd kassa (КАССА)", kind: "cash", method: "cash" };
+  if (cashboxId === "1" || upper === "КАССА" || upper === "НАЛИЧНЫЕ" || upper === "NAQD") {
+    return { account: name || "Naqd kassa (КАССА)", kind: "cash", method: "cash" };
+  }
   const account = !name ? `Kassa #${cashboxId ?? "?"}` : /^\d+$/.test(name) ? `Toʻlov turi ${name}` : name;
-  if (/HUMO|UZCARD|VISA|MASTER/.test(upper)) return { account, kind: "bank", method: "card" };
-  if (/НАКОП/.test(upper)) return { account, kind: "bank", method: "other" };
+  if (/HUMO/.test(upper)) return { account, kind: "bank", method: "humo" };
+  if (/UZ\s*CARD|UZCARD/.test(upper)) return { account, kind: "bank", method: "uzcard" };
+  if (/VISA|MASTER|CARD|KARTA/.test(upper)) return { account, kind: "bank", method: "card" };
+  if (/НАКОП|NAKOP/.test(upper)) return { account, kind: "bank", method: "nakopitel" };
   if (docType === "21") return { account, kind: "cash", method: "cash" };
-  if (docType === "20") return { account, kind: "bank", method: "card" };
+  if (docType === "20") return { account, kind: "bank", method: "humo" };
+  if (docType === "22") return { account, kind: "bank", method: "uzcard" };
+  if (docType === "23" || docType === "24") return { account, kind: "bank", method: "other" };
   return { account, kind: "bank", method: "transfer" };
 }
 
@@ -1271,6 +1420,42 @@ export async function importReceipts(lookups: Lookups, lines: FomRow[], payments
     });
   }
   return list.length;
+}
+
+/** Drop day-aggregate REPORT-4 sales (`rs:…`) once real cheklar (`chk:…`) are imported for the same window. */
+async function clearAggregateRetailSales(organizationId: number | null, from: Date, to: Date) {
+  if (organizationId == null) return;
+  const end = new Date(to.getTime() + DAY_MS);
+  const rows = await db
+    .select({ id: salesTable.id, sourceId: salesTable.sourceId })
+    .from(salesTable)
+    .innerJoin(branchesTable, eq(branchesTable.id, salesTable.branchId))
+    .where(
+      and(
+        eq(branchesTable.organizationId, organizationId),
+        eq(salesTable.source, SOURCE),
+        sql`${salesTable.sourceId} like 'rs:%'`,
+        sql`${salesTable.soldAt} >= ${from}`,
+        sql`${salesTable.soldAt} < ${end}`,
+      ),
+    );
+  if (!rows.length) return;
+  for (const part of chunks(rows, 200)) {
+    await db.transaction(async (tx) => {
+      const ids = part.map((r) => r.id);
+      const deleted = await tx
+        .delete(saleItemsTable)
+        .where(inArray(saleItemsTable.saleId, ids))
+        .returning({ parentId: saleItemsTable.saleId });
+      await deleteLineMovements(
+        tx,
+        lineCounts(deleted, new Map(part.map((r) => [r.id, r.sourceId!]))),
+      );
+      await tx.delete(salePaymentsTable).where(inArray(salePaymentsTable.saleId, ids));
+      await tx.delete(salesTable).where(inArray(salesTable.id, ids));
+    });
+  }
+  logger.info({ organizationId, removed: rows.length, from, to }, "Cleared FOM day-aggregate rs: sales");
 }
 
 /** Rows from fomSqlPurchases: one purchase per INCOME document, supplier by ORG id. */
@@ -1648,16 +1833,12 @@ export function fomSyncRunning(organizationId?: number | null) {
 }
 
 /**
- * Chunk dated REPORT pulls. Prefer large windows (fewer round-trips).
- * Env FOM_WINDOW_DAYS overrides (default 365 = nearly whole year per request).
+ * Chunk dated REPORT pulls into windows (override with FOM_WINDOW_DAYS).
+ * Default 31 days — ~4× fewer agent round-trips than weekly; empty HTML still OK.
  */
-function windows(from: Date, to: Date, opts?: { agentRelay?: boolean }): Array<[Date, Date]> {
+function windows(from: Date, to: Date, _opts?: { agentRelay?: boolean }): Array<[Date, Date]> {
   const spanDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / DAY_MS) + 1);
-  // Agent+REPORT: large windows often return HTML 200 — keep chunks small (7 days).
-  const preferred =
-    Number(process.env.FOM_WINDOW_DAYS) ||
-    // Agent+REPORT: large windows often return HTML; 3-day chunks keep SQL fallback reliable.
-    (opts?.agentRelay ? 3 : 365);
+  const preferred = Math.max(1, Number(process.env.FOM_WINDOW_DAYS) || 31);
   const chunkDays = spanDays <= preferred ? spanDays : preferred;
   const result: Array<[Date, Date]> = [];
   let start = from;
@@ -1667,6 +1848,21 @@ function windows(from: Date, to: Date, opts?: { agentRelay?: boolean }): Array<[
     start = new Date(end.getTime() + DAY_MS);
   }
   return result;
+}
+
+function isEmptyHtmlChunk(chunk: SyncChunk) {
+  return chunk.status === "error" && /HTML\s*200/i.test(chunk.error ?? "");
+}
+
+function summarizeChunks(list: SyncChunk[] | undefined) {
+  const summary = { done: 0, running: 0, pending: 0, error: 0 };
+  for (const chunk of list ?? []) {
+    if (chunk.status === "done" || isEmptyHtmlChunk(chunk)) summary.done += 1;
+    else if (chunk.status === "running") summary.running += 1;
+    else if (chunk.status === "error") summary.error += 1;
+    else summary.pending += 1;
+  }
+  return summary;
 }
 
 function utcDay(date: Date) {
@@ -1695,16 +1891,22 @@ async function previousSuccess(organizationId: number | null = null): Promise<Sy
 
 /** Incremental start: re-read a recent window so late FOM edits and day gaps are filled (upsert by sourceId). */
 function defaultFrom(config: FomConfig, to: Date, previous: SyncDetails | null): Date {
-  // Agent relay cannot do SQL change-tracking — always re-pull last 14 days through today.
-  // Existing rows update in place; missing days (e.g. after a zombie sync) get filled.
+  // Agent relay: no SQL change-tracking — overlap recent days; rows upsert by sourceId (nothing wiped).
   if (config.agentRelay) {
-    return new Date(to.getTime() - 14 * DAY_MS);
+    const lookback = new Date(to.getTime() - 21 * DAY_MS);
+    if (previous?.to) {
+      const fromPrev = new Date(new Date(previous.to).getTime() - 3 * DAY_MS);
+      return new Date(Math.min(lookback.getTime(), fromPrev.getTime()));
+    }
+    return lookback;
   }
   if (previous?.to) {
     return new Date(Math.max(new Date(previous.to).getTime() - 1 * DAY_MS, to.getTime() - 90 * DAY_MS));
   }
   return new Date(to.getTime() - config.initialDays * DAY_MS);
 }
+
+const EMPTY_FILIAL_NOTE = "FOM toʻlovi qilinmagan (boʻsh javob)";
 
 const REFERENCE_REPORTS: FomReportKey[] = ["organizations", "catalog"];
 
@@ -1857,7 +2059,8 @@ export async function discoverFomBranches(
 ): Promise<FomRow[]> {
   const names = new Map<string, string>();
   const evidenced = new Set<string>(); // ids that returned business XML rows
-  const isPlaceholder = (label: string) => /^(filial|филиал)\s+\d+$/i.test(label.trim()) || /^\d+$/.test(label.trim());
+  const isPlaceholder = (label: string) =>
+    /^(filial|филиал)\s*\d+$/i.test(label.trim()) || /^\d+$/.test(label.trim());
   /** Prefer Cyrillic pharmacy names over product codes / "Filial N". */
   const nameScore = (label?: string) => {
     const t = label?.trim() ?? "";
@@ -1902,12 +2105,26 @@ export async function discoverFomBranches(
   };
 
   // Fast path: already know live filials (saved filialIds / previous sync) — skip heavy probes.
+  // Still enrich names when placeholders remain (report 189 / orgRows).
   const known = sortIds([
     ...opts.configuredIds.filter((id) => id && id !== "0"),
     ...(opts.orgRows ?? []).filter((r) => r.I && (flag(r.APT) || r.APT === "1")).map((r) => r.I),
   ]);
   if (known.length >= 2) {
     for (const id of known) add(id, names.get(id), true);
+    const needsNames = known.some((id) => nameScore(names.get(id)) < 20);
+    if (needsNames) {
+      try {
+        const orgAgain = await fetchFomReport(probeConfig, 189, known[0] ?? "1", opts.floor, opts.today);
+        for (const row of orgAgain) {
+          if (!row.I) continue;
+          add(row.I, row.N, false);
+          add(row.I, row.ON ?? row.NAME ?? row.N, false);
+        }
+      } catch (error) {
+        logger.warn({ err: error }, "FOM fast-path name enrich (189) failed");
+      }
+    }
     logger.info({ filials: known.map((id) => [id, names.get(id)]), fast: true }, "FOM filials from known ids");
     return known.map((id) => ({ I: id, N: names.get(id) || `Филиал ${id}`, APT: "1" }));
   }
@@ -2117,11 +2334,27 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     return [];
   };
 
+  /** Limited parallel map — agent relay can fulfill several REPORT jobs in one poll tick. */
+  const mapPool = async <T, R>(items: T[], concurrency: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> => {
+    const out = new Array<R>(items.length);
+    let next = 0;
+    const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length || 1)) }, async () => {
+      while (true) {
+        const i = next++;
+        if (i >= items.length) return;
+        out[i] = await fn(items[i]!, i);
+      }
+    });
+    await Promise.all(workers);
+    return out;
+  };
+
   /** Runs `fetch` for every filial; one filial failing does not stop the others. */
   const perFilial = async <T>(warn: (message: string) => void, fetch: (filial: string) => Promise<T>) => {
     const results: Array<{ filial: string; value: T }> = [];
     const failed: string[] = [];
-    for (const filial of details.filials) {
+    const pool = config.agentRelay ? 4 : 2;
+    await mapPool(details.filials, pool, async (filial) => {
       try {
         results.push({ filial, value: await fetch(filial) });
       } catch (error) {
@@ -2129,7 +2362,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
         failed.push(filial);
         warn(`filial ${filial}: ${error instanceof Error ? error.message : String(error)}`);
       }
-    }
+    });
     if (results.length === 0 && failed.length > 0) {
       throw new FomError(`Hech bir filial boʻyicha maʼlumot olinmadi (${failed.join(", ")}).`);
     }
@@ -2183,7 +2416,7 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
           const betterName = (a?: string, b?: string) => {
             const score = (s?: string) => {
               const t = s?.trim() ?? "";
-              if (!t || /^filial\s+\d+$/i.test(t) || /^\d+$/.test(t)) return -1;
+              if (!t || /^(filial|филиал)\s*\d+$/i.test(t) || /^\d+$/.test(t)) return -1;
               if (/[А-Яа-яЁёЎўҚқҒғҲҳ]/.test(t)) return 40 + Math.min(t.length, 40);
               if (/[A-Za-zА-Яа-я]/.test(t) && t.length >= 3) return 20 + Math.min(t.length, 20);
               return 1;
@@ -2307,6 +2540,46 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     details.progress.done += 1;
   } else await run("stock", async (warn) => {
     details.stockAt = new Date().toISOString();
+    // Agent relay: prefer local MSSQL stock (qty + PRICEROZ + EXPDATA) when agent ≥ 9.
+    let agentVerStock = 0;
+    if (config.agentRelay && organizationId != null) {
+      try {
+        const { loadOrgFomConfig } = await import("./fomSettings");
+        agentVerStock = Number((await loadOrgFomConfig(organizationId))?.agentVersion) || 0;
+      } catch {
+        agentVerStock = 0;
+      }
+    }
+    // Agent relay: local MSSQL stock (qty + PRICEROZ + EXPDATA).
+    // Kam qatorli javobni qabul qilmaymiz — eski toʻliq qoldiqni o‘chirib yubormasin.
+    if (config.agentRelay && !sqlMode) {
+      try {
+        const rows = await fetchFomStockViaAgent(config);
+        const batches = rows
+          .filter((row) => row.F && row.G)
+          .map((row) => ({
+            branchFomId: row.F,
+            productFomId: row.G,
+            quantity: row.Q,
+            retailPrice: row.P,
+            expiry: fomDay(row.E),
+            costValue: row.C,
+          }));
+        if (batches.length >= 500) {
+          details.filials = sortIds([...details.filials, ...batches.map((row) => row.branchFomId)]);
+          const imported = await importStockSnapshot(lookups, [batches]);
+          if (organizationId != null) await syncWarehouseBranchKinds(organizationId);
+          if (imported > 0) return { rows: rows.length, imported };
+        } else if (batches.length > 0) {
+          warn(`sqlStock kam qator (${batches.length}) — eski qoldiq saqlanadi.`);
+        } else {
+          warn("Agent sqlStock boʻsh — harakatlar + savdo narxlari ishlatiladi.");
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warn(`sqlStock: ${message}`);
+      }
+    }
     if (fomSqlMode(config) && (await fomReportIdFor(config, "stock")) == null) {
       const rows = await fetchFomStockDirect(config);
       const batches = rows
@@ -2339,12 +2612,26 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       // Branches that only show up as O values in stock become filials for the dated reports too.
       details.filials = sortIds([...details.filials, ...responses.flat().map((row) => row.branchFomId)]);
       const rows = results.reduce((sum, { value }) => sum + value.length, 0);
-      return { rows, imported: await importStockSnapshot(lookups, responses) };
+      let imported = await importStockSnapshot(lookups, responses);
+      if (rows === 0 && organizationId != null) {
+        await syncWarehouseBranchKinds(organizationId);
+        imported = await rebuildStockFromMovements(organizationId);
+        if (imported > 0) warn(`REPORT 6 boʻsh — qoldiq harakatlardan qayta hisoblandi (${imported}).`);
+      } else if (organizationId != null) {
+        await syncWarehouseBranchKinds(organizationId);
+        if (rows > 0) await backfillRetailAndExpiryFromHistory(organizationId);
+      }
+      return { rows: rows || imported, imported };
     } catch (error) {
-      // Report 6 HTML on older ServiceReports — continue dated docs; agent SQL may fill stock later.
+      // Report 6 HTML / yoʻq — dated docs davom etadi; admin panelda qizil xato chiqarmaslik.
       const message = error instanceof Error ? error.message : String(error);
-      warn(`stock: ${message}`);
+      if (!/HTML\s*200/i.test(message)) warn(`stock: ${message}`);
       logger.warn({ err: error }, "FOM stock unavailable — continuing without snapshot");
+      if (organizationId != null) {
+        await syncWarehouseBranchKinds(organizationId);
+        const imported = await rebuildStockFromMovements(organizationId);
+        if (imported > 0) return { rows: imported, imported };
+      }
       return { rows: 0, imported: 0 };
     }
   });
@@ -2356,53 +2643,138 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
     { key: "retailSales", prefix: "rs", keyOf: docKey, save: (docs) => importSales(lookups, docs, "retail") },
     { key: "insuranceSales", prefix: "is", keyOf: docKey, save: (docs) => importSales(lookups, docs, "insurance") },
   ];
-  const procReports = dated.filter((report) => !(sqlMode && SQL_REPLACED_REPORTS.has(report.key)));
+  // Agent relay: real cheklar + toʻlov via local MSSQL. v8+ agent required to skip REPORT-4 aggregates.
+  let agentVer = 0;
+  if (config.agentRelay && organizationId != null) {
+    try {
+      const { loadOrgFomConfig } = await import("./fomSettings");
+      agentVer = Number((await loadOrgFomConfig(organizationId))?.agentVersion) || 0;
+    } catch {
+      agentVer = 0;
+    }
+  }
+  // Agent relay: sqlReceipts (chk:+toʻlov) + parallel 127.0.0.1:8084 REPORT (14/4).
+  // sql muvaffaqiyatli bo‘lsa rs: yig‘malar keyin tozalanadi.
+  const agentReceipts = Boolean(config.agentRelay && !sqlMode);
+  const skipReportRetail = false;
+  const procReports = dated.filter((report) => {
+    if (sqlMode && SQL_REPLACED_REPORTS.has(report.key)) return false;
+    if (skipReportRetail && report.key === "retailSales") return false;
+    return true;
+  });
+  if (agentReceipts) {
+    details.reports.receipts = {
+      rows: 0,
+      imported: 0,
+      error: null,
+      warning: "Cheklar: agent 127.0.0.1:8084 / ServiceReports SQL orqali tortilmoqda…",
+    };
+  }
   // `weight`: rough cost of one 30-day window relative to one procedure report call.
-  const direct: Array<{ key: FomReportKey; weight: number; load: (scope: FomScope) => Promise<{ rows: number; imported: number }> }> = sqlMode
-    ? [
-        {
-          key: "incomes",
-          weight: 5,
-          load: async (scope) => {
-            const data = await fetchFomPurchasesDirect(config, scope);
-            return { rows: data.length, imported: await importDirectPurchases(lookups, data) };
+  const direct: Array<{ key: FomReportKey; weight: number; load: (scope: FomScope) => Promise<{ rows: number; imported: number }> }> = [
+    ...(sqlMode
+      ? ([
+          {
+            key: "incomes" as FomReportKey,
+            weight: 5,
+            load: async (scope: FomScope) => {
+              const data = await fetchFomPurchasesDirect(config, scope);
+              return { rows: data.length, imported: await importDirectPurchases(lookups, data) };
+            },
           },
-        },
-        {
-          key: "receipts",
-          weight: 100,
-          load: async (scope) => {
-            const data = await fetchFomReceiptsDirect(config, scope);
-            return { rows: data.lines.length, imported: await importReceipts(lookups, data.lines, data.payments) };
+          {
+            key: "receipts" as FomReportKey,
+            weight: 100,
+            load: async (scope: FomScope) => {
+              const data = await fetchFomReceiptsDirect(config, scope);
+              return { rows: data.lines.length, imported: await importReceipts(lookups, data.lines, data.payments) };
+            },
           },
-        },
-        {
-          key: "stockDocuments",
-          weight: 3,
-          load: async (scope) => {
-            const data = await fetchFomStockDocumentsDirect(config, scope);
-            return { rows: data.length, imported: await importDirectStockDocuments(lookups, data) };
+          {
+            key: "stockDocuments" as FomReportKey,
+            weight: 3,
+            load: async (scope: FomScope) => {
+              const data = await fetchFomStockDocumentsDirect(config, scope);
+              return { rows: data.length, imported: await importDirectStockDocuments(lookups, data) };
+            },
           },
-        },
-        {
-          key: "transfers",
-          weight: 14,
-          load: async (scope) => {
-            const data = await fetchFomTransfersDirect(config, scope);
-            return { rows: data.length, imported: await importTransfers(lookups, data) };
+          {
+            key: "transfers" as FomReportKey,
+            weight: 14,
+            load: async (scope: FomScope) => {
+              const data = await fetchFomTransfersDirect(config, scope);
+              return { rows: data.length, imported: await importTransfers(lookups, data) };
+            },
           },
-        },
-        {
-          key: "payments",
-          weight: 3,
-          load: async (scope) => {
-            const data = await fetchFomPaymentsDirect(config, scope);
-            return { rows: data.length, imported: await importPayments(lookups, data) };
+          {
+            key: "payments" as FomReportKey,
+            weight: 3,
+            load: async (scope: FomScope) => {
+              const data = await fetchFomPaymentsDirect(config, scope);
+              return { rows: data.length, imported: await importPayments(lookups, data) };
+            },
           },
-        },
-      ]
-    : [];
+        ] as Array<{ key: FomReportKey; weight: number; load: (scope: FomScope) => Promise<{ rows: number; imported: number }> }>)
+      : []),
+    ...(agentReceipts
+      ? ([
+          {
+            key: "receipts" as FomReportKey,
+            weight: 40,
+            load: async (scope: FomScope) => {
+              const data = await fetchFomReceiptsViaAgent(config, scope.from, scope.to);
+              const imported = await importReceipts(lookups, data.lines, data.payments);
+              if (data.lines.length > 0 || imported > 0) {
+                await clearAggregateRetailSales(organizationId, scope.from, scope.to);
+              }
+              return { rows: data.lines.length, imported };
+            },
+          },
+        ] as Array<{ key: FomReportKey; weight: number; load: (scope: FomScope) => Promise<{ rows: number; imported: number }> }>)
+      : []),
+  ];
   const ranges: Array<[Date, Date]> = since ? [[from, to]] : windows(from, to, { agentRelay: !!config.agentRelay });
+  details.windowDays = Math.max(1, Number(process.env.FOM_WINDOW_DAYS) || 31);
+  details.chunks = [];
+  for (const report of procReports) {
+    for (const filial of details.filials) {
+      for (const [start, end] of ranges) {
+        const fromDay = fomDay(start.toISOString()) ?? start.toISOString().slice(0, 10);
+        const toDay = fomDay(end.toISOString()) ?? end.toISOString().slice(0, 10);
+        details.chunks.push({
+          id: `${report.key}:${filial}:${fromDay}:${toDay}`,
+          from: fromDay,
+          to: toDay,
+          filialId: filial,
+          reportKey: report.key,
+          status: "pending",
+          rows: 0,
+          error: null,
+          finishedAt: null,
+        });
+      }
+    }
+  }
+  if (agentReceipts) {
+    for (const [start, end] of ranges) {
+      const fromDay = fomDay(start.toISOString()) ?? start.toISOString().slice(0, 10);
+      const toDay = fomDay(end.toISOString()) ?? end.toISOString().slice(0, 10);
+      details.chunks.push({
+        id: `receipts:all:${fromDay}:${toDay}`,
+        from: fromDay,
+        to: toDay,
+        filialId: "0",
+        reportKey: "receipts",
+        status: "pending",
+        rows: 0,
+        error: null,
+        finishedAt: null,
+      });
+    }
+  }
+  details.chunkSummary = summarizeChunks(details.chunks);
+  await progress(`Boʻlaklar tayyor: ${details.chunks.length} · ${percent()}%`);
+
   // Change mode: documents that reached F-APTEKA after the window passed them (late pharmacy rows).
   let missing: { inv: string[]; inc: string[] } = { inv: [], inc: [] };
   const recent = new Date(today.getTime() - DAY_MS);
@@ -2424,41 +2796,174 @@ async function runFomSync(config: FomConfig, options: SyncOptions, importId: num
       direct.reduce((sum, step) => sum + step.weight, 0) * ranges.length,
   );
 
+  // Agent cheklar/toʻlov avval — foydalanuvchi kutmasin (REPORT kirimlar keyin).
+  const directFirst = agentReceipts
+    ? [...direct.filter((s) => s.key === "receipts"), ...direct.filter((s) => s.key !== "receipts")]
+    : direct;
+  const receiptRanges = agentReceipts ? [...ranges].reverse() : ranges;
+
+  for (const step of directFirst.filter((s) => s.key === "receipts")) {
+    await run(step.key, async (warn) => {
+      let rows = 0;
+      let imported = 0;
+      for (const [start, end] of receiptRanges) {
+        const fromDay = fomDay(start.toISOString()) ?? start.toISOString().slice(0, 10);
+        const toDay = fomDay(end.toISOString()) ?? end.toISOString().slice(0, 10);
+        const chunk = details.chunks?.find(
+          (c) => c.reportKey === step.key && c.from === fromDay && c.to === toDay && (c.filialId === "0" || !c.filialId),
+        );
+        if (chunk) {
+          chunk.status = "running";
+          details.chunkSummary = summarizeChunks(details.chunks);
+        }
+        try {
+          const result = await step.load(since ? { from: start, to: end, since, floor, missing, recent } : { from: start, to: end });
+          rows += result.rows;
+          imported += result.imported;
+          if (chunk) {
+            chunk.status = "done";
+            chunk.rows = result.rows;
+            chunk.error = null;
+            chunk.finishedAt = new Date().toISOString();
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (chunk) {
+            chunk.status = "error";
+            chunk.error = message;
+            chunk.finishedAt = new Date().toISOString();
+          }
+          if (isConnectionError(error)) throw error;
+          warn(`${fromDay}–${toDay}: ${message}`);
+        }
+        details.chunkSummary = summarizeChunks(details.chunks);
+        await tick(`${FOM_REPORTS[step.key].label} (${fromDay}–${toDay})`, step.weight);
+      }
+      return { rows, imported };
+    });
+  }
+
   for (const report of procReports) {
     await run(report.key, async (warn) => {
       let rows = 0;
       let imported = 0;
-      await perFilial(warn, async (filial) => {
+      type Task = { filial: string; start: Date; end: Date; fromDay: string; toDay: string };
+      const tasks: Task[] = [];
+      for (const filial of details.filials) {
         for (const [start, end] of ranges) {
-          try {
-            const data = await fetchReport(report.key, filial, start, end);
-            rows += data.length;
-            imported += await report.save(groupDocs(data, report.prefix, filial, report.keyOf));
-          } catch (error) {
-            if (isConnectionError(error)) throw error;
-            // One bad window (HTML) must not kill the whole filial/year.
-            warn(
-              `filial ${filial} ${fomDay(start.toISOString())}–${fomDay(end.toISOString())}: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-          }
-          await tick(FOM_REPORTS[report.key].label);
+          const fromDay = fomDay(start.toISOString()) ?? start.toISOString().slice(0, 10);
+          const toDay = fomDay(end.toISOString()) ?? end.toISOString().slice(0, 10);
+          tasks.push({ filial, start, end, fromDay, toDay });
         }
+      }
+      // Agent relay: several REPORT jobs in flight; PC worker drains the queue each tick.
+      const concurrency = config.agentRelay ? 6 : 2;
+      await mapPool(tasks, concurrency, async (task) => {
+        const { filial, start, end, fromDay, toDay } = task;
+        const chunk = details.chunks?.find(
+          (c) => c.reportKey === report.key && c.filialId === filial && c.from === fromDay && c.to === toDay,
+        );
+        if (chunk) {
+          chunk.status = "running";
+          details.chunkSummary = summarizeChunks(details.chunks);
+        }
+        if (Date.now() - lastWrite >= 1200) {
+          lastWrite = Date.now();
+          const repChunks = (details.chunks ?? []).filter((c) => c.reportKey === report.key);
+          const repDone = repChunks.filter((c) => c.status === "done" || isEmptyHtmlChunk(c)).length;
+          const repPct = repChunks.length ? Math.floor((repDone * 100) / repChunks.length) : percent();
+          await progress(
+            `${FOM_REPORTS[report.key].label} · filial ${filial} · ${fromDay}–${toDay} · ${repPct}% (${repDone}/${repChunks.length}) · jami ${percent()}%`,
+          );
+        }
+        try {
+          const data = await fetchReport(report.key, filial, start, end);
+          const saved = await report.save(groupDocs(data, report.prefix, filial, report.keyOf));
+          rows += data.length;
+          imported += saved;
+          if (chunk) {
+            chunk.status = "done";
+            chunk.rows = data.length;
+            chunk.error = null;
+            chunk.note = data.length === 0 ? EMPTY_FILIAL_NOTE : null;
+            chunk.finishedAt = new Date().toISOString();
+          }
+          if (data.length === 0) warn(`filial ${filial}: ${EMPTY_FILIAL_NOTE}`);
+        } catch (error) {
+          if (isConnectionError(error)) {
+            if (chunk) {
+              chunk.status = "error";
+              chunk.error = error instanceof Error ? error.message : String(error);
+              chunk.finishedAt = new Date().toISOString();
+              details.chunkSummary = summarizeChunks(details.chunks);
+            }
+            throw error;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          if (/HTML\s*200/i.test(message)) {
+            // Empty / unpaid FOM module for this filial — not a platform error.
+            if (chunk) {
+              chunk.status = "done";
+              chunk.rows = 0;
+              chunk.error = null;
+              chunk.note = EMPTY_FILIAL_NOTE;
+              chunk.finishedAt = new Date().toISOString();
+            }
+            warn(`filial ${filial}: ${EMPTY_FILIAL_NOTE}`);
+          } else {
+            if (chunk) {
+              chunk.status = "error";
+              chunk.error = message;
+              chunk.finishedAt = new Date().toISOString();
+            }
+            warn(`filial ${filial} ${fromDay}–${toDay}: ${message}`);
+          }
+        }
+        details.chunkSummary = summarizeChunks(details.chunks);
+        details.progress!.done += 1;
       });
+      lastWrite = 0;
+      await progress(`${FOM_REPORTS[report.key].label}: ${imported.toLocaleString("uz-UZ")} yozuv · ${percent()}%`);
       return { rows, imported };
     });
   }
-  for (const step of direct) {
-    await run(step.key, async () => {
+  for (const step of directFirst.filter((s) => s.key !== "receipts")) {
+    await run(step.key, async (warn) => {
       let rows = 0;
       let imported = 0;
       for (const [start, end] of ranges) {
-        const result = await step.load(since ? { from: start, to: end, since, floor, missing, recent } : { from: start, to: end });
-        rows += result.rows;
-        imported += result.imported;
+        const fromDay = fomDay(start.toISOString()) ?? start.toISOString().slice(0, 10);
+        const toDay = fomDay(end.toISOString()) ?? end.toISOString().slice(0, 10);
+        const chunk = details.chunks?.find(
+          (c) => c.reportKey === step.key && c.from === fromDay && c.to === toDay && (c.filialId === "0" || !c.filialId),
+        );
+        if (chunk) {
+          chunk.status = "running";
+          details.chunkSummary = summarizeChunks(details.chunks);
+        }
+        try {
+          const result = await step.load(since ? { from: start, to: end, since, floor, missing, recent } : { from: start, to: end });
+          rows += result.rows;
+          imported += result.imported;
+          if (chunk) {
+            chunk.status = "done";
+            chunk.rows = result.rows;
+            chunk.error = null;
+            chunk.finishedAt = new Date().toISOString();
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (chunk) {
+            chunk.status = "error";
+            chunk.error = message;
+            chunk.finishedAt = new Date().toISOString();
+          }
+          if (isConnectionError(error)) throw error;
+          warn(`${fromDay}–${toDay}: ${message}`);
+        }
+        details.chunkSummary = summarizeChunks(details.chunks);
         await tick(
-          since ? `${FOM_REPORTS[step.key].label} (yangi va oʻzgarganlar)` : `${FOM_REPORTS[step.key].label} (${fomDay(end.toISOString())} gacha)`,
+          since ? `${FOM_REPORTS[step.key].label} (yangi va oʻzgarganlar)` : `${FOM_REPORTS[step.key].label} (${toDay} gacha)`,
           step.weight,
         );
       }
@@ -2515,7 +3020,7 @@ export async function testFomConnection(configOverride?: FomConfig | null): Prom
     if (!agent.online) {
       return {
         ok: false,
-        message: "Dorixona kompyuteri hali ulanmagan. «Ulanish (.bat)» ni Admin sifatida oching — REPORT.exe ishlasin.",
+        message: "Dorixona kompyuteri hali ulanmagan. Sozlamalar → «.bat yuklab olish» ni Admin sifatida oching — REPORT.exe ishlasin.",
       };
     }
   }

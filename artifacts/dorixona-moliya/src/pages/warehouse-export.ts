@@ -7,10 +7,12 @@ export function retailValueOf(i: InventoryItem) {
   return round2(Math.max(0, i.quantity) * num(i.retailPrice));
 }
 
-/** (sotuv − tannarx) × qoldiq — qolgan tovardan olinadigan foyda. */
+/** (sotuv − tannarx) × qoldiq — sotuv narxi yoʻq boʻlsa 0 (minus koʻrsatilmaydi). */
 export function profitOf(i: InventoryItem) {
+  const retail = num(i.retailPrice);
+  if (!(retail > 0)) return 0;
   const q = Math.max(0, i.quantity);
-  return round2((num(i.retailPrice) - num(i.costPrice)) * q);
+  return round2((retail - num(i.costPrice)) * q);
 }
 
 export type WarehouseExcelSheet = {

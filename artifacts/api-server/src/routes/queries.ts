@@ -196,7 +196,8 @@ export async function loadWarehouseInsights(filters: QueryFilters) {
   const stockWhere = and(
     sourceCondition(inventoryBalancesTable.source, filters.mode),
     sql`not (${inventoryBalancesTable.source} = 'fom' and ${inventoryBalancesTable.quantity} = 0)`,
-    eq(branchesTable.kind, "warehouse"),
+    // Filial tanlanganda shu filial; tanlanmasa — barcha ombor/filial qoldiqlari.
+    filters.branchId ? undefined : eq(branchesTable.kind, "warehouse"),
     orgBranchCond(filters.organizationId),
     filters.branchId ? eq(inventoryBalancesTable.branchId, filters.branchId) : undefined,
   );
@@ -276,6 +277,7 @@ export async function loadWarehouseInsights(filters: QueryFilters) {
         ne(salesTable.status, "voided"),
         inArray(saleItemsTable.productId, productIds),
         dateConditions(salesTable.soldAt, filters.dateFrom, filters.dateTo),
+        filters.branchId ? eq(salesTable.branchId, filters.branchId) : undefined,
       ),
     )
     .groupBy(saleItemsTable.productId);
@@ -293,6 +295,7 @@ export async function loadWarehouseInsights(filters: QueryFilters) {
         ne(salesTable.status, "voided"),
         eq(salesTable.kind, "sale"),
         inArray(saleItemsTable.productId, productIds),
+        filters.branchId ? eq(salesTable.branchId, filters.branchId) : undefined,
       ),
     )
     .groupBy(saleItemsTable.productId);

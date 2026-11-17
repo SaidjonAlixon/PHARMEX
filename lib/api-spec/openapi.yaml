@@ -1869,7 +1869,40 @@ components:
               to: { type: ["string", "null"], format: date-time }
               count: { type: integer }
             required: [key, label, from, to, count]
+        windowDays: { type: integer }
+        chunks:
+          type: array
+          items:
+            $ref: "#/components/schemas/FomSyncChunk"
+        chunkSummary:
+          $ref: "#/components/schemas/FomChunkSummary"
+        progress:
+          type: ["object", "null"]
+          properties:
+            done: { type: integer }
+            total: { type: integer }
       required: [connected, configured, baseUrl, keyConfigured, lastSyncAt, lastSyncStatus, lastMessage, importedRecords, running, reportAvailable, filialIds, intervalMinutes, refsIntervalMinutes, refsAt, lastSyncFrom, lastSyncTo, reports, site, totals, dataRanges]
+    FomSyncChunk:
+      type: object
+      properties:
+        id: { type: string }
+        from: { type: ["string", "null"] }
+        to: { type: ["string", "null"] }
+        filialId: { type: ["string", "null"] }
+        reportKey: { type: string }
+        status: { type: string, enum: [pending, running, done, error] }
+        rows: { type: integer }
+        error: { type: ["string", "null"] }
+        finishedAt: { type: ["string", "null"], format: date-time }
+      required: [id, from, to, reportKey, status, rows]
+    FomChunkSummary:
+      type: object
+      properties:
+        done: { type: integer }
+        running: { type: integer }
+        pending: { type: integer }
+        error: { type: integer }
+      required: [done, running, pending, error]
     FomReportState:
       type: object
       properties:

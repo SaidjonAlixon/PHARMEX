@@ -12,7 +12,7 @@ import {
   PageHeading, Panel, ProductPicker, SearchBox, StatusBadge, TableWrap, Totals, dateTime, filterParams, includedVat,
   localToIso, money, nowLocal, num, qty, round2, sourceText, toMoney, today, useRefreshAll, type Filters, type PickedProduct,
 } from '@/components/kit';
-import { paymentLabels } from '@/lib/labels';
+import { payBucketLabels, payBucketOf, paymentLabels, type PayBucket } from '@/lib/labels';
 import { paymentMenu } from '@/lib/menu-options';
 import { SelectMenu } from '@/components/select-menu';
 import { useAccess } from '@/lib/access';
@@ -20,9 +20,18 @@ import { downloadReceiptPdf } from '@/pages/receipt-pdf';
 
 type Tab = 'sales' | 'returns' | 'voided' | 'lines';
 const LIST_LIMIT = 500;
+const PAY_BUCKET_ORDER: Exclude<PayBucket, 'total'>[] = ['cash', 'humo', 'uzcard', 'other', 'nakopitel'];
 
 function PaymentChips({ receipt }: { receipt: Receipt }) {
-  return <div className="pay-chips">{receipt.payments.map((p, i) => <span key={i} className={`pay-chip ${p.method}`}>{p.accountName || paymentLabels[p.method] || p.method} {money(p.amount)}</span>)}</div>;
+  return <div className="pay-chips">{receipt.payments.map((p, i) => {
+    const bucket = payBucketOf(p.accountName, p.method);
+    const label = payBucketLabels[bucket];
+    return <span key={i} className={`pay-chip ${p.method}`}>{label} {money(p.amount)}</span>;
+  })}</div>;
+}
+
+function payChannelTitle(name?: string | null, method?: string | null) {
+  return payBucketLabels[payBucketOf(name, method)];
 }
 
 function ReceiptStatus({ receipt }: { receipt: Receipt }) {
@@ -65,8 +74,20 @@ export function SalesPage({ filters }: { filters: Filters }) {
     voided: s?.voided ?? 0,
     returnCount: s?.returnCount ?? 0,
   }), [s]);
-  const channels = (s?.channels ?? []).filter(c => num(c.amount));
-  const channelMax = Math.max(1, ...channels.map(c => Math.abs(num(c.amount))));
+  const payBuckets = useMemo(() => {
+    const empty = { cash: 0, humo: 0, uzcard: 0, other: 0, nakopitel: 0, count: { cash: 0, humo: 0, uzcard: 0, other: 0, nakopitel: 0 } };
+    const acc = { ...empty, count: { ...empty.count } };
+    for (const c of s?.channels ?? []) {
+      const amount = num(c.amount);
+      if (!amount) continue;
+      const key = payBucketOf(c.name, c.method);
+      acc[key] += amount;
+      acc.count[key] += c.count || 0;
+    }
+    const total = acc.cash + acc.humo + acc.uzcard + acc.other + acc.nakopitel;
+    return { ...acc, total: total || stats.net };
+  }, [s?.channels, stats.net]);
+  const channelMax = Math.max(1, ...PAY_BUCKET_ORDER.map(k => Math.abs(payBuckets[k])));
 
   const rows = all.filter(r => tab === 'sales' ? r.kind === 'sale' && r.status === 'completed' : tab === 'returns' ? r.kind === 'return' : tab === 'voided' ? r.status === 'voided' : false);
 
@@ -82,8 +103,28 @@ export function SalesPage({ filters }: { filters: Filters }) {
       { label: 'Yalpi foyda', value: stats.profit == null ? null : round2(stats.profit), icon: TrendingUp, tone: 'good', hint: stats.profit == null ? 'Tannarx toʻliq emas' : stats.net ? `Marja ${Math.round((stats.profit / stats.net) * 1000) / 10}%` : 'soʻm' },
     ]} />
     <div className="split-grid">
-      <Panel title="Toʻlov turlari" subtitle="Kassa va toʻlov tizimi boʻyicha sof tushum (qaytarishlar ayirilgan)">
-        {channels.length ? <div className="breakdown-list">{channels.map(c => <div className="breakdown-row" key={`${c.name}|${c.method}`}><div><span className="pay-label">{c.method === 'card' ? <CreditCard size={13} /> : <Banknote size={13} />} {c.name || paymentLabels[c.method] || c.method}<small> · {paymentLabels[c.method] ?? c.method} · {c.count.toLocaleString('ru-RU')} ta</small></span><b>{money(c.amount)}</b></div><div className="bar-track"><i style={{ width: `${Math.max(3, Math.abs(num(c.amount)) / channelMax * 100)}%` }} /></div></div>)}</div> : <div className="inline-empty">{summaryQ.isLoading ? 'Yuklanmoqda…' : 'Toʻlovlar yoʻq'}</div>}
+      <Panel title="Toʻlov turlari" subtitle="Jami, naqd, HUMO, UzCard, boshqa va nakopitel (qaytarishlar ayirilgan)">
+        {summaryQ.isLoading ? <div className="inline-empty">Yuklanmoqda…</div> : (
+          <div className="breakdown-list">
+            <div className="breakdown-row" key="total">
+              <div><span className="pay-label"><Banknote size={13} /> {payBucketLabels.total}<small> · barcha toʻlovlar</small></span><b>{money(round2(payBuckets.total))}</b></div>
+              <div className="bar-track"><i style={{ width: '100%' }} /></div>
+            </div>
+            {PAY_BUCKET_ORDER.map(key => (
+              <div className="breakdown-row" key={key}>
+                <div>
+                  <span className="pay-label">
+                    {key === 'cash' || key === 'nakopitel' || key === 'other' ? <Banknote size={13} /> : <CreditCard size={13} />}
+                    {' '}{payBucketLabels[key]}
+                    <small> · {payBuckets.count[key].toLocaleString('ru-RU')} ta</small>
+                  </span>
+                  <b>{money(round2(payBuckets[key]))}</b>
+                </div>
+                <div className="bar-track"><i style={{ width: `${Math.max(3, Math.abs(payBuckets[key]) / channelMax * 100)}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
       <Panel title="Qanday ishlaydi" subtitle="Hujjatlar zanjiri">
         <ul className="hint-list">
@@ -184,7 +225,7 @@ export function ReceiptDrawer({ id, onClose, onOpen }: { id: number; onClose: ()
       <div className="detail-columns">
         <div>
           <h3 className="subhead">Toʻlovlar</h3>
-          <div className="pay-list">{r.payments.map((p, i) => <div key={i}><span className={`pay-chip ${p.method}`}>{paymentLabels[p.method] ?? p.method}</span><span>{p.accountName || '—'}</span><b>{money(p.amount)}</b></div>)}</div>
+          <div className="pay-list">{r.payments.map((p, i) => <div key={i}><span className={`pay-chip ${p.method}`}>{payChannelTitle(p.accountName, p.method)}</span><span>{p.accountName || payChannelTitle(p.accountName, p.method)}</span><b>{money(p.amount)}</b></div>)}</div>
         </div>
         <Totals rows={[
           { label: 'Summa (chegirmagacha)', value: r.grossAmount },

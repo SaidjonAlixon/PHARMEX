@@ -144,8 +144,9 @@ const REPORT_FALLBACKS: Record<FomReportKey, number[]> = {
   purchases: [1, 11],
   supplierReturns: [2, 12],
   writeOffs: [3],
-  retailSales: [4, 14],
-  insuranceSales: [5, 15],
+  // 14 = per-check (when ServiceReports has it); 4 = day aggregate — prefer 14.
+  retailSales: [14, 4],
+  insuranceSales: [15, 5],
   incomes: [],
   receipts: [],
   stockDocuments: [],
@@ -200,6 +201,53 @@ export const fetchFomReceiptsDirect = async (config: FomConfig, scope: FomScope)
   lines: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptLines(cfg, scope, timeoutMs)),
   payments: await fetchDirect(config, (cfg, timeoutMs) => fomSqlReceiptPayments(cfg, scope, timeoutMs)),
 });
+
+/**
+ * Agent PC runs INVOICE+PAYIN locally and posts JSON (lines + payments).
+ * Used when VPN/SQL to the pharmacy is unavailable (agentRelay).
+ */
+export async function fetchFomReceiptsViaAgent(
+  config: FomConfig,
+  from: Date,
+  to: Date,
+): Promise<{ lines: FomRow[]; payments: FomRow[] }> {
+  if (!config.agentRelay || config.agentOrganizationId == null) {
+    return { lines: [], payments: [] };
+  }
+  const { requestAgentSqlReceipts } = await import("./fomAgentRelay");
+  const raw = await requestAgentSqlReceipts({
+    organizationId: config.agentOrganizationId,
+    from,
+    to,
+    timeoutMs: Math.max(config.timeoutMs || 120_000, 300_000),
+  });
+  let data: { lines?: FomRow[]; payments?: FomRow[]; error?: string };
+  try {
+    data = JSON.parse(raw) as { lines?: FomRow[]; payments?: FomRow[]; error?: string };
+  } catch {
+    throw new FomError("Agent cheklar javobi JSON emas — agentni yangilang (.bat qayta oching).");
+  }
+  if (data.error) throw new FomError(data.error);
+  return { lines: Array.isArray(data.lines) ? data.lines : [], payments: Array.isArray(data.payments) ? data.payments : [] };
+}
+
+/** Agent PC: current stock with retail price + nearest expiry (INCOMELN). */
+export async function fetchFomStockViaAgent(config: FomConfig): Promise<FomRow[]> {
+  if (!config.agentRelay || config.agentOrganizationId == null) return [];
+  const { requestAgentSqlStock } = await import("./fomAgentRelay");
+  const raw = await requestAgentSqlStock({
+    organizationId: config.agentOrganizationId,
+    timeoutMs: Math.max(config.timeoutMs || 120_000, 300_000),
+  });
+  let data: { rows?: FomRow[]; error?: string };
+  try {
+    data = JSON.parse(raw) as { rows?: FomRow[]; error?: string };
+  } catch {
+    throw new FomError("Agent ombor javobi JSON emas — agentni yangilang (.bat qayta oching).");
+  }
+  if (data.error) throw new FomError(data.error);
+  return Array.isArray(data.rows) ? data.rows : [];
+}
 
 /** Supplier receipts into the warehouse, one row per line (see fomSqlPurchases). */
 export const fetchFomPurchasesDirect = (config: FomConfig, scope: FomScope) =>
@@ -302,9 +350,14 @@ export async function fetchFomReport(
     try {
       return await viaAgent();
     } catch (error) {
-      throw new FomError(
-        `FOM agent orqali olinmadi (${error instanceof Error ? error.message : String(error)}). Admin PowerShell skriptini qayta ishga tushiring.`,
-      );
+      {
+        const detail = error instanceof Error ? error.message : String(error);
+        // Empty week / unsupported report id — agent may still report HTML 200 as failure.
+        if (/HTML\s*200/i.test(detail)) return [];
+        throw new FomError(
+          `FOM agent orqali olinmadi (${detail}). Sozlamalar → .bat ni Admin sifatida qayta oching.`,
+        );
+      }
     }
   }
   if (!config.reportUrl) throw new FomError("FOM server manzili sozlanmagan.");
@@ -314,7 +367,10 @@ export async function fetchFomReport(
     const headers: Record<string, string> = config.apiToken
       ? { Authorization: `Bearer ${config.apiToken}`, "X-Token": config.apiToken }
       : {};
-    response = await fetch(url, { headers, signal: AbortSignal.timeout(Math.min(config.timeoutMs, 20_000)) });
+    response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(Math.max(30_000, config.timeoutMs || 120_000)),
+    });
   } catch (error) {
     if (config.agentOrganizationId) {
       try {
@@ -388,8 +444,9 @@ export function parseFomXml(xml: string): FomRow[] {
   if (!cleaned.trim().startsWith("<")) {
     throw new FomError(`FOM javobi XML emas: ${cleaned.trim().slice(0, 160)}`);
   }
+  // ServiceReports often returns HTML «200 OK» for empty windows / unknown report — treat as no rows.
   if (/<html[\s>]/i.test(cleaned) || /<body>\s*<b>\s*200\s*ok/i.test(cleaned)) {
-    throw new FomError("FOM HTML «200 OK» qaytardi (report/filial/sana mos emas yoki ServiceReport xato).");
+    return [];
   }
   const root: XmlNode = { name: "#root", attrs: {}, children: [], text: "" };
   const stack: XmlNode[] = [root];

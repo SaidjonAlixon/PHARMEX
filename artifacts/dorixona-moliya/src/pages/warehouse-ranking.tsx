@@ -13,19 +13,20 @@ type RankingView = 'top' | 'slow';
 export function WarehouseRankingPage({ filters, view }: { filters: Filters; view: RankingView }) {
   const [product, setProduct] = useState<number | null>(null);
   const branchesQ = useListBranches();
-  const warehouses = useMemo(
-    () => (branchesQ.data || []).filter(b => b.kind === 'warehouse'),
-    [branchesQ.data],
-  );
-  const warehouseIds = useMemo(() => new Set(warehouses.map(w => w.id)), [warehouses]);
-  const filterIsWarehouse = filters.branchId && warehouseIds.has(Number(filters.branchId));
-  const activeWarehouseId = filterIsWarehouse
-    ? filters.branchId
-    : warehouses.length === 1 ? String(warehouses[0].id) : '';
-  const activeWarehouse = warehouses.find(w => String(w.id) === String(activeWarehouseId));
+  const allBranches = branchesQ.data || [];
+  const warehouses = useMemo(() => {
+    const marked = allBranches.filter(b => b.kind === 'warehouse');
+    return marked.length ? marked : allBranches;
+  }, [allBranches]);
+  const branchById = useMemo(() => new Map(allBranches.map(b => [b.id, b])), [allBranches]);
+  const activeBranchId = filters.branchId
+    || (warehouses.length === 1 ? String(warehouses[0].id) : '');
+  const activeBranch = activeBranchId
+    ? (branchById.get(Number(activeBranchId)) || warehouses.find(w => String(w.id) === String(activeBranchId)))
+    : undefined;
 
   const insightsQ = useGetWarehouseInsights({
-    branchId: activeWarehouseId ? Number(activeWarehouseId) : undefined,
+    branchId: activeBranchId ? Number(activeBranchId) : undefined,
     dateFrom: filters.dateFrom || undefined,
     dateTo: filters.dateTo || undefined,
   });
@@ -45,7 +46,7 @@ export function WarehouseRankingPage({ filters, view }: { filters: Filters; view
     <PageHeading
       eyebrow={isTop ? 'OMBOR · KOʻP SOTILADIGANLAR' : 'OMBOR · KAM / SOTILMAYDIGANLAR'}
       title={isTop ? 'Eng koʻp sotiladiganlar' : 'Kam va sotilmaydiganlar'}
-      subtitle={`${activeWarehouse?.name || 'Barcha omborlar'} · davr: ${periodLabel}. Qatorni bosing — qachon va nechta sotilgani ochiladi.`}
+      subtitle={`${activeBranch?.name || 'Barcha omborlar'} · davr: ${periodLabel}. Qatorni bosing — qachon va nechta sotilgani ochiladi.`}
       actions={
         <div className="warehouse-rank-actions">
           <Link href="/warehouse" className="button secondary" data-testid="link-back-warehouse">

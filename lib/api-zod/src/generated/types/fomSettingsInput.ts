@@ -40,4 +40,5 @@ export interface FomSettingsInput {
   /** @maxLength 500 */
   apiToken?: string;
   clearApiToken?: boolean;
+  startDate?: Date;
 }

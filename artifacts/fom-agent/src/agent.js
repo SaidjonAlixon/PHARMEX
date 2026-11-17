@@ -985,7 +985,7 @@ async function sendHello(cfg) {
     localIps: localIps(),
     reportListening: listening,
     protocol: "http",
-    agentVersion: 7,
+    agentVersion: 8,
   }, 45_000);
   latestLive.online = true;
   latestLive.platformOnline = true;
@@ -996,25 +996,87 @@ async function sendHello(cfg) {
   return data;
 }
 
+function fomDateToIso(d) {
+  const s = String(d || "");
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return s.slice(0, 10);
+}
+
+async function runSqlReceiptsJob(job) {
+  const fromIso = fomDateToIso(job.from);
+  const toIso = fomDateToIso(job.to);
+  const esc = (s) => String(s).replace(/'/g, "''");
+  const from = esc(fromIso);
+  const to = esc(toIso);
+  log(`sqlReceipts ${from}..${to}`);
+  const linesSql = `
+SET NOCOUNT ON;
+SELECT CAST(I.ID AS varchar(20)) AS ID, CAST(I.DOCTYPE AS varchar(10)) AS DT, ISNULL(I.NUMBER,'') AS N,
+  CONVERT(varchar(19), I.DATAENTER, 126) AS T, CONVERT(varchar(10), I.DATA, 120) AS D,
+  CAST(I.OTDEL AS varchar(20)) AS F, CAST(IL.GOOD AS varchar(20)) AS G,
+  CONVERT(varchar(40), L.KOL) AS Q, CONVERT(varchar(40), L.PRICE) AS P, CONVERT(varchar(40), L.PRICE1) AS P1,
+  CONVERT(varchar(40), L.NDS) AS V, CONVERT(varchar(40), IL.PRICEPRIH) AS C,
+  CONVERT(varchar(40), CAST(L.KOL * L.PRICE AS numeric(20, 2))) AS A,
+  CONVERT(varchar(40), CAST(L.KOL * CASE WHEN L.PRICE1 > L.PRICE THEN L.PRICE1 - L.PRICE ELSE 0 END AS numeric(20, 2))) AS DA,
+  CONVERT(varchar(40), CAST(L.KOL * IL.PRICEPRIH AS numeric(20, 2))) AS CA
+FROM dbo.INVOICE I WITH (NOLOCK)
+JOIN dbo.INVOICELN L WITH (NOLOCK) ON L.INVOICE = I.ID
+JOIN dbo.INCOMELN IL WITH (NOLOCK) ON IL.ID = L.INCOMELN
+WHERE I.DOCTYPE IN (2, 4) AND L.STATE IN (11, 12)
+  AND I.DATA >= '${from}' AND I.DATA < DATEADD(day, 1, '${to}')
+ORDER BY I.ID, L.ID`;
+  const paySql = `
+SET NOCOUNT ON;
+SELECT CAST(P.INVOICE AS varchar(20)) AS ID, CAST(MAX(P.DOCTYPE) AS varchar(10)) AS DT,
+  CAST(P.CASHBOX AS varchar(20)) AS CB, ISNULL(B.NAME,'') AS CN,
+  CONVERT(varchar(40), SUM(P.SUMMA)) AS S
+FROM dbo.PAYIN P WITH (NOLOCK)
+JOIN dbo.INVOICE I WITH (NOLOCK) ON I.ID = P.INVOICE
+LEFT JOIN dbo.CASHBOX B WITH (NOLOCK) ON B.ID = P.CASHBOX
+WHERE I.DOCTYPE IN (2, 4)
+  AND I.DATA >= '${from}' AND I.DATA < DATEADD(day, 1, '${to}')
+GROUP BY P.INVOICE, P.CASHBOX, B.NAME`;
+  const lines = await runSqlQuery(linesSql, 300);
+  const payments = await runSqlQuery(paySql, 300);
+  log(`sqlReceipts lines=${lines.length} pays=${payments.length}`);
+  return Buffer.from(JSON.stringify({ lines, payments }), "utf8");
+}
+
 async function pollJobs(cfg) {
   const data = await requestJson("POST", `${cfg.platform}/api/fom/agent/poll`, { token: cfg.token }, 30_000);
   const jobs = Array.isArray(data.jobs) ? data.jobs : [];
   for (const job of jobs) {
     try {
-      log(`fetch ${job.localUrl}`);
-      let buf = await getBuffer(job.localUrl, 900_000);
-      let xml = buf.toString("utf8");
-      if (/<HTML|<BODY>\s*<B>\s*200/i.test(xml)) {
-        const sqlBuf = await sqlFallbackForJob(job);
-        if (sqlBuf && sqlBuf.length > 10) {
-          buf = sqlBuf;
-          xml = buf.toString("utf8");
-          log(`job ${job.id}: REPORT HTML → SQL fallback bytes=${buf.length}`);
-          if (jobIsOrgReport(job)) {
-            void refreshOrgNames(cfg, true).catch(() => {});
+      let buf;
+      if (String(job.kind || "") === "sqlReceipts") {
+        buf = await runSqlReceiptsJob(job);
+      } else {
+        const { reportId } = parseJobParams(job);
+        // Prefer real INVOICE rows over REPORT 4 day aggregates.
+        if (reportId === 4 || reportId === 14) {
+          const sqlBuf = await sqlFallbackForJob(job);
+          if (sqlBuf && sqlBuf.length > 10) {
+            buf = sqlBuf;
+            log(`job ${job.id}: retail SQL-first bytes=${buf.length}`);
           }
-        } else {
-          throw new Error("REPORT HTML 200 OK (SQL fallback ham bo'sh)");
+        }
+        if (!buf) {
+          log(`fetch ${job.localUrl}`);
+          buf = await getBuffer(job.localUrl, 900_000);
+          let xml = buf.toString("utf8");
+          if (/<HTML|<BODY>\s*<B>\s*200/i.test(xml)) {
+            const sqlBuf = await sqlFallbackForJob(job);
+            if (sqlBuf && sqlBuf.length > 10) {
+              buf = sqlBuf;
+              log(`job ${job.id}: REPORT HTML → SQL fallback bytes=${buf.length}`);
+              if (jobIsOrgReport(job)) {
+                void refreshOrgNames(cfg, true).catch(() => {});
+              }
+            } else {
+              throw new Error("REPORT HTML 200 OK (SQL fallback ham bo'sh)");
+            }
+          }
         }
       }
       const xmlBase64 = buf.toString("base64");
